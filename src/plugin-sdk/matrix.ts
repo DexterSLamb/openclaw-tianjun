@@ -4,8 +4,10 @@
 export {
   createActionGate,
   jsonResult,
+  readNumberArrayParam,
   readNumberParam,
   readReactionParams,
+  readStringArrayParam,
   readStringParam,
 } from "../agents/tools/common.js";
 export type { ReplyPayload } from "../auto-reply/types.js";
@@ -85,6 +87,7 @@ export { emptyPluginConfigSchema } from "../plugins/config-schema.js";
 export type { PluginRuntime, RuntimeLogger } from "../plugins/runtime/types.js";
 export type { OpenClawPluginApi } from "../plugins/types.js";
 export type { PollInput } from "../polls.js";
+export { normalizePollInput } from "../polls.js";
 export { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../routing/session-key.js";
 export type { RuntimeEnv } from "../runtime.js";
 export {

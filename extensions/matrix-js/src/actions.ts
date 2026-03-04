@@ -11,6 +11,26 @@ import { resolveMatrixAccount } from "./matrix/accounts.js";
 import { handleMatrixAction } from "./tool-actions.js";
 import type { CoreConfig } from "./types.js";
 
+const MATRIX_JS_PLUGIN_HANDLED_ACTIONS = new Set<ChannelMessageActionName>([
+  "send",
+  "poll-vote",
+  "react",
+  "reactions",
+  "read",
+  "edit",
+  "delete",
+  "pin",
+  "unpin",
+  "list-pins",
+  "member-info",
+  "channel-info",
+  "permissions",
+]);
+
+function createMatrixJsExposedActions() {
+  return new Set<ChannelMessageActionName>(["poll", ...MATRIX_JS_PLUGIN_HANDLED_ACTIONS]);
+}
+
 export const matrixMessageActions: ChannelMessageActionAdapter = {
   listActions: ({ cfg }) => {
     const account = resolveMatrixAccount({ cfg: cfg as CoreConfig });
@@ -18,7 +38,7 @@ export const matrixMessageActions: ChannelMessageActionAdapter = {
       return [];
     }
     const gate = createActionGate((cfg as CoreConfig).channels?.["matrix-js"]?.actions);
-    const actions = new Set<ChannelMessageActionName>(["send", "poll"]);
+    const actions = createMatrixJsExposedActions();
     if (gate("reactions")) {
       actions.add("react");
       actions.add("reactions");
@@ -44,7 +64,7 @@ export const matrixMessageActions: ChannelMessageActionAdapter = {
     }
     return Array.from(actions);
   },
-  supportsAction: ({ action }) => action !== "poll",
+  supportsAction: ({ action }) => MATRIX_JS_PLUGIN_HANDLED_ACTIONS.has(action),
   extractToolSend: ({ args }): ChannelToolSend | null => {
     const action = typeof args.action === "string" ? args.action.trim() : "";
     if (action !== "sendMessage") {
@@ -80,6 +100,16 @@ export const matrixMessageActions: ChannelMessageActionAdapter = {
           mediaUrl: mediaUrl ?? undefined,
           replyToId: replyTo ?? undefined,
           threadId: threadId ?? undefined,
+        },
+        cfg as CoreConfig,
+      );
+    }
+
+    if (action === "poll-vote") {
+      return await handleMatrixAction(
+        {
+          ...params,
+          action: "pollVote",
         },
         cfg as CoreConfig,
       );

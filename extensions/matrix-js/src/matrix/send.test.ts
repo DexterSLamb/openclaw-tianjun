@@ -35,22 +35,28 @@ const runtimeStub = {
 } as unknown as PluginRuntime;
 
 let sendMessageMatrix: typeof import("./send.js").sendMessageMatrix;
+let voteMatrixPoll: typeof import("./actions/polls.js").voteMatrixPoll;
 
 const makeClient = () => {
   const sendMessage = vi.fn().mockResolvedValue("evt1");
+  const sendEvent = vi.fn().mockResolvedValue("evt-poll-vote");
+  const getEvent = vi.fn();
   const uploadContent = vi.fn().mockResolvedValue("mxc://example/file");
   const client = {
     sendMessage,
+    sendEvent,
+    getEvent,
     uploadContent,
     getUserId: vi.fn().mockResolvedValue("@bot:example.org"),
   } as unknown as import("./sdk.js").MatrixClient;
-  return { client, sendMessage, uploadContent };
+  return { client, sendMessage, sendEvent, getEvent, uploadContent };
 };
 
 describe("sendMessageMatrix media", () => {
   beforeAll(async () => {
     setMatrixRuntime(runtimeStub);
     ({ sendMessageMatrix } = await import("./send.js"));
+    ({ voteMatrixPoll } = await import("./actions/polls.js"));
   });
 
   beforeEach(() => {
@@ -196,6 +202,7 @@ describe("sendMessageMatrix threads", () => {
   beforeAll(async () => {
     setMatrixRuntime(runtimeStub);
     ({ sendMessageMatrix } = await import("./send.js"));
+    ({ voteMatrixPoll } = await import("./actions/polls.js"));
   });
 
   beforeEach(() => {
@@ -224,5 +231,116 @@ describe("sendMessageMatrix threads", () => {
       event_id: "$thread",
       "m.in_reply_to": { event_id: "$thread" },
     });
+  });
+});
+
+describe("voteMatrixPoll", () => {
+  beforeAll(async () => {
+    setMatrixRuntime(runtimeStub);
+    ({ voteMatrixPoll } = await import("./actions/polls.js"));
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setMatrixRuntime(runtimeStub);
+  });
+
+  it("maps 1-based option indexes to Matrix poll answer ids", async () => {
+    const { client, getEvent, sendEvent } = makeClient();
+    getEvent.mockResolvedValue({
+      type: "m.poll.start",
+      content: {
+        "m.poll.start": {
+          question: { "m.text": "Lunch?" },
+          max_selections: 1,
+          answers: [
+            { id: "a1", "m.text": "Pizza" },
+            { id: "a2", "m.text": "Sushi" },
+          ],
+        },
+      },
+    });
+
+    const result = await voteMatrixPoll("room:!room:example", "$poll", {
+      client,
+      optionIndex: 2,
+    });
+
+    expect(sendEvent).toHaveBeenCalledWith("!room:example", "m.poll.response", {
+      "m.poll.response": { answers: ["a2"] },
+      "org.matrix.msc3381.poll.response": { answers: ["a2"] },
+      "m.relates_to": {
+        rel_type: "m.reference",
+        event_id: "$poll",
+      },
+    });
+    expect(result).toMatchObject({
+      eventId: "evt-poll-vote",
+      roomId: "!room:example",
+      pollId: "$poll",
+      answerIds: ["a2"],
+      labels: ["Sushi"],
+    });
+  });
+
+  it("rejects out-of-range option indexes", async () => {
+    const { client, getEvent } = makeClient();
+    getEvent.mockResolvedValue({
+      type: "m.poll.start",
+      content: {
+        "m.poll.start": {
+          question: { "m.text": "Lunch?" },
+          max_selections: 1,
+          answers: [{ id: "a1", "m.text": "Pizza" }],
+        },
+      },
+    });
+
+    await expect(
+      voteMatrixPoll("room:!room:example", "$poll", {
+        client,
+        optionIndex: 2,
+      }),
+    ).rejects.toThrow("out of range");
+  });
+
+  it("rejects votes that exceed the poll selection cap", async () => {
+    const { client, getEvent } = makeClient();
+    getEvent.mockResolvedValue({
+      type: "m.poll.start",
+      content: {
+        "m.poll.start": {
+          question: { "m.text": "Lunch?" },
+          max_selections: 1,
+          answers: [
+            { id: "a1", "m.text": "Pizza" },
+            { id: "a2", "m.text": "Sushi" },
+          ],
+        },
+      },
+    });
+
+    await expect(
+      voteMatrixPoll("room:!room:example", "$poll", {
+        client,
+        optionIndexes: [1, 2],
+      }),
+    ).rejects.toThrow("at most 1 selection");
+  });
+
+  it("rejects non-poll events before sending a response", async () => {
+    const { client, getEvent, sendEvent } = makeClient();
+    getEvent.mockResolvedValue({
+      type: "m.room.message",
+      content: { body: "hello" },
+    });
+
+    await expect(
+      voteMatrixPoll("room:!room:example", "$poll", {
+        client,
+        optionIndex: 1,
+      }),
+    ).rejects.toThrow("is not a Matrix poll start event");
+    expect(sendEvent).not.toHaveBeenCalled();
   });
 });

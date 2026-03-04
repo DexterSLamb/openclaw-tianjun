@@ -2,8 +2,10 @@ import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import {
   createActionGate,
   jsonResult,
+  readNumberArrayParam,
   readNumberParam,
   readReactionParams,
+  readStringArrayParam,
   readStringParam,
 } from "openclaw/plugin-sdk/matrix-js";
 import {
@@ -34,6 +36,7 @@ import {
   sendMatrixMessage,
   startMatrixVerification,
   unpinMatrixMessage,
+  voteMatrixPoll,
   verifyMatrixRecoveryKey,
 } from "./matrix/actions.js";
 import { reactMatrixMessage } from "./matrix/send.js";
@@ -42,6 +45,7 @@ import type { CoreConfig } from "./types.js";
 const messageActions = new Set(["sendMessage", "editMessage", "deleteMessage", "readMessages"]);
 const reactionActions = new Set(["react", "reactions"]);
 const pinActions = new Set(["pinMessage", "unpinMessage", "listPins"]);
+const pollActions = new Set(["pollVote"]);
 const verificationActions = new Set([
   "encryptionStatus",
   "verificationList",
@@ -102,6 +106,27 @@ export async function handleMatrixAction(
     }
     const reactions = await listMatrixReactions(roomId, messageId);
     return jsonResult({ ok: true, reactions });
+  }
+
+  if (pollActions.has(action)) {
+    const roomId = readRoomId(params);
+    const pollId = readStringParam(params, "pollId", { required: true });
+    const optionId = readStringParam(params, "pollOptionId");
+    const optionIndex = readNumberParam(params, "pollOptionIndex", { integer: true });
+    const optionIds = [
+      ...(readStringArrayParam(params, "pollOptionIds") ?? []),
+      ...(optionId ? [optionId] : []),
+    ];
+    const optionIndexes = [
+      ...(readNumberArrayParam(params, "pollOptionIndexes", { integer: true }) ?? []),
+      ...(optionIndex !== undefined ? [optionIndex] : []),
+    ];
+    const result = await voteMatrixPoll(roomId, pollId, {
+      accountId,
+      optionIds,
+      optionIndexes,
+    });
+    return jsonResult({ ok: true, result });
   }
 
   if (messageActions.has(action)) {
