@@ -33,6 +33,7 @@ const pluginSdkSubpaths = [
   "llm-task",
   "lobster",
   "matrix",
+  "matrix-js",
   "mattermost",
   "memory-core",
   "memory-lancedb",

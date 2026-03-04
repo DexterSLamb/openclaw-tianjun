@@ -1,0 +1,9 @@
+{
+  "id": "matrix-js",
+  "channels": ["matrix-js"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

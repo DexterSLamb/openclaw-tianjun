@@ -65,6 +65,7 @@ const pluginSdkEntrypoints = [
   "llm-task",
   "lobster",
   "matrix",
+  "matrix-js",
   "mattermost",
   "memory-core",
   "memory-lancedb",
