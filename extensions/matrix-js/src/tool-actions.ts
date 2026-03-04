@@ -2,7 +2,6 @@ import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import {
   createActionGate,
   jsonResult,
-  readNumberArrayParam,
   readNumberParam,
   readReactionParams,
   readStringArrayParam,
@@ -77,6 +76,53 @@ function readRoomId(params: Record<string, unknown>, required = true): string {
   return readStringParam(params, "to", { required: true });
 }
 
+function toSnakeCaseKey(key: string): string {
+  return key
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase();
+}
+
+function readRawParam(params: Record<string, unknown>, key: string): unknown {
+  if (Object.hasOwn(params, key)) {
+    return params[key];
+  }
+  const snakeKey = toSnakeCaseKey(key);
+  if (snakeKey !== key && Object.hasOwn(params, snakeKey)) {
+    return params[snakeKey];
+  }
+  return undefined;
+}
+
+function readNumericArrayParam(
+  params: Record<string, unknown>,
+  key: string,
+  options: { integer?: boolean } = {},
+): number[] {
+  const { integer = false } = options;
+  const raw = readRawParam(params, key);
+  if (raw === undefined) {
+    return [];
+  }
+  return (Array.isArray(raw) ? raw : [raw])
+    .map((value) => {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return null;
+        }
+        const parsed = Number(trimmed);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      return null;
+    })
+    .filter((value): value is number => value !== null)
+    .map((value) => (integer ? Math.trunc(value) : value));
+}
+
 export async function handleMatrixAction(
   params: Record<string, unknown>,
   cfg: CoreConfig,
@@ -118,7 +164,7 @@ export async function handleMatrixAction(
       ...(optionId ? [optionId] : []),
     ];
     const optionIndexes = [
-      ...(readNumberArrayParam(params, "pollOptionIndexes", { integer: true }) ?? []),
+      ...readNumericArrayParam(params, "pollOptionIndexes", { integer: true }),
       ...(optionIndex !== undefined ? [optionIndex] : []),
     ];
     const result = await voteMatrixPoll(roomId, pollId, {
