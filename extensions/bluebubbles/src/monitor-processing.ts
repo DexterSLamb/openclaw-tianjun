@@ -87,21 +87,6 @@ function normalizeSnippet(value: string): string {
   return stripMarkdown(value).replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-function buildBlueBubblesSelfChatScope(params: {
-  accountId: string;
-  chatGuid?: string;
-  chatIdentifier?: string;
-  chatId?: number;
-  senderId: string;
-}): string {
-  const target =
-    trimOrUndefined(params.chatGuid) ??
-    trimOrUndefined(params.chatIdentifier) ??
-    (typeof params.chatId === "number" ? String(params.chatId) : null) ??
-    params.senderId;
-  return `${params.accountId}:${target}`;
-}
-
 function isBlueBubblesSelfChatMessage(
   message: NormalizedWebhookMessage,
   isGroup: boolean,
@@ -489,13 +474,15 @@ export async function processMessage(
       : `reacted with ${tapbackParsed.emoji}`
     : text || placeholder;
   const isSelfChatMessage = isBlueBubblesSelfChatMessage(message, isGroup);
-  const selfChatScope = buildBlueBubblesSelfChatScope({
+  const selfChatLookup = {
     accountId: account.accountId,
     chatGuid: message.chatGuid,
     chatIdentifier: message.chatIdentifier,
     chatId: message.chatId,
     senderId: message.senderId,
-  });
+    body: rawBody,
+    timestamp: message.timestamp,
+  };
 
   const cacheMessageId = message.messageId?.trim();
   let messageShortId: string | undefined;
@@ -518,10 +505,7 @@ export async function processMessage(
 
   if (message.fromMe) {
     if (isSelfChatMessage) {
-      rememberBlueBubblesSelfChatCopy(selfChatScope, {
-        body: rawBody,
-        timestamp: message.timestamp,
-      });
+      rememberBlueBubblesSelfChatCopy(selfChatLookup);
     }
     // Cache from-me messages so reply context can resolve sender/body.
     cacheInboundMessage();
@@ -548,13 +532,7 @@ export async function processMessage(
     return;
   }
 
-  if (
-    isSelfChatMessage &&
-    hasBlueBubblesSelfChatCopy(selfChatScope, {
-      body: rawBody,
-      timestamp: message.timestamp,
-    })
-  ) {
+  if (isSelfChatMessage && hasBlueBubblesSelfChatCopy(selfChatLookup)) {
     logVerbose(core, runtime, `drop: reflected self-chat duplicate sender=${message.senderId}`);
     return;
   }

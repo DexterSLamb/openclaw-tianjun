@@ -6,6 +6,12 @@ import {
 } from "./monitor-self-chat-cache.js";
 
 describe("BlueBubbles self-chat cache", () => {
+  const directLookup = {
+    accountId: "default",
+    chatGuid: "iMessage;-;+15551234567",
+    senderId: "+15551234567",
+  } as const;
+
   afterEach(() => {
     resetBlueBubblesSelfChatCache();
     vi.useRealTimers();
@@ -15,13 +21,15 @@ describe("BlueBubbles self-chat cache", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-07T00:00:00Z"));
 
-    rememberBlueBubblesSelfChatCopy("scope", {
+    rememberBlueBubblesSelfChatCopy({
+      ...directLookup,
       body: "  hello\r\nworld  ",
       timestamp: 123,
     });
 
     expect(
-      hasBlueBubblesSelfChatCopy("scope", {
+      hasBlueBubblesSelfChatCopy({
+        ...directLookup,
         body: "hello\nworld",
         timestamp: 123,
       }),
@@ -32,7 +40,8 @@ describe("BlueBubbles self-chat cache", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-07T00:00:00Z"));
 
-    rememberBlueBubblesSelfChatCopy("scope", {
+    rememberBlueBubblesSelfChatCopy({
+      ...directLookup,
       body: "hello",
       timestamp: 123,
     });
@@ -40,7 +49,8 @@ describe("BlueBubbles self-chat cache", () => {
     vi.advanceTimersByTime(11_001);
 
     expect(
-      hasBlueBubblesSelfChatCopy("scope", {
+      hasBlueBubblesSelfChatCopy({
+        ...directLookup,
         body: "hello",
         timestamp: 123,
       }),
@@ -52,7 +62,8 @@ describe("BlueBubbles self-chat cache", () => {
     vi.setSystemTime(new Date("2026-03-07T00:00:00Z"));
 
     for (let i = 0; i < 513; i += 1) {
-      rememberBlueBubblesSelfChatCopy("scope", {
+      rememberBlueBubblesSelfChatCopy({
+        ...directLookup,
         body: `message-${i}`,
         timestamp: i,
       });
@@ -60,13 +71,15 @@ describe("BlueBubbles self-chat cache", () => {
     }
 
     expect(
-      hasBlueBubblesSelfChatCopy("scope", {
+      hasBlueBubblesSelfChatCopy({
+        ...directLookup,
         body: "message-0",
         timestamp: 0,
       }),
     ).toBe(false);
     expect(
-      hasBlueBubblesSelfChatCopy("scope", {
+      hasBlueBubblesSelfChatCopy({
+        ...directLookup,
         body: "message-512",
         timestamp: 512,
       }),

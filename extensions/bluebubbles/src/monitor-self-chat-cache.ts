@@ -1,6 +1,14 @@
 import { createHash } from "node:crypto";
 
-type SelfChatLookup = {
+type SelfChatCacheKeyParts = {
+  accountId: string;
+  chatGuid?: string;
+  chatIdentifier?: string;
+  chatId?: number;
+  senderId: string;
+};
+
+type SelfChatLookup = SelfChatCacheKeyParts & {
   body?: string;
   timestamp?: number;
 };
@@ -36,6 +44,20 @@ function digestText(text: string): string {
   return createHash("sha256").update(buildDigestSource(text)).digest("base64url");
 }
 
+function trimOrUndefined(value?: string | null): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function buildScope(parts: SelfChatCacheKeyParts): string {
+  const target =
+    trimOrUndefined(parts.chatGuid) ??
+    trimOrUndefined(parts.chatIdentifier) ??
+    (typeof parts.chatId === "number" ? String(parts.chatId) : null) ??
+    parts.senderId;
+  return `${parts.accountId}:${target}`;
+}
+
 function maybeCleanup(now = Date.now()): void {
   if (lastCleanupAt !== 0 && now - lastCleanupAt < CLEANUP_MIN_INTERVAL_MS) {
     return;
@@ -55,17 +77,17 @@ function maybeCleanup(now = Date.now()): void {
   }
 }
 
-function buildKey(scope: string, lookup: SelfChatLookup): string | null {
+function buildKey(lookup: SelfChatLookup): string | null {
   const body = normalizeBody(lookup.body);
   if (!body || !isUsableTimestamp(lookup.timestamp)) {
     return null;
   }
-  return `${scope}:${lookup.timestamp}:${digestText(body)}`;
+  return `${buildScope(lookup)}:${lookup.timestamp}:${digestText(body)}`;
 }
 
-export function rememberBlueBubblesSelfChatCopy(scope: string, lookup: SelfChatLookup): void {
+export function rememberBlueBubblesSelfChatCopy(lookup: SelfChatLookup): void {
   maybeCleanup();
-  const key = buildKey(scope, lookup);
+  const key = buildKey(lookup);
   if (!key) {
     return;
   }
@@ -73,9 +95,9 @@ export function rememberBlueBubblesSelfChatCopy(scope: string, lookup: SelfChatL
   maybeCleanup();
 }
 
-export function hasBlueBubblesSelfChatCopy(scope: string, lookup: SelfChatLookup): boolean {
+export function hasBlueBubblesSelfChatCopy(lookup: SelfChatLookup): boolean {
   maybeCleanup();
-  const key = buildKey(scope, lookup);
+  const key = buildKey(lookup);
   if (!key) {
     return false;
   }
