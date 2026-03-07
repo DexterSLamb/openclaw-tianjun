@@ -200,12 +200,13 @@ function readFirstChatRecord(message: Record<string, unknown>): Record<string, u
 
 function extractSenderInfo(message: Record<string, unknown>): {
   senderId: string;
+  senderIdExplicit: boolean;
   senderName?: string;
 } {
   const handleValue = message.handle ?? message.sender;
   const handle =
     asRecord(handleValue) ?? (typeof handleValue === "string" ? { address: handleValue } : null);
-  const senderId =
+  const senderIdRaw =
     readString(handle, "address") ??
     readString(handle, "handle") ??
     readString(handle, "id") ??
@@ -213,13 +214,18 @@ function extractSenderInfo(message: Record<string, unknown>): {
     readString(message, "sender") ??
     readString(message, "from") ??
     "";
+  const senderId = senderIdRaw.trim();
   const senderName =
     readString(handle, "displayName") ??
     readString(handle, "name") ??
     readString(message, "senderName") ??
     undefined;
 
-  return { senderId, senderName };
+  return {
+    senderId,
+    senderIdExplicit: Boolean(senderId),
+    senderName,
+  };
 }
 
 function extractChatContext(message: Record<string, unknown>): {
@@ -450,6 +456,7 @@ export type BlueBubblesParticipant = {
 export type NormalizedWebhookMessage = {
   text: string;
   senderId: string;
+  senderIdExplicit: boolean;
   senderName?: string;
   messageId?: string;
   timestamp?: number;
@@ -475,6 +482,7 @@ export type NormalizedWebhookReaction = {
   action: "added" | "removed";
   emoji: string;
   senderId: string;
+  senderIdExplicit: boolean;
   senderName?: string;
   messageId: string;
   timestamp?: number;
@@ -681,7 +689,7 @@ export function normalizeWebhookMessage(
     readString(message, "subject") ??
     "";
 
-  const { senderId, senderName } = extractSenderInfo(message);
+  const { senderId, senderIdExplicit, senderName } = extractSenderInfo(message);
   const { chatGuid, chatIdentifier, chatId, chatName, isGroup, participants } =
     extractChatContext(message);
   const normalizedParticipants = normalizeParticipantList(participants);
@@ -726,7 +734,7 @@ export function normalizeWebhookMessage(
 
   // BlueBubbles may omit `handle` in webhook payloads; for DM chat GUIDs we can still infer sender.
   const senderFallbackFromChatGuid =
-    !senderId && !isGroup && chatGuid ? extractHandleFromChatGuid(chatGuid) : null;
+    !senderIdExplicit && !isGroup && chatGuid ? extractHandleFromChatGuid(chatGuid) : null;
   const normalizedSender = normalizeBlueBubblesHandle(senderId || senderFallbackFromChatGuid || "");
   if (!normalizedSender) {
     return null;
@@ -736,6 +744,7 @@ export function normalizeWebhookMessage(
   return {
     text,
     senderId: normalizedSender,
+    senderIdExplicit,
     senderName,
     messageId,
     timestamp,
@@ -786,7 +795,7 @@ export function normalizeWebhookReaction(
   const emoji = (associatedEmoji?.trim() || mapping?.emoji) ?? `reaction:${associatedType}`;
   const action = mapping?.action ?? resolveTapbackActionHint(associatedType) ?? "added";
 
-  const { senderId, senderName } = extractSenderInfo(message);
+  const { senderId, senderIdExplicit, senderName } = extractSenderInfo(message);
   const { chatGuid, chatIdentifier, chatId, chatName, isGroup } = extractChatContext(message);
 
   const fromMe = readBoolean(message, "isFromMe") ?? readBoolean(message, "is_from_me");
@@ -802,7 +811,7 @@ export function normalizeWebhookReaction(
       : undefined;
 
   const senderFallbackFromChatGuid =
-    !senderId && !isGroup && chatGuid ? extractHandleFromChatGuid(chatGuid) : null;
+    !senderIdExplicit && !isGroup && chatGuid ? extractHandleFromChatGuid(chatGuid) : null;
   const normalizedSender = normalizeBlueBubblesHandle(senderId || senderFallbackFromChatGuid || "");
   if (!normalizedSender) {
     return null;
@@ -812,6 +821,7 @@ export function normalizeWebhookReaction(
     action,
     emoji,
     senderId: normalizedSender,
+    senderIdExplicit,
     senderName,
     messageId: associatedGuid,
     timestamp,

@@ -106,7 +106,7 @@ function isBlueBubblesSelfChatMessage(
   message: NormalizedWebhookMessage,
   isGroup: boolean,
 ): boolean {
-  if (isGroup) {
+  if (isGroup || !message.senderIdExplicit) {
     return false;
   }
   const chatHandle =

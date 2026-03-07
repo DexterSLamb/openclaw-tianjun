@@ -2893,5 +2893,63 @@ describe("BlueBubbles webhook monitor", () => {
 
       expect(mockDispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalled();
     });
+
+    it("does not treat chatGuid-inferred sender ids as self-chat evidence", async () => {
+      const account = createMockAccount({ dmPolicy: "open" });
+      const config: OpenClawConfig = {};
+      const core = createMockRuntime();
+      setBlueBubblesRuntime(core);
+
+      unregister = registerBlueBubblesWebhookTarget({
+        account,
+        config,
+        runtime: { log: vi.fn(), error: vi.fn() },
+        core,
+        path: "/bluebubbles-webhook",
+      });
+
+      const timestamp = Date.now();
+      const fromMePayload = {
+        type: "new-message",
+        data: {
+          text: "shared inferred text",
+          handle: null,
+          isGroup: false,
+          isFromMe: true,
+          guid: "msg-inferred-fromme",
+          chatGuid: "iMessage;-;+15551234567",
+          date: timestamp,
+        },
+      };
+
+      await handleBlueBubblesWebhookRequest(
+        createMockRequest("POST", "/bluebubbles-webhook", fromMePayload),
+        createMockResponse(),
+      );
+      await flushAsync();
+
+      mockDispatchReplyWithBufferedBlockDispatcher.mockClear();
+
+      const inboundPayload = {
+        type: "new-message",
+        data: {
+          text: "shared inferred text",
+          handle: { address: "+15551234567" },
+          isGroup: false,
+          isFromMe: false,
+          guid: "msg-inferred-inbound",
+          chatGuid: "iMessage;-;+15551234567",
+          date: timestamp,
+        },
+      };
+
+      await handleBlueBubblesWebhookRequest(
+        createMockRequest("POST", "/bluebubbles-webhook", inboundPayload),
+        createMockResponse(),
+      );
+      await flushAsync();
+
+      expect(mockDispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalled();
+    });
   });
 });
