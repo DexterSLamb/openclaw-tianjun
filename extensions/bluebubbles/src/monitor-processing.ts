@@ -49,7 +49,12 @@ import { isBlueBubblesPrivateApiEnabled } from "./probe.js";
 import { normalizeBlueBubblesReactionInput, sendBlueBubblesReaction } from "./reactions.js";
 import { normalizeSecretInputString } from "./secret-input.js";
 import { resolveChatGuidForTarget, sendMessageBlueBubbles } from "./send.js";
-import { formatBlueBubblesChatTarget, isAllowedBlueBubblesSender } from "./targets.js";
+import {
+  extractHandleFromChatGuid,
+  formatBlueBubblesChatTarget,
+  isAllowedBlueBubblesSender,
+  normalizeBlueBubblesHandle,
+} from "./targets.js";
 
 const DEFAULT_TEXT_LIMIT = 4000;
 const invalidAckReactions = new Set<string>();
@@ -95,6 +100,19 @@ function buildBlueBubblesSelfChatScope(params: {
     (typeof params.chatId === "number" ? String(params.chatId) : null) ??
     params.senderId;
   return `${params.accountId}:${target}`;
+}
+
+function isBlueBubblesSelfChatMessage(
+  message: NormalizedWebhookMessage,
+  isGroup: boolean,
+): boolean {
+  if (isGroup) {
+    return false;
+  }
+  const chatHandle =
+    (message.chatGuid ? extractHandleFromChatGuid(message.chatGuid) : null) ??
+    normalizeBlueBubblesHandle(message.chatIdentifier ?? "");
+  return Boolean(chatHandle) && chatHandle === message.senderId;
 }
 
 function prunePendingOutboundMessageIds(now = Date.now()): void {
@@ -470,6 +488,7 @@ export async function processMessage(
       ? `removed ${tapbackParsed.emoji} reaction`
       : `reacted with ${tapbackParsed.emoji}`
     : text || placeholder;
+  const isSelfChatMessage = isBlueBubblesSelfChatMessage(message, isGroup);
   const selfChatScope = buildBlueBubblesSelfChatScope({
     accountId: account.accountId,
     chatGuid: message.chatGuid,
@@ -498,10 +517,12 @@ export async function processMessage(
   };
 
   if (message.fromMe) {
-    rememberBlueBubblesSelfChatCopy(selfChatScope, {
-      body: rawBody,
-      timestamp: message.timestamp,
-    });
+    if (isSelfChatMessage) {
+      rememberBlueBubblesSelfChatCopy(selfChatScope, {
+        body: rawBody,
+        timestamp: message.timestamp,
+      });
+    }
     // Cache from-me messages so reply context can resolve sender/body.
     cacheInboundMessage();
     if (cacheMessageId) {
@@ -528,6 +549,7 @@ export async function processMessage(
   }
 
   if (
+    isSelfChatMessage &&
     hasBlueBubblesSelfChatCopy(selfChatScope, {
       body: rawBody,
       timestamp: message.timestamp,

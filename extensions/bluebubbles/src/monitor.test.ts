@@ -261,6 +261,7 @@ describe("BlueBubbles webhook monitor", () => {
 
   afterEach(() => {
     unregister?.();
+    vi.useRealTimers();
   });
 
   describe("DM pairing behavior vs allowFrom", () => {
@@ -2735,6 +2736,162 @@ describe("BlueBubbles webhook monitor", () => {
       await flushAsync();
 
       expect(mockDispatchReplyWithBufferedBlockDispatcher).not.toHaveBeenCalled();
+    });
+
+    it("does not drop inbound messages when no fromMe self-chat copy was seen", async () => {
+      const account = createMockAccount({ dmPolicy: "open" });
+      const config: OpenClawConfig = {};
+      const core = createMockRuntime();
+      setBlueBubblesRuntime(core);
+
+      unregister = registerBlueBubblesWebhookTarget({
+        account,
+        config,
+        runtime: { log: vi.fn(), error: vi.fn() },
+        core,
+        path: "/bluebubbles-webhook",
+      });
+
+      const inboundPayload = {
+        type: "new-message",
+        data: {
+          text: "genuinely new message",
+          handle: { address: "+15551234567" },
+          isGroup: false,
+          isFromMe: false,
+          guid: "msg-inbound-1",
+          chatGuid: "iMessage;-;+15551234567",
+          date: Date.now(),
+        },
+      };
+
+      await handleBlueBubblesWebhookRequest(
+        createMockRequest("POST", "/bluebubbles-webhook", inboundPayload),
+        createMockResponse(),
+      );
+      await flushAsync();
+
+      expect(mockDispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalled();
+    });
+
+    it("does not drop reflected copies after the self-chat cache TTL expires", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-03-07T00:00:00Z"));
+
+      const account = createMockAccount({ dmPolicy: "open" });
+      const config: OpenClawConfig = {};
+      const core = createMockRuntime();
+      setBlueBubblesRuntime(core);
+
+      unregister = registerBlueBubblesWebhookTarget({
+        account,
+        config,
+        runtime: { log: vi.fn(), error: vi.fn() },
+        core,
+        path: "/bluebubbles-webhook",
+      });
+
+      const timestamp = Date.now();
+      const fromMePayload = {
+        type: "new-message",
+        data: {
+          text: "ttl me",
+          handle: { address: "+15551234567" },
+          isGroup: false,
+          isFromMe: true,
+          guid: "msg-self-ttl-1",
+          chatGuid: "iMessage;-;+15551234567",
+          date: timestamp,
+        },
+      };
+
+      await handleBlueBubblesWebhookRequest(
+        createMockRequest("POST", "/bluebubbles-webhook", fromMePayload),
+        createMockResponse(),
+      );
+      await vi.runAllTimersAsync();
+
+      mockDispatchReplyWithBufferedBlockDispatcher.mockClear();
+      vi.advanceTimersByTime(10_001);
+
+      const reflectedPayload = {
+        type: "new-message",
+        data: {
+          text: "ttl me",
+          handle: { address: "+15551234567" },
+          isGroup: false,
+          isFromMe: false,
+          guid: "msg-self-ttl-2",
+          chatGuid: "iMessage;-;+15551234567",
+          date: timestamp,
+        },
+      };
+
+      await handleBlueBubblesWebhookRequest(
+        createMockRequest("POST", "/bluebubbles-webhook", reflectedPayload),
+        createMockResponse(),
+      );
+      await vi.runAllTimersAsync();
+
+      expect(mockDispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalled();
+    });
+
+    it("does not cache regular fromMe DMs as self-chat reflections", async () => {
+      const account = createMockAccount({ dmPolicy: "open" });
+      const config: OpenClawConfig = {};
+      const core = createMockRuntime();
+      setBlueBubblesRuntime(core);
+
+      unregister = registerBlueBubblesWebhookTarget({
+        account,
+        config,
+        runtime: { log: vi.fn(), error: vi.fn() },
+        core,
+        path: "/bluebubbles-webhook",
+      });
+
+      const timestamp = Date.now();
+      const fromMePayload = {
+        type: "new-message",
+        data: {
+          text: "shared text",
+          handle: { address: "+15557654321" },
+          isGroup: false,
+          isFromMe: true,
+          guid: "msg-normal-fromme",
+          chatGuid: "iMessage;-;+15551234567",
+          date: timestamp,
+        },
+      };
+
+      await handleBlueBubblesWebhookRequest(
+        createMockRequest("POST", "/bluebubbles-webhook", fromMePayload),
+        createMockResponse(),
+      );
+      await flushAsync();
+
+      mockDispatchReplyWithBufferedBlockDispatcher.mockClear();
+
+      const inboundPayload = {
+        type: "new-message",
+        data: {
+          text: "shared text",
+          handle: { address: "+15551234567" },
+          isGroup: false,
+          isFromMe: false,
+          guid: "msg-normal-inbound",
+          chatGuid: "iMessage;-;+15551234567",
+          date: timestamp,
+        },
+      };
+
+      await handleBlueBubblesWebhookRequest(
+        createMockRequest("POST", "/bluebubbles-webhook", inboundPayload),
+        createMockResponse(),
+      );
+      await flushAsync();
+
+      expect(mockDispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalled();
     });
   });
 });
