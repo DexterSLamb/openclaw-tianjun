@@ -36,6 +36,10 @@ import {
   resolveBlueBubblesMessageId,
   resolveReplyContextFromCache,
 } from "./monitor-reply-cache.js";
+import {
+  hasBlueBubblesSelfChatCopy,
+  rememberBlueBubblesSelfChatCopy,
+} from "./monitor-self-chat-cache.js";
 import type {
   BlueBubblesCoreRuntime,
   BlueBubblesRuntimeEnv,
@@ -76,6 +80,21 @@ function trimOrUndefined(value?: string | null): string | undefined {
 
 function normalizeSnippet(value: string): string {
   return stripMarkdown(value).replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function buildBlueBubblesSelfChatScope(params: {
+  accountId: string;
+  chatGuid?: string;
+  chatIdentifier?: string;
+  chatId?: number;
+  senderId: string;
+}): string {
+  const target =
+    trimOrUndefined(params.chatGuid) ??
+    trimOrUndefined(params.chatIdentifier) ??
+    (typeof params.chatId === "number" ? String(params.chatId) : null) ??
+    params.senderId;
+  return `${params.accountId}:${target}`;
 }
 
 function prunePendingOutboundMessageIds(now = Date.now()): void {
@@ -451,6 +470,13 @@ export async function processMessage(
       ? `removed ${tapbackParsed.emoji} reaction`
       : `reacted with ${tapbackParsed.emoji}`
     : text || placeholder;
+  const selfChatScope = buildBlueBubblesSelfChatScope({
+    accountId: account.accountId,
+    chatGuid: message.chatGuid,
+    chatIdentifier: message.chatIdentifier,
+    chatId: message.chatId,
+    senderId: message.senderId,
+  });
 
   const cacheMessageId = message.messageId?.trim();
   let messageShortId: string | undefined;
@@ -472,6 +498,10 @@ export async function processMessage(
   };
 
   if (message.fromMe) {
+    rememberBlueBubblesSelfChatCopy(selfChatScope, {
+      body: rawBody,
+      timestamp: message.timestamp,
+    });
     // Cache from-me messages so reply context can resolve sender/body.
     cacheInboundMessage();
     if (cacheMessageId) {
@@ -494,6 +524,16 @@ export async function processMessage(
         });
       }
     }
+    return;
+  }
+
+  if (
+    hasBlueBubblesSelfChatCopy(selfChatScope, {
+      body: rawBody,
+      timestamp: message.timestamp,
+    })
+  ) {
+    logVerbose(core, runtime, `drop: reflected self-chat duplicate sender=${message.senderId}`);
     return;
   }
 
