@@ -58,15 +58,19 @@ describe("createSelfChatCache", () => {
     expect(cache.has({ ...directLookup, text: "message-512", createdAt: 512 })).toBe(true);
   });
 
-  it("handles long texts without requiring the full body in the cache key", () => {
+  it("does not collide long texts that differ only in the middle", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-07T00:00:00Z"));
 
     const cache = createSelfChatCache();
-    const longText = `${"a".repeat(800)}middle${"b".repeat(800)}`;
+    const prefix = "a".repeat(256);
+    const suffix = "b".repeat(256);
+    const longTextA = `${prefix}${"x".repeat(300)}${suffix}`;
+    const longTextB = `${prefix}${"y".repeat(300)}${suffix}`;
 
-    cache.remember({ ...directLookup, text: longText, createdAt: 123 });
+    cache.remember({ ...directLookup, text: longTextA, createdAt: 123 });
 
-    expect(cache.has({ ...directLookup, text: longText, createdAt: 123 })).toBe(true);
+    expect(cache.has({ ...directLookup, text: longTextA, createdAt: 123 })).toBe(true);
+    expect(cache.has({ ...directLookup, text: longTextB, createdAt: 123 })).toBe(false);
   });
 });

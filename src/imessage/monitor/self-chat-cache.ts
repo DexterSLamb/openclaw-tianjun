@@ -21,8 +21,6 @@ export type SelfChatCache = {
 const SELF_CHAT_TTL_MS = 10_000;
 const MAX_SELF_CHAT_CACHE_ENTRIES = 512;
 const CLEANUP_MIN_INTERVAL_MS = 1_000;
-const DIGEST_TEXT_HEAD_CHARS = 256;
-const DIGEST_TEXT_TAIL_CHARS = 256;
 
 function normalizeText(text: string | undefined): string | null {
   if (!text) {
@@ -36,15 +34,8 @@ function isUsableTimestamp(createdAt: number | undefined): createdAt is number {
   return typeof createdAt === "number" && Number.isFinite(createdAt);
 }
 
-function buildDigestSource(text: string): string {
-  if (text.length <= DIGEST_TEXT_HEAD_CHARS + DIGEST_TEXT_TAIL_CHARS) {
-    return text;
-  }
-  return `${text.slice(0, DIGEST_TEXT_HEAD_CHARS)}\u0000${text.length}\u0000${text.slice(-DIGEST_TEXT_TAIL_CHARS)}`;
-}
-
 function digestText(text: string): string {
-  return createHash("sha256").update(buildDigestSource(text)).digest("hex");
+  return createHash("sha256").update(text).digest("hex");
 }
 
 function buildScope(parts: SelfChatCacheKeyParts): string {
