@@ -138,17 +138,16 @@ export function resolveIMessageInboundDecision(params: {
     groupIdCandidate && groupListPolicy.allowlistEnabled && groupListPolicy.groupConfig,
   );
   const isGroup = Boolean(params.message.is_group) || treatAsGroupByConfig;
-  const selfChatScope = buildIMessageSelfChatScope({
+  const selfChatLookup = {
     accountId: params.accountId,
     isGroup,
     chatId,
     sender,
-  });
+    text: params.bodyText,
+    createdAt,
+  };
   if (params.message.is_from_me) {
-    params.selfChatCache?.remember(selfChatScope, {
-      text: params.bodyText,
-      createdAt,
-    });
+    params.selfChatCache?.remember(selfChatLookup);
     return { kind: "drop", reason: "from me" };
   }
   if (isGroup && !chatId) {
@@ -228,7 +227,12 @@ export function resolveIMessageInboundDecision(params: {
     return { kind: "drop", reason: "empty body" };
   }
 
-  if (params.selfChatCache?.has(selfChatScope, { text: bodyText, createdAt })) {
+  if (
+    params.selfChatCache?.has({
+      ...selfChatLookup,
+      text: bodyText,
+    })
+  ) {
     const preview = sanitizeTerminalText(truncateUtf16Safe(bodyText, 50));
     params.logVerbose?.(`imessage: dropping self-chat reflected duplicate: "${preview}"`);
     return { kind: "drop", reason: "self-chat echo" };
@@ -508,19 +512,6 @@ export function buildIMessageEchoScope(params: {
   sender: string;
 }): string {
   return `${params.accountId}:${params.isGroup ? formatIMessageChatTarget(params.chatId) : `imessage:${params.sender}`}`;
-}
-
-function buildIMessageSelfChatScope(params: {
-  accountId: string;
-  isGroup: boolean;
-  chatId?: number;
-  sender: string;
-}): string {
-  if (!params.isGroup) {
-    return buildIMessageEchoScope(params);
-  }
-  const chatTarget = formatIMessageChatTarget(params.chatId) || "chat_id:unknown";
-  return `${params.accountId}:${chatTarget}:imessage:${params.sender}`;
 }
 
 export function describeIMessageEchoDropLog(params: {

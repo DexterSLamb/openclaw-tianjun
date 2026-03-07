@@ -1,13 +1,21 @@
 import { createHash } from "node:crypto";
+import { formatIMessageChatTarget } from "../targets.js";
 
-export type SelfChatLookup = {
+type SelfChatCacheKeyParts = {
+  accountId: string;
+  sender: string;
+  isGroup: boolean;
+  chatId?: number;
+};
+
+export type SelfChatLookup = SelfChatCacheKeyParts & {
   text?: string;
   createdAt?: number;
 };
 
 export type SelfChatCache = {
-  remember: (scope: string, lookup: SelfChatLookup) => void;
-  has: (scope: string, lookup: SelfChatLookup) => boolean;
+  remember: (lookup: SelfChatLookup) => void;
+  has: (lookup: SelfChatLookup) => boolean;
 };
 
 const SELF_CHAT_TTL_MS = 10_000;
@@ -39,20 +47,28 @@ function digestText(text: string): string {
   return createHash("sha256").update(buildDigestSource(text)).digest("hex");
 }
 
+function buildScope(parts: SelfChatCacheKeyParts): string {
+  if (!parts.isGroup) {
+    return `${parts.accountId}:imessage:${parts.sender}`;
+  }
+  const chatTarget = formatIMessageChatTarget(parts.chatId) || "chat_id:unknown";
+  return `${parts.accountId}:${chatTarget}:imessage:${parts.sender}`;
+}
+
 class DefaultSelfChatCache implements SelfChatCache {
   private cache = new Map<string, number>();
   private lastCleanupAt = 0;
 
-  private buildKey(scope: string, lookup: SelfChatLookup): string | null {
+  private buildKey(lookup: SelfChatLookup): string | null {
     const text = normalizeText(lookup.text);
     if (!text || !isUsableTimestamp(lookup.createdAt)) {
       return null;
     }
-    return `${scope}:${lookup.createdAt}:${digestText(text)}`;
+    return `${buildScope(lookup)}:${lookup.createdAt}:${digestText(text)}`;
   }
 
-  remember(scope: string, lookup: SelfChatLookup): void {
-    const key = this.buildKey(scope, lookup);
+  remember(lookup: SelfChatLookup): void {
+    const key = this.buildKey(lookup);
     if (!key) {
       return;
     }
@@ -60,9 +76,9 @@ class DefaultSelfChatCache implements SelfChatCache {
     this.maybeCleanup();
   }
 
-  has(scope: string, lookup: SelfChatLookup): boolean {
+  has(lookup: SelfChatLookup): boolean {
     this.maybeCleanup();
-    const key = this.buildKey(scope, lookup);
+    const key = this.buildKey(lookup);
     if (!key) {
       return false;
     }
