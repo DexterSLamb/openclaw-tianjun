@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/config.js";
+import { sanitizeTerminalText } from "../../terminal/safe-text.js";
 import {
   describeIMessageEchoDropLog,
   resolveIMessageInboundDecision,
@@ -238,6 +239,69 @@ describe("resolveIMessageInboundDecision echo detection", () => {
     });
 
     expect(decision.kind).toBe("dispatch");
+  });
+
+  it("sanitizes reflected duplicate previews before logging", () => {
+    const selfChatCache = createSelfChatCache();
+    const logVerbose = vi.fn();
+    const createdAt = "2026-03-02T20:58:10.649Z";
+    const bodyText = "line-1\nline-2\t\u001b[31mred";
+
+    resolveIMessageInboundDecision({
+      cfg,
+      accountId: "default",
+      message: {
+        id: 9801,
+        sender: "+15555550123",
+        text: bodyText,
+        created_at: createdAt,
+        is_from_me: true,
+        is_group: false,
+      },
+      opts: undefined,
+      messageText: bodyText,
+      bodyText,
+      allowFrom: [],
+      groupAllowFrom: [],
+      groupPolicy: "open",
+      dmPolicy: "open",
+      storeAllowFrom: [],
+      historyLimit: 0,
+      groupHistories: new Map(),
+      echoCache: undefined,
+      selfChatCache,
+      logVerbose,
+    });
+
+    resolveIMessageInboundDecision({
+      cfg,
+      accountId: "default",
+      message: {
+        id: 9802,
+        sender: "+15555550123",
+        text: bodyText,
+        created_at: createdAt,
+        is_from_me: false,
+        is_group: false,
+      },
+      opts: undefined,
+      messageText: bodyText,
+      bodyText,
+      allowFrom: [],
+      groupAllowFrom: [],
+      groupPolicy: "open",
+      dmPolicy: "open",
+      storeAllowFrom: [],
+      historyLimit: 0,
+      groupHistories: new Map(),
+      echoCache: undefined,
+      selfChatCache,
+      logVerbose,
+    });
+
+    expect(logVerbose).toHaveBeenCalledWith(
+      `imessage: dropping self-chat reflected duplicate: "${sanitizeTerminalText(bodyText)}"`,
+    );
   });
 });
 

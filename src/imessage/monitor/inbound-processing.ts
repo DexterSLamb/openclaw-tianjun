@@ -24,6 +24,7 @@ import {
   DM_GROUP_ACCESS_REASON,
   resolveDmGroupAccessWithLists,
 } from "../../security/dm-policy-shared.js";
+import { sanitizeTerminalText } from "../../terminal/safe-text.js";
 import { truncateUtf16Safe } from "../../utils.js";
 import {
   formatIMessageChatTarget,
@@ -228,9 +229,8 @@ export function resolveIMessageInboundDecision(params: {
   }
 
   if (params.selfChatCache?.has(selfChatScope, { text: bodyText, createdAt })) {
-    params.logVerbose?.(
-      `imessage: dropping self-chat reflected duplicate: "${truncateUtf16Safe(bodyText, 50)}"`,
-    );
+    const preview = sanitizeTerminalText(truncateUtf16Safe(bodyText, 50));
+    params.logVerbose?.(`imessage: dropping self-chat reflected duplicate: "${preview}"`);
     return { kind: "drop", reason: "self-chat echo" };
   }
 
