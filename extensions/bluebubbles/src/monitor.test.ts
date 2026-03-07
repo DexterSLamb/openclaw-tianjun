@@ -2680,11 +2680,19 @@ describe("BlueBubbles webhook monitor", () => {
       expect(mockDispatchReplyWithBufferedBlockDispatcher).not.toHaveBeenCalled();
     });
 
-    it("drops reflected self-chat duplicates after seeing the fromMe copy", async () => {
+    it("drops reflected self-chat duplicates after a confirmed assistant outbound", async () => {
       const account = createMockAccount({ dmPolicy: "open" });
       const config: OpenClawConfig = {};
       const core = createMockRuntime();
       setBlueBubblesRuntime(core);
+
+      const { sendMessageBlueBubbles } = await import("./send.js");
+      vi.mocked(sendMessageBlueBubbles).mockResolvedValueOnce({ messageId: "ok" });
+
+      mockDispatchReplyWithBufferedBlockDispatcher.mockImplementationOnce(async (params) => {
+        await params.dispatcherOptions.deliver({ text: "replying now" }, { kind: "final" });
+        return EMPTY_DISPATCH_RESULT;
+      });
 
       unregister = registerBlueBubblesWebhookTarget({
         account,
@@ -2695,10 +2703,32 @@ describe("BlueBubbles webhook monitor", () => {
       });
 
       const timestamp = Date.now();
+      const inboundPayload = {
+        type: "new-message",
+        data: {
+          text: "hello",
+          handle: { address: "+15551234567" },
+          isGroup: false,
+          isFromMe: false,
+          guid: "msg-self-0",
+          chatGuid: "iMessage;-;+15551234567",
+          date: timestamp,
+        },
+      };
+
+      await handleBlueBubblesWebhookRequest(
+        createMockRequest("POST", "/bluebubbles-webhook", inboundPayload),
+        createMockResponse(),
+      );
+      await flushAsync();
+
+      expect(mockDispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalledTimes(1);
+      mockDispatchReplyWithBufferedBlockDispatcher.mockClear();
+
       const fromMePayload = {
         type: "new-message",
         data: {
-          text: "loop me",
+          text: "replying now",
           handle: { address: "+15551234567" },
           isGroup: false,
           isFromMe: true,
@@ -2714,12 +2744,10 @@ describe("BlueBubbles webhook monitor", () => {
       );
       await flushAsync();
 
-      expect(mockDispatchReplyWithBufferedBlockDispatcher).not.toHaveBeenCalled();
-
       const reflectedPayload = {
         type: "new-message",
         data: {
-          text: "loop me",
+          text: "replying now",
           handle: { address: "+15551234567" },
           isGroup: false,
           isFromMe: false,
@@ -2887,6 +2915,64 @@ describe("BlueBubbles webhook monitor", () => {
 
       await handleBlueBubblesWebhookRequest(
         createMockRequest("POST", "/bluebubbles-webhook", inboundPayload),
+        createMockResponse(),
+      );
+      await flushAsync();
+
+      expect(mockDispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalled();
+    });
+
+    it("does not drop user-authored self-chat prompts without a confirmed assistant outbound", async () => {
+      const account = createMockAccount({ dmPolicy: "open" });
+      const config: OpenClawConfig = {};
+      const core = createMockRuntime();
+      setBlueBubblesRuntime(core);
+
+      unregister = registerBlueBubblesWebhookTarget({
+        account,
+        config,
+        runtime: { log: vi.fn(), error: vi.fn() },
+        core,
+        path: "/bluebubbles-webhook",
+      });
+
+      const timestamp = Date.now();
+      const fromMePayload = {
+        type: "new-message",
+        data: {
+          text: "user-authored self prompt",
+          handle: { address: "+15551234567" },
+          isGroup: false,
+          isFromMe: true,
+          guid: "msg-self-user-1",
+          chatGuid: "iMessage;-;+15551234567",
+          date: timestamp,
+        },
+      };
+
+      await handleBlueBubblesWebhookRequest(
+        createMockRequest("POST", "/bluebubbles-webhook", fromMePayload),
+        createMockResponse(),
+      );
+      await flushAsync();
+
+      mockDispatchReplyWithBufferedBlockDispatcher.mockClear();
+
+      const reflectedPayload = {
+        type: "new-message",
+        data: {
+          text: "user-authored self prompt",
+          handle: { address: "+15551234567" },
+          isGroup: false,
+          isFromMe: false,
+          guid: "msg-self-user-2",
+          chatGuid: "iMessage;-;+15551234567",
+          date: timestamp,
+        },
+      };
+
+      await handleBlueBubblesWebhookRequest(
+        createMockRequest("POST", "/bluebubbles-webhook", reflectedPayload),
         createMockResponse(),
       );
       await flushAsync();

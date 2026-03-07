@@ -16,8 +16,6 @@ type SelfChatLookup = SelfChatCacheKeyParts & {
 const SELF_CHAT_TTL_MS = 10_000;
 const MAX_SELF_CHAT_CACHE_ENTRIES = 512;
 const CLEANUP_MIN_INTERVAL_MS = 1_000;
-const DIGEST_TEXT_HEAD_CHARS = 256;
-const DIGEST_TEXT_TAIL_CHARS = 256;
 const cache = new Map<string, number>();
 let lastCleanupAt = 0;
 
@@ -33,15 +31,8 @@ function isUsableTimestamp(timestamp: number | undefined): timestamp is number {
   return typeof timestamp === "number" && Number.isFinite(timestamp);
 }
 
-function buildDigestSource(text: string): string {
-  if (text.length <= DIGEST_TEXT_HEAD_CHARS + DIGEST_TEXT_TAIL_CHARS) {
-    return text;
-  }
-  return `${text.slice(0, DIGEST_TEXT_HEAD_CHARS)}:${text.length}:${text.slice(-DIGEST_TEXT_TAIL_CHARS)}`;
-}
-
 function digestText(text: string): string {
-  return createHash("sha256").update(buildDigestSource(text)).digest("base64url");
+  return createHash("sha256").update(text).digest("base64url");
 }
 
 function trimOrUndefined(value?: string | null): string | undefined {

@@ -504,9 +504,6 @@ export async function processMessage(
   };
 
   if (message.fromMe) {
-    if (isSelfChatMessage) {
-      rememberBlueBubblesSelfChatCopy(selfChatLookup);
-    }
     // Cache from-me messages so reply context can resolve sender/body.
     cacheInboundMessage();
     if (cacheMessageId) {
@@ -518,6 +515,9 @@ export async function processMessage(
         body: rawBody,
       });
       if (pending) {
+        if (isSelfChatMessage) {
+          rememberBlueBubblesSelfChatCopy(selfChatLookup);
+        }
         const displayId = getShortIdForUuid(cacheMessageId) || cacheMessageId;
         const previewSource = pending.snippetRaw || rawBody;
         const preview = previewSource

@@ -85,4 +85,35 @@ describe("BlueBubbles self-chat cache", () => {
       }),
     ).toBe(true);
   });
+
+  it("does not collide long texts that differ only in the middle", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-07T00:00:00Z"));
+
+    const prefix = "a".repeat(256);
+    const suffix = "b".repeat(256);
+    const longBodyA = `${prefix}${"x".repeat(300)}${suffix}`;
+    const longBodyB = `${prefix}${"y".repeat(300)}${suffix}`;
+
+    rememberBlueBubblesSelfChatCopy({
+      ...directLookup,
+      body: longBodyA,
+      timestamp: 123,
+    });
+
+    expect(
+      hasBlueBubblesSelfChatCopy({
+        ...directLookup,
+        body: longBodyA,
+        timestamp: 123,
+      }),
+    ).toBe(true);
+    expect(
+      hasBlueBubblesSelfChatCopy({
+        ...directLookup,
+        body: longBodyB,
+        timestamp: 123,
+      }),
+    ).toBe(false);
+  });
 });
