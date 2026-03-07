@@ -4,6 +4,7 @@ import {
   describeIMessageEchoDropLog,
   resolveIMessageInboundDecision,
 } from "./inbound-processing.js";
+import { createSelfChatCache } from "./self-chat-cache.js";
 
 describe("resolveIMessageInboundDecision echo detection", () => {
   const cfg = {} as OpenClawConfig;
@@ -45,6 +46,125 @@ describe("resolveIMessageInboundDecision echo detection", () => {
         messageId: "42",
       }),
     );
+  });
+
+  it("drops reflected self-chat duplicates after seeing the from-me copy", () => {
+    const selfChatCache = createSelfChatCache();
+    const createdAt = "2026-03-02T20:58:10.649Z";
+
+    expect(
+      resolveIMessageInboundDecision({
+        cfg,
+        accountId: "default",
+        message: {
+          id: 9641,
+          sender: "+15555550123",
+          text: "Do you want to report this issue?",
+          created_at: createdAt,
+          is_from_me: true,
+          is_group: false,
+        },
+        opts: undefined,
+        messageText: "Do you want to report this issue?",
+        bodyText: "Do you want to report this issue?",
+        allowFrom: [],
+        groupAllowFrom: [],
+        groupPolicy: "open",
+        dmPolicy: "open",
+        storeAllowFrom: [],
+        historyLimit: 0,
+        groupHistories: new Map(),
+        echoCache: undefined,
+        selfChatCache,
+        logVerbose: undefined,
+      }),
+    ).toEqual({ kind: "drop", reason: "from me" });
+
+    expect(
+      resolveIMessageInboundDecision({
+        cfg,
+        accountId: "default",
+        message: {
+          id: 9642,
+          sender: "+15555550123",
+          text: "Do you want to report this issue?",
+          created_at: createdAt,
+          is_from_me: false,
+          is_group: false,
+        },
+        opts: undefined,
+        messageText: "Do you want to report this issue?",
+        bodyText: "Do you want to report this issue?",
+        allowFrom: [],
+        groupAllowFrom: [],
+        groupPolicy: "open",
+        dmPolicy: "open",
+        storeAllowFrom: [],
+        historyLimit: 0,
+        groupHistories: new Map(),
+        echoCache: undefined,
+        selfChatCache,
+        logVerbose: undefined,
+      }),
+    ).toEqual({ kind: "drop", reason: "self-chat echo" });
+  });
+
+  it("does not drop same-text messages when created_at differs", () => {
+    const selfChatCache = createSelfChatCache();
+
+    resolveIMessageInboundDecision({
+      cfg,
+      accountId: "default",
+      message: {
+        id: 9641,
+        sender: "+15555550123",
+        text: "ok",
+        created_at: "2026-03-02T20:58:10.649Z",
+        is_from_me: true,
+        is_group: false,
+      },
+      opts: undefined,
+      messageText: "ok",
+      bodyText: "ok",
+      allowFrom: [],
+      groupAllowFrom: [],
+      groupPolicy: "open",
+      dmPolicy: "open",
+      storeAllowFrom: [],
+      historyLimit: 0,
+      groupHistories: new Map(),
+      echoCache: undefined,
+      selfChatCache,
+      logVerbose: undefined,
+    });
+
+    const decision = resolveIMessageInboundDecision({
+      cfg,
+      accountId: "default",
+      message: {
+        id: 9642,
+        sender: "+15555550123",
+        text: "ok",
+        created_at: "2026-03-02T20:58:11.649Z",
+        is_from_me: false,
+        is_group: false,
+      },
+      opts: undefined,
+      messageText: "ok",
+      bodyText: "ok",
+      allowFrom: [],
+      groupAllowFrom: [],
+      groupPolicy: "open",
+      dmPolicy: "open",
+      storeAllowFrom: [],
+      historyLimit: 0,
+      groupHistories: new Map(),
+      echoCache: undefined,
+      selfChatCache,
+      logVerbose: undefined,
+    });
+
+    expect(decision.kind).toBe("dispatch");
   });
 });
 
