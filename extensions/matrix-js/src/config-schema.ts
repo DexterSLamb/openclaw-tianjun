@@ -60,6 +60,8 @@ export const MatrixConfigSchema = z.object({
     .enum(["group-mentions", "group-all", "direct", "all", "none", "off"])
     .optional(),
   reactionNotifications: z.enum(["off", "own"]).optional(),
+  startupVerification: z.enum(["off", "if-unverified"]).optional(),
+  startupVerificationCooldownHours: z.number().optional(),
   mediaMaxMb: z.number().optional(),
   autoJoin: z.enum(["always", "allowlist", "off"]).optional(),
   autoJoinAllowlist: z.array(allowFromEntry).optional(),

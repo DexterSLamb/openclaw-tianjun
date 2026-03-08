@@ -96,7 +96,7 @@ export {
 export { formatDocsLink } from "../terminal/links.js";
 export type { WizardPrompter } from "../wizard/prompts.js";
 export { createScopedPairingAccess } from "./pairing-access.js";
-export { writeJsonFileAtomically } from "./json-store.js";
+export { readJsonFileWithFallback, writeJsonFileAtomically } from "./json-store.js";
 export { formatResolvedUnresolvedNote } from "./resolution-notes.js";
 export { runPluginCommandWithTimeout } from "./run-command.js";
 export { createLoggerBackedRuntime } from "./runtime.js";

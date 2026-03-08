@@ -211,6 +211,13 @@ openclaw matrix-js verify backup restore --verbose
 All `verify` commands are concise by default (including quiet internal SDK logging) and show detailed diagnostics only with `--verbose`.
 Use `--json` for full machine-readable output when scripting.
 
+When `encryption: true`, Matrix-js defaults `startupVerification` to `"if-unverified"`.
+On startup, if this device is still unverified, Matrix-js will request self-verification in another Matrix client,
+skip duplicate requests while one is already pending, and apply a local cooldown before retrying after restarts.
+Failed request attempts retry sooner than successful request creation by default.
+Set `startupVerification: "off"` to disable automatic startup requests, or tune `startupVerificationCooldownHours`
+if you want a shorter or longer retry window.
+
 ## Automatic verification notices
 
 Matrix-js now posts verification lifecycle notices directly into the Matrix room as `m.notice` messages.
@@ -338,6 +345,8 @@ See [Groups](/channels/groups) for mention-gating and allowlist behavior.
 - `groupAllowFrom`: allowlist of user IDs for room traffic.
 - `replyToMode`: `off`, `first`, or `all`.
 - `threadReplies`: `off`, `inbound`, or `always`.
+- `startupVerification`: automatic self-verification request mode on startup (`if-unverified`, `off`).
+- `startupVerificationCooldownHours`: cooldown before retrying automatic startup verification requests.
 - `textChunkLimit`: outbound message chunk size.
 - `chunkMode`: `length` or `newline`.
 - `responsePrefix`: optional message prefix for outbound replies.

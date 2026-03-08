@@ -27,6 +27,7 @@ import { createDirectRoomTracker } from "./direct.js";
 import { registerMatrixMonitorEvents } from "./events.js";
 import { createMatrixRoomMessageHandler } from "./handler.js";
 import { createMatrixRoomInfoResolver } from "./room-info.js";
+import { ensureMatrixStartupVerification } from "./startup-verification.js";
 
 export type MonitorMatrixOpts = {
   runtime?: RuntimeEnv;
@@ -363,15 +364,44 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
     logger.warn("matrix: failed to sync profile from config", { error: String(err) });
   }
 
-  // If E2EE is enabled, report device verification status and guidance.
+  // If E2EE is enabled, report device verification status and request self-verification
+  // when configured and the device is still unverified.
   if (auth.encryption && client.crypto) {
     try {
-      const status = await client.getOwnDeviceVerificationStatus();
-      if (status.verified) {
+      const startupVerification = await ensureMatrixStartupVerification({
+        client,
+        auth,
+        accountConfig,
+        accountId: account.accountId,
+        env: process.env,
+      });
+      if (startupVerification.kind === "verified") {
         logger.info("matrix: device is verified and ready for encrypted rooms");
-      } else {
+      } else if (
+        startupVerification.kind === "disabled" ||
+        startupVerification.kind === "cooldown" ||
+        startupVerification.kind === "pending" ||
+        startupVerification.kind === "request-failed"
+      ) {
         logger.info(
           "matrix: device not verified — run 'openclaw matrix-js verify device <key>' to enable E2EE",
+        );
+        if (startupVerification.kind === "pending") {
+          logger.info(
+            "matrix: startup verification request is already pending; finish it in another Matrix client",
+          );
+        } else if (startupVerification.kind === "cooldown") {
+          logVerboseMessage(
+            `matrix: skipped startup verification request due to cooldown (retryAfterMs=${startupVerification.retryAfterMs ?? 0})`,
+          );
+        } else if (startupVerification.kind === "request-failed") {
+          logger.debug?.("Matrix startup verification request failed (non-fatal)", {
+            error: startupVerification.error ?? "unknown",
+          });
+        }
+      } else if (startupVerification.kind === "requested") {
+        logger.info(
+          "matrix: device not verified — requested verification in another Matrix client",
         );
       }
     } catch (err) {

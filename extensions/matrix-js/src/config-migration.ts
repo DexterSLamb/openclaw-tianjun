@@ -19,6 +19,8 @@ type LegacyAccountField =
   | "textChunkLimit"
   | "chunkMode"
   | "responsePrefix"
+  | "startupVerification"
+  | "startupVerificationCooldownHours"
   | "mediaMaxMb"
   | "autoJoin"
   | "autoJoinAllowlist"
@@ -45,6 +47,8 @@ const LEGACY_ACCOUNT_FIELDS: ReadonlyArray<LegacyAccountField> = [
   "textChunkLimit",
   "chunkMode",
   "responsePrefix",
+  "startupVerification",
+  "startupVerificationCooldownHours",
   "mediaMaxMb",
   "autoJoin",
   "autoJoinAllowlist",

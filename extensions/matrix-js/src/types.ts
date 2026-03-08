@@ -90,6 +90,10 @@ export type MatrixConfig = {
   ackReactionScope?: "group-mentions" | "group-all" | "direct" | "all" | "none" | "off";
   /** Inbound reaction notifications for bot-authored Matrix messages. */
   reactionNotifications?: "off" | "own";
+  /** Whether Matrix-js should auto-request self verification on startup when unverified. */
+  startupVerification?: "off" | "if-unverified";
+  /** Cooldown window for automatic startup verification requests. Default: 24 hours. */
+  startupVerificationCooldownHours?: number;
   /** Max outbound media size in MB. */
   mediaMaxMb?: number;
   /** Auto-join invites (always|allowlist|off). Default: always. */
