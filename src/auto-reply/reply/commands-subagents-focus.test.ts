@@ -105,8 +105,8 @@ function createTelegramTopicCommandParams(commandBody: string) {
   return params;
 }
 
-function createMatrixCommandParams(commandBody: string) {
-  const params = buildCommandTestParams(commandBody, baseCfg, {
+function createMatrixCommandParams(commandBody: string, cfg: OpenClawConfig = baseCfg) {
+  const params = buildCommandTestParams(commandBody, cfg, {
     Provider: "matrix-js",
     Surface: "matrix-js",
     OriginatingChannel: "matrix-js",
@@ -236,7 +236,17 @@ describe("/focus, /unfocus, /agents", () => {
   });
 
   it("/focus creates Matrix child thread bindings from top-level rooms", async () => {
-    const result = await focusCodexAcp(createMatrixCommandParams("/focus codex-acp"));
+    const cfg = {
+      ...baseCfg,
+      channels: {
+        "matrix-js": {
+          threadBindings: {
+            spawnAcpSessions: true,
+          },
+        },
+      },
+    } satisfies OpenClawConfig;
+    const result = await focusCodexAcp(createMatrixCommandParams("/focus codex-acp", cfg));
 
     expect(result?.reply?.text).toContain("created thread");
     expect(hoisted.sessionBindingBindMock).toHaveBeenCalledWith(
@@ -249,6 +259,15 @@ describe("/focus, /unfocus, /agents", () => {
         }),
       }),
     );
+  });
+
+  it("/focus rejects Matrix child thread creation when spawn config is not enabled", async () => {
+    const result = await focusCodexAcp(createMatrixCommandParams("/focus codex-acp"));
+
+    expect(result?.reply?.text).toContain(
+      "channels.matrix-js.threadBindings.spawnAcpSessions=true",
+    );
+    expect(hoisted.sessionBindingBindMock).not.toHaveBeenCalled();
   });
 
   it("/focus includes ACP session identifiers in intro text when available", async () => {

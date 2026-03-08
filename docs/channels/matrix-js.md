@@ -242,7 +242,7 @@ Matrix-js supports native Matrix threads for both automatic replies and message-
 - Inbound threaded messages include the thread root message as extra agent context.
 - Message-tool sends now auto-inherit the current Matrix thread when the target is the same room, or the same DM user target, unless an explicit `threadId` is provided.
 - Runtime thread bindings are supported for Matrix-js. `/focus`, `/unfocus`, `/agents`, `/session idle`, `/session max-age`, and thread-bound `/acp spawn` now work in Matrix rooms and DMs.
-- Top-level Matrix room/DM `/focus` creates a new Matrix thread and binds it to the target session.
+- Top-level Matrix room/DM `/focus` creates a new Matrix thread and binds it to the target session when `threadBindings.spawnSubagentSessions=true`.
 - Running `/focus` or `/acp spawn --thread here` inside an existing Matrix thread binds that current thread instead.
 
 ### Thread Binding Config
@@ -255,7 +255,10 @@ Matrix-js inherits global defaults from `session.threadBindings`, and also suppo
 - `threadBindings.spawnSubagentSessions`
 - `threadBindings.spawnAcpSessions`
 
-For Matrix-js, spawn flags default to enabled unless you turn them off explicitly.
+Matrix-js thread-bound spawn flags are opt-in:
+
+- Set `threadBindings.spawnSubagentSessions: true` to allow top-level `/focus` to create and bind new Matrix threads.
+- Set `threadBindings.spawnAcpSessions: true` to allow `/acp spawn --thread auto|here` to bind ACP sessions to Matrix threads.
 
 ## Reactions
 

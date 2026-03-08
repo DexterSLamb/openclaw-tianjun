@@ -1528,9 +1528,9 @@ export const FIELD_HELP: Record<string, string> = {
   "channels.matrix-js.threadBindings.maxAgeHours":
     "Optional hard max age in hours for Matrix-js thread-bound sessions. Set 0 to disable hard cap (default: 0). Overrides session.threadBindings.maxAgeHours when set.",
   "channels.matrix-js.threadBindings.spawnSubagentSessions":
-    "Allow subagent spawns/focus flows to auto-create and bind Matrix threads when starting from a top-level Matrix room or DM.",
+    "Allow top-level /focus flows to auto-create and bind Matrix threads for subagent/session targets (default: false; opt-in). Set true to enable Matrix thread creation/binding from room or DM contexts.",
   "channels.matrix-js.threadBindings.spawnAcpSessions":
-    "Allow /acp spawn to auto-create and bind Matrix threads for ACP sessions when starting from a top-level Matrix room or DM.",
+    "Allow /acp spawn to create or bind Matrix threads for ACP sessions (default: false; opt-in). Set true to enable thread-bound ACP spawns for this account/channel.",
   "channels.discord.ui.components.accentColor":
     "Accent color for Discord component containers (hex). Set per account via channels.discord.accounts.<id>.ui.components.accentColor.",
   "channels.discord.voice.enabled":

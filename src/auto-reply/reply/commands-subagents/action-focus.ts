@@ -8,8 +8,10 @@ import {
   resolveThreadBindingThreadName,
 } from "../../../channels/thread-bindings-messages.js";
 import {
+  formatThreadBindingSpawnDisabledError,
   resolveThreadBindingIdleTimeoutMsForChannel,
   resolveThreadBindingMaxAgeMsForChannel,
+  resolveThreadBindingSpawnPolicy,
 } from "../../../channels/thread-bindings-policy.js";
 import { getSessionBindingService } from "../../../infra/outbound/session-binding-service.js";
 import type { CommandHandlerResult } from "../commands-types.js";
@@ -182,6 +184,23 @@ export async function handleSubagentsFocusAction(
       : undefined;
   if (!capabilities.placements.includes(bindingContext.placement)) {
     return stopWithText(`⚠️ ${channel} bindings are unavailable for this account.`);
+  }
+  if (bindingContext.channel === "matrix-js" && bindingContext.placement === "child") {
+    const spawnPolicy = resolveThreadBindingSpawnPolicy({
+      cfg: params.cfg,
+      channel: bindingContext.channel,
+      accountId,
+      kind: focusTarget.targetKind === "acp" ? "acp" : "subagent",
+    });
+    if (!spawnPolicy.spawnEnabled) {
+      return stopWithText(
+        `⚠️ ${formatThreadBindingSpawnDisabledError({
+          channel: spawnPolicy.channel,
+          accountId: spawnPolicy.accountId,
+          kind: focusTarget.targetKind === "acp" ? "acp" : "subagent",
+        })}`,
+      );
+    }
   }
 
   let binding;

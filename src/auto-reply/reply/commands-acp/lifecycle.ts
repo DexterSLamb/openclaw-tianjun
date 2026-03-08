@@ -157,6 +157,9 @@ async function bindSpawnedAcpSessionToThread(params: {
       channel: spawnPolicy.channel,
       accountId: spawnPolicy.accountId,
       conversationId: currentConversationId,
+      ...(bindingContext.parentConversationId
+        ? { parentConversationId: bindingContext.parentConversationId }
+        : {}),
     });
     const boundBy =
       typeof existingBinding?.metadata?.boundBy === "string"
@@ -181,6 +184,9 @@ async function bindSpawnedAcpSessionToThread(params: {
         channel: spawnPolicy.channel,
         accountId: spawnPolicy.accountId,
         conversationId,
+        ...(bindingContext.parentConversationId
+          ? { parentConversationId: bindingContext.parentConversationId }
+          : {}),
       },
       placement,
       metadata: {
