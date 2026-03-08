@@ -390,6 +390,131 @@ describe("matrix monitor handler pairing account scope", () => {
     );
   });
 
+  it("records thread starter context for inbound thread replies", async () => {
+    const recordInboundSession = vi.fn(async () => {});
+    const finalizeInboundContext = vi.fn((ctx) => ctx);
+
+    const handler = createMatrixRoomMessageHandler({
+      client: {
+        getUserId: async () => "@bot:example.org",
+        getEvent: async () => ({
+          event_id: "$root",
+          sender: "@alice:example.org",
+          type: EventType.RoomMessage,
+          origin_server_ts: Date.now(),
+          content: {
+            msgtype: "m.text",
+            body: "Root topic",
+          },
+        }),
+      } as never,
+      core: {
+        channel: {
+          pairing: {
+            readAllowFromStore: async () => [] as string[],
+            upsertPairingRequest: async () => ({ code: "ABCDEFGH", created: false }),
+          },
+          commands: {
+            shouldHandleTextCommands: () => false,
+          },
+          text: {
+            hasControlCommand: () => false,
+            resolveMarkdownTableMode: () => "preserve",
+          },
+          routing: {
+            resolveAgentRoute: () => ({
+              agentId: "ops",
+              channel: "matrix-js",
+              accountId: "ops",
+              sessionKey: "agent:ops:main",
+              mainSessionKey: "agent:ops:main",
+              matchedBy: "binding.account",
+            }),
+          },
+          session: {
+            resolveStorePath: () => "/tmp/session-store",
+            readSessionUpdatedAt: () => undefined,
+            recordInboundSession,
+          },
+          reply: {
+            resolveEnvelopeFormatOptions: () => ({}),
+            formatAgentEnvelope: ({ body }: { body: string }) => body,
+            finalizeInboundContext,
+            createReplyDispatcherWithTyping: () => ({
+              dispatcher: {},
+              replyOptions: {},
+              markDispatchIdle: () => {},
+            }),
+            resolveHumanDelayConfig: () => undefined,
+            dispatchReplyFromConfig: async () => ({
+              queuedFinal: false,
+              counts: { final: 0, block: 0, tool: 0 },
+            }),
+          },
+          reactions: {
+            shouldAckReaction: () => false,
+          },
+        },
+      } as never,
+      cfg: {} as never,
+      accountId: "ops",
+      runtime: {
+        error: () => {},
+      } as never,
+      logger: {
+        info: () => {},
+        warn: () => {},
+      } as never,
+      logVerboseMessage: () => {},
+      allowFrom: [],
+      mentionRegexes: [],
+      groupPolicy: "open",
+      replyToMode: "off",
+      threadReplies: "inbound",
+      dmEnabled: true,
+      dmPolicy: "open",
+      textLimit: 8_000,
+      mediaMaxBytes: 10_000_000,
+      startupMs: 0,
+      startupGraceMs: 0,
+      directTracker: {
+        isDirectMessage: async () => false,
+      },
+      getRoomInfo: async () => ({ altAliases: [] }),
+      getMemberDisplayName: async (_roomId, userId) =>
+        userId === "@alice:example.org" ? "Alice" : "sender",
+    });
+
+    await handler("!room:example.org", {
+      type: EventType.RoomMessage,
+      sender: "@user:example.org",
+      event_id: "$reply1",
+      origin_server_ts: Date.now(),
+      content: {
+        msgtype: "m.text",
+        body: "follow up",
+        "m.relates_to": {
+          rel_type: "m.thread",
+          event_id: "$root",
+          "m.in_reply_to": { event_id: "$root" },
+        },
+        "m.mentions": { room: true },
+      },
+    } as MatrixRawEvent);
+
+    expect(finalizeInboundContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        MessageThreadId: "$root",
+        ThreadStarterBody: "Matrix thread root $root from Alice:\nRoot topic",
+      }),
+    );
+    expect(recordInboundSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: "agent:ops:main",
+      }),
+    );
+  });
+
   it("enqueues system events for reactions on bot-authored messages", async () => {
     const { handler, enqueueSystemEvent, resolveAgentRoute } = createReactionHarness();
 

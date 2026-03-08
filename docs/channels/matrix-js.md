@@ -225,6 +225,16 @@ Inbound SAS requests are auto-confirmed by the bot device, so once the user conf
 in their Matrix client, verification completes without requiring a manual OpenClaw tool step.
 Verification protocol/system notices are not forwarded to the agent chat pipeline, so they do not produce `NO_REPLY`.
 
+## Threads
+
+Matrix-js supports native Matrix threads for both automatic replies and message-tool sends.
+
+- `threadReplies: "off"` keeps replies top-level.
+- `threadReplies: "inbound"` replies inside a thread only when the inbound message was already in that thread.
+- `threadReplies: "always"` keeps room replies in a thread rooted at the triggering message.
+- Inbound threaded messages include the thread root message as extra agent context.
+- Message-tool sends now auto-inherit the current Matrix thread when the target is the same room, or the same DM user target, unless an explicit `threadId` is provided.
+
 ## Reactions
 
 Matrix-js supports outbound reaction actions, inbound reaction notifications, and inbound ack reactions.

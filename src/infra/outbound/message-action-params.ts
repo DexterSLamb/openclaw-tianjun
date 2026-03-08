@@ -71,6 +71,49 @@ export function resolveTelegramAutoThreadId(params: {
   return context.currentThreadTs;
 }
 
+function normalizeMatrixThreadTarget(raw: string): string | undefined {
+  let normalized = raw.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized.toLowerCase().startsWith("matrix:")) {
+    normalized = normalized.slice("matrix:".length).trim();
+  }
+  normalized = normalized.replace(/^(room|channel|user):/i, "").trim();
+  return normalized || undefined;
+}
+
+function normalizeMatrixDirectUserTarget(raw: string): string | undefined {
+  const normalized = normalizeMatrixThreadTarget(raw);
+  return normalized?.startsWith("@") ? normalized : undefined;
+}
+
+export function resolveMatrixAutoThreadId(params: {
+  to: string;
+  toolContext?: ChannelThreadingToolContext;
+}): string | undefined {
+  const context = params.toolContext;
+  if (!context?.currentThreadTs || !context.currentChannelId) {
+    return undefined;
+  }
+  const target = normalizeMatrixThreadTarget(params.to);
+  const currentChannel = normalizeMatrixThreadTarget(context.currentChannelId);
+  if (!target || !currentChannel) {
+    return undefined;
+  }
+  if (target.toLowerCase() !== currentChannel.toLowerCase()) {
+    const directTarget = normalizeMatrixDirectUserTarget(params.to);
+    const currentDirectUserId = normalizeMatrixDirectUserTarget(context.currentDirectUserId ?? "");
+    if (!directTarget || !currentDirectUserId) {
+      return undefined;
+    }
+    if (directTarget.toLowerCase() !== currentDirectUserId.toLowerCase()) {
+      return undefined;
+    }
+  }
+  return context.currentThreadTs;
+}
+
 function resolveAttachmentMaxBytes(params: {
   cfg: OpenClawConfig;
   channel: ChannelId;

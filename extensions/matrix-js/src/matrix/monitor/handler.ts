@@ -36,6 +36,7 @@ import { resolveMentions } from "./mentions.js";
 import { handleInboundMatrixReaction } from "./reaction-events.js";
 import { deliverMatrixReplies } from "./replies.js";
 import { resolveMatrixRoomConfig } from "./rooms.js";
+import { createMatrixThreadContextResolver } from "./thread-context.js";
 import { resolveMatrixThreadRootId, resolveMatrixThreadTarget } from "./threads.js";
 import type { MatrixRawEvent, RoomMessageEventContent } from "./types.js";
 import { EventType, RelationType } from "./types.js";
@@ -108,6 +109,11 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
     expiresAtMs: number;
   } | null = null;
   const pairingReplySentAtMsBySender = new Map<string, number>();
+  const resolveThreadContext = createMatrixThreadContextResolver({
+    client,
+    getMemberDisplayName,
+    logVerboseMessage,
+  });
 
   const readStoreAllowFrom = async (): Promise<string[]> => {
     const now = Date.now();
@@ -523,6 +529,9 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
         threadRootId,
         isThreadRoot: false, // Raw event payload does not carry explicit thread-root metadata.
       });
+      const threadContext = threadRootId
+        ? await resolveThreadContext({ roomId, threadRootId })
+        : undefined;
 
       const route = core.channel.routing.resolveAgentRoute({
         cfg,
@@ -575,6 +584,7 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
         MessageSid: messageId,
         ReplyToId: threadTarget ? undefined : (replyToEventId ?? undefined),
         MessageThreadId: threadTarget,
+        ThreadStarterBody: threadContext?.threadStarterBody,
         Timestamp: eventTs ?? undefined,
         MediaPath: media?.path,
         MediaType: media?.contentType,

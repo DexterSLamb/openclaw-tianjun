@@ -104,6 +104,56 @@ describe("matrix directory", () => {
     ).toBe("off");
   });
 
+  it("only exposes real Matrix thread ids in tool context", () => {
+    expect(
+      matrixPlugin.threading?.buildToolContext?.({
+        context: {
+          To: "room:!room:example.org",
+          ReplyToId: "$reply",
+        },
+        hasRepliedRef: { value: false },
+      }),
+    ).toEqual({
+      currentChannelId: "room:!room:example.org",
+      currentThreadTs: undefined,
+      hasRepliedRef: { value: false },
+    });
+
+    expect(
+      matrixPlugin.threading?.buildToolContext?.({
+        context: {
+          To: "room:!room:example.org",
+          ReplyToId: "$reply",
+          MessageThreadId: "$thread",
+        },
+        hasRepliedRef: { value: true },
+      }),
+    ).toEqual({
+      currentChannelId: "room:!room:example.org",
+      currentThreadTs: "$thread",
+      hasRepliedRef: { value: true },
+    });
+  });
+
+  it("exposes Matrix direct user id in dm tool context", () => {
+    expect(
+      matrixPlugin.threading?.buildToolContext?.({
+        context: {
+          From: "matrix:@alice:example.org",
+          To: "room:!dm:example.org",
+          ChatType: "direct",
+          MessageThreadId: "$thread",
+        },
+        hasRepliedRef: { value: false },
+      }),
+    ).toEqual({
+      currentChannelId: "room:!dm:example.org",
+      currentThreadTs: "$thread",
+      currentDirectUserId: "@alice:example.org",
+      hasRepliedRef: { value: false },
+    });
+  });
+
   it("resolves group mention policy from account config", () => {
     const cfg = {
       channels: {

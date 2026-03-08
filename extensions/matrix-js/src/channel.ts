@@ -71,6 +71,26 @@ function normalizeMatrixMessagingTarget(raw: string): string | undefined {
   return stripped || undefined;
 }
 
+function resolveMatrixDirectUserId(params: {
+  from?: string;
+  to?: string;
+  chatType?: string;
+}): string | undefined {
+  if (params.chatType !== "direct") {
+    return undefined;
+  }
+  const from = params.from?.trim();
+  const to = params.to?.trim();
+  if (!from || !to || !/^room:/i.test(to)) {
+    return undefined;
+  }
+  const normalized = from
+    .replace(/^matrix:/i, "")
+    .replace(/^user:/i, "")
+    .trim();
+  return normalized.startsWith("@") ? normalized : undefined;
+}
+
 function resolveAvatarInput(input: ChannelSetupInput): string | undefined {
   const avatarUrl = (input as ChannelSetupInput & { avatarUrl?: string }).avatarUrl;
   const trimmed = avatarUrl?.trim();
@@ -181,7 +201,12 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
       return {
         currentChannelId: currentTarget?.trim() || undefined,
         currentThreadTs:
-          context.MessageThreadId != null ? String(context.MessageThreadId) : context.ReplyToId,
+          context.MessageThreadId != null ? String(context.MessageThreadId) : undefined,
+        currentDirectUserId: resolveMatrixDirectUserId({
+          from: context.From,
+          to: context.To,
+          chatType: context.ChatType,
+        }),
         hasRepliedRef,
       };
     },
