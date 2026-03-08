@@ -241,6 +241,21 @@ Matrix-js supports native Matrix threads for both automatic replies and message-
 - `threadReplies: "always"` keeps room replies in a thread rooted at the triggering message.
 - Inbound threaded messages include the thread root message as extra agent context.
 - Message-tool sends now auto-inherit the current Matrix thread when the target is the same room, or the same DM user target, unless an explicit `threadId` is provided.
+- Runtime thread bindings are supported for Matrix-js. `/focus`, `/unfocus`, `/agents`, `/session idle`, `/session max-age`, and thread-bound `/acp spawn` now work in Matrix rooms and DMs.
+- Top-level Matrix room/DM `/focus` creates a new Matrix thread and binds it to the target session.
+- Running `/focus` or `/acp spawn --thread here` inside an existing Matrix thread binds that current thread instead.
+
+### Thread Binding Config
+
+Matrix-js inherits global defaults from `session.threadBindings`, and also supports per-channel overrides:
+
+- `threadBindings.enabled`
+- `threadBindings.idleHours`
+- `threadBindings.maxAgeHours`
+- `threadBindings.spawnSubagentSessions`
+- `threadBindings.spawnAcpSessions`
+
+For Matrix-js, spawn flags default to enabled unless you turn them off explicitly.
 
 ## Reactions
 
@@ -345,6 +360,7 @@ See [Groups](/channels/groups) for mention-gating and allowlist behavior.
 - `groupAllowFrom`: allowlist of user IDs for room traffic.
 - `replyToMode`: `off`, `first`, or `all`.
 - `threadReplies`: `off`, `inbound`, or `always`.
+- `threadBindings`: per-channel overrides for thread-bound session routing and lifecycle.
 - `startupVerification`: automatic self-verification request mode on startup (`if-unverified`, `off`).
 - `startupVerificationCooldownHours`: cooldown before retrying automatic startup verification requests.
 - `textChunkLimit`: outbound message chunk size.

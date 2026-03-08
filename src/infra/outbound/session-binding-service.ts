@@ -72,6 +72,18 @@ export type SessionBindingService = {
   getCapabilities: (params: { channel: string; accountId: string }) => SessionBindingCapabilities;
   listBySession: (targetSessionKey: string) => SessionBindingRecord[];
   resolveByConversation: (ref: ConversationRef) => SessionBindingRecord | null;
+  setIdleTimeoutBySession: (params: {
+    channel: string;
+    accountId: string;
+    targetSessionKey: string;
+    idleTimeoutMs: number;
+  }) => Promise<SessionBindingRecord[]>;
+  setMaxAgeBySession: (params: {
+    channel: string;
+    accountId: string;
+    targetSessionKey: string;
+    maxAgeMs: number;
+  }) => Promise<SessionBindingRecord[]>;
   touch: (bindingId: string, at?: number) => void;
   unbind: (input: SessionBindingUnbindInput) => Promise<SessionBindingRecord[]>;
 };
@@ -89,6 +101,14 @@ export type SessionBindingAdapter = {
   bind?: (input: SessionBindingBindInput) => Promise<SessionBindingRecord | null>;
   listBySession: (targetSessionKey: string) => SessionBindingRecord[];
   resolveByConversation: (ref: ConversationRef) => SessionBindingRecord | null;
+  setIdleTimeoutBySession?: (params: {
+    targetSessionKey: string;
+    idleTimeoutMs: number;
+  }) => Promise<SessionBindingRecord[]> | SessionBindingRecord[];
+  setMaxAgeBySession?: (params: {
+    targetSessionKey: string;
+    maxAgeMs: number;
+  }) => Promise<SessionBindingRecord[]> | SessionBindingRecord[];
   touch?: (bindingId: string, at?: number) => void;
   unbind?: (input: SessionBindingUnbindInput) => Promise<SessionBindingRecord[]>;
 };
@@ -283,6 +303,36 @@ function createDefaultSessionBindingService(): SessionBindingService {
         return null;
       }
       return adapter.resolveByConversation(normalized);
+    },
+    setIdleTimeoutBySession: async (params) => {
+      const adapter = resolveAdapterForChannelAccount({
+        channel: params.channel,
+        accountId: params.accountId,
+      });
+      if (!adapter?.setIdleTimeoutBySession) {
+        return [];
+      }
+      return dedupeBindings(
+        await adapter.setIdleTimeoutBySession({
+          targetSessionKey: params.targetSessionKey.trim(),
+          idleTimeoutMs: Math.max(0, Math.floor(params.idleTimeoutMs)),
+        }),
+      );
+    },
+    setMaxAgeBySession: async (params) => {
+      const adapter = resolveAdapterForChannelAccount({
+        channel: params.channel,
+        accountId: params.accountId,
+      });
+      if (!adapter?.setMaxAgeBySession) {
+        return [];
+      }
+      return dedupeBindings(
+        await adapter.setMaxAgeBySession({
+          targetSessionKey: params.targetSessionKey.trim(),
+          maxAgeMs: Math.max(0, Math.floor(params.maxAgeMs)),
+        }),
+      );
     },
     touch: (bindingId, at) => {
       const normalizedBindingId = bindingId.trim();

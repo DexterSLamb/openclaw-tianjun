@@ -40,6 +40,14 @@ export type MatrixActionConfig = {
   verification?: boolean;
 };
 
+export type MatrixThreadBindingsConfig = {
+  enabled?: boolean;
+  idleHours?: number;
+  maxAgeHours?: number;
+  spawnSubagentSessions?: boolean;
+  spawnAcpSessions?: boolean;
+};
+
 /** Per-account Matrix config (excludes the accounts field to prevent recursion). */
 export type MatrixAccountConfig = Omit<MatrixConfig, "accounts">;
 
@@ -90,6 +98,8 @@ export type MatrixConfig = {
   ackReactionScope?: "group-mentions" | "group-all" | "direct" | "all" | "none" | "off";
   /** Inbound reaction notifications for bot-authored Matrix messages. */
   reactionNotifications?: "off" | "own";
+  /** Thread/session binding behavior for Matrix room threads. */
+  threadBindings?: MatrixThreadBindingsConfig;
   /** Whether Matrix-js should auto-request self verification on startup when unverified. */
   startupVerification?: "off" | "if-unverified";
   /** Cooldown window for automatic startup verification requests. Default: 24 hours. */

@@ -130,6 +130,7 @@ export async function handleMatrixAction(
   const action = readStringParam(params, "action", { required: true });
   const accountId = readStringParam(params, "accountId") ?? undefined;
   const isActionEnabled = createActionGate(cfg.channels?.["matrix-js"]?.actions);
+  const clientOpts = accountId ? { accountId } : {};
 
   if (reactionActions.has(action)) {
     if (!isActionEnabled("reactions")) {
@@ -199,6 +200,7 @@ export async function handleMatrixAction(
           mediaUrl: mediaUrl ?? undefined,
           replyToId: replyToId ?? undefined,
           threadId: threadId ?? undefined,
+          ...clientOpts,
         });
         return jsonResult({ ok: true, result });
       }
@@ -206,14 +208,17 @@ export async function handleMatrixAction(
         const roomId = readRoomId(params);
         const messageId = readStringParam(params, "messageId", { required: true });
         const content = readStringParam(params, "content", { required: true });
-        const result = await editMatrixMessage(roomId, messageId, content);
+        const result = await editMatrixMessage(roomId, messageId, content, clientOpts);
         return jsonResult({ ok: true, result });
       }
       case "deleteMessage": {
         const roomId = readRoomId(params);
         const messageId = readStringParam(params, "messageId", { required: true });
         const reason = readStringParam(params, "reason");
-        await deleteMatrixMessage(roomId, messageId, { reason: reason ?? undefined });
+        await deleteMatrixMessage(roomId, messageId, {
+          reason: reason ?? undefined,
+          ...clientOpts,
+        });
         return jsonResult({ ok: true, deleted: true });
       }
       case "readMessages": {
@@ -225,6 +230,7 @@ export async function handleMatrixAction(
           limit: limit ?? undefined,
           before: before ?? undefined,
           after: after ?? undefined,
+          ...clientOpts,
         });
         return jsonResult({ ok: true, ...result });
       }
@@ -240,15 +246,15 @@ export async function handleMatrixAction(
     const roomId = readRoomId(params);
     if (action === "pinMessage") {
       const messageId = readStringParam(params, "messageId", { required: true });
-      const result = await pinMatrixMessage(roomId, messageId);
+      const result = await pinMatrixMessage(roomId, messageId, clientOpts);
       return jsonResult({ ok: true, pinned: result.pinned });
     }
     if (action === "unpinMessage") {
       const messageId = readStringParam(params, "messageId", { required: true });
-      const result = await unpinMatrixMessage(roomId, messageId);
+      const result = await unpinMatrixMessage(roomId, messageId, clientOpts);
       return jsonResult({ ok: true, pinned: result.pinned });
     }
-    const result = await listMatrixPins(roomId);
+    const result = await listMatrixPins(roomId, clientOpts);
     return jsonResult({ ok: true, pinned: result.pinned, events: result.events });
   }
 
@@ -260,6 +266,7 @@ export async function handleMatrixAction(
     const roomId = readStringParam(params, "roomId") ?? readStringParam(params, "channelId");
     const result = await getMatrixMemberInfo(userId, {
       roomId: roomId ?? undefined,
+      ...clientOpts,
     });
     return jsonResult({ ok: true, member: result });
   }
@@ -269,7 +276,7 @@ export async function handleMatrixAction(
       throw new Error("Matrix room info is disabled.");
     }
     const roomId = readRoomId(params);
-    const result = await getMatrixRoomInfo(roomId);
+    const result = await getMatrixRoomInfo(roomId, clientOpts);
     return jsonResult({ ok: true, room: result });
   }
 

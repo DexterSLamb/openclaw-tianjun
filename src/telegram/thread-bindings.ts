@@ -559,6 +559,28 @@ export function createTelegramThreadBindingManager(
           })
         : null;
     },
+    setIdleTimeoutBySession: ({ targetSessionKey, idleTimeoutMs: nextIdleTimeoutMs }) =>
+      setTelegramThreadBindingIdleTimeoutBySessionKey({
+        targetSessionKey,
+        accountId,
+        idleTimeoutMs: nextIdleTimeoutMs,
+      }).map((entry) =>
+        toSessionBindingRecord(entry, {
+          idleTimeoutMs,
+          maxAgeMs,
+        }),
+      ),
+    setMaxAgeBySession: ({ targetSessionKey, maxAgeMs: nextMaxAgeMs }) =>
+      setTelegramThreadBindingMaxAgeBySessionKey({
+        targetSessionKey,
+        accountId,
+        maxAgeMs: nextMaxAgeMs,
+      }).map((entry) =>
+        toSessionBindingRecord(entry, {
+          idleTimeoutMs,
+          maxAgeMs,
+        }),
+      ),
     touch: (bindingId, at) => {
       const conversationId = resolveThreadBindingConversationIdFromBindingId({
         accountId,

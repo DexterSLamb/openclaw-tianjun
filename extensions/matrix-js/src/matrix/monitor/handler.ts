@@ -1,9 +1,13 @@
 import {
   createReplyPrefixOptions,
   createTypingCallbacks,
+  ensureConfiguredAcpRouteReady,
   formatAllowlistMatchMeta,
+  getSessionBindingService,
   logInboundDrop,
   logTypingFailure,
+  resolveAgentIdFromSessionKey,
+  resolveConfiguredAcpRoute,
   resolveControlCommandGate,
   type PluginRuntime,
   type ReplyPayload,
@@ -533,7 +537,7 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
         ? await resolveThreadContext({ roomId, threadRootId })
         : undefined;
 
-      const route = core.channel.routing.resolveAgentRoute({
+      const baseRoute = core.channel.routing.resolveAgentRoute({
         cfg,
         channel: "matrix-js",
         accountId,
@@ -542,6 +546,56 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
           id: isDirectMessage ? senderId : roomId,
         },
       });
+      const bindingConversationId =
+        threadRootId && threadRootId !== messageId ? threadRootId : roomId;
+      const bindingParentConversationId = bindingConversationId === roomId ? undefined : roomId;
+      const sessionBindingService = getSessionBindingService();
+      const runtimeBinding = sessionBindingService.resolveByConversation({
+        channel: "matrix-js",
+        accountId,
+        conversationId: bindingConversationId,
+        parentConversationId: bindingParentConversationId,
+      });
+      const configuredRoute =
+        runtimeBinding == null
+          ? resolveConfiguredAcpRoute({
+              cfg,
+              route: baseRoute,
+              channel: "matrix-js",
+              accountId,
+              conversationId: bindingConversationId,
+              parentConversationId: bindingParentConversationId,
+            })
+          : null;
+      const configuredBinding = configuredRoute?.configuredBinding ?? null;
+      if (!runtimeBinding && configuredBinding) {
+        const ensured = await ensureConfiguredAcpRouteReady({
+          cfg,
+          configuredBinding,
+        });
+        if (!ensured.ok) {
+          logInboundDrop({
+            log: logVerboseMessage,
+            channel: "matrix-js",
+            reason: "configured ACP binding unavailable",
+            target: configuredBinding.spec.conversationId,
+          });
+          return;
+        }
+      }
+      const boundSessionKey = runtimeBinding?.targetSessionKey?.trim();
+      const route =
+        runtimeBinding && boundSessionKey
+          ? {
+              ...baseRoute,
+              sessionKey: boundSessionKey,
+              agentId: resolveAgentIdFromSessionKey(boundSessionKey) || baseRoute.agentId,
+              matchedBy: "binding.channel" as const,
+            }
+          : (configuredRoute?.route ?? baseRoute);
+      if (runtimeBinding) {
+        sessionBindingService.touch(runtimeBinding.bindingId, eventTs);
+      }
       const envelopeFrom = isDirectMessage ? senderName : (roomName ?? roomId);
       const textWithId = `${bodyText}\n[matrix event id: ${messageId} room: ${roomId}]`;
       const storePath = core.channel.session.resolveStorePath(cfg.session?.store, {

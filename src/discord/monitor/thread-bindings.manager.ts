@@ -20,6 +20,10 @@ import {
   summarizeDiscordError,
 } from "./thread-bindings.discord-api.js";
 import {
+  setThreadBindingIdleTimeoutBySessionKey,
+  setThreadBindingMaxAgeBySessionKey,
+} from "./thread-bindings.lifecycle.js";
+import {
   resolveThreadBindingFarewellText,
   resolveThreadBindingThreadName,
 } from "./thread-bindings.messages.js";
@@ -601,6 +605,18 @@ export function createThreadBindingManager(
       const binding = manager.getByThreadId(ref.conversationId);
       return binding ? toSessionBindingRecord(binding, { idleTimeoutMs, maxAgeMs }) : null;
     },
+    setIdleTimeoutBySession: ({ targetSessionKey, idleTimeoutMs: nextIdleTimeoutMs }) =>
+      setThreadBindingIdleTimeoutBySessionKey({
+        targetSessionKey,
+        accountId,
+        idleTimeoutMs: nextIdleTimeoutMs,
+      }).map((entry) => toSessionBindingRecord(entry, { idleTimeoutMs, maxAgeMs })),
+    setMaxAgeBySession: ({ targetSessionKey, maxAgeMs: nextMaxAgeMs }) =>
+      setThreadBindingMaxAgeBySessionKey({
+        targetSessionKey,
+        accountId,
+        maxAgeMs: nextMaxAgeMs,
+      }).map((entry) => toSessionBindingRecord(entry, { idleTimeoutMs, maxAgeMs })),
     touch: (bindingId, at) => {
       const threadId = resolveThreadBindingConversationIdFromBindingId({
         accountId,

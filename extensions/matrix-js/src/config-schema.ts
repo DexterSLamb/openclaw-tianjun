@@ -14,6 +14,16 @@ const matrixActionSchema = z
   })
   .optional();
 
+const matrixThreadBindingsSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    idleHours: z.number().nonnegative().optional(),
+    maxAgeHours: z.number().nonnegative().optional(),
+    spawnSubagentSessions: z.boolean().optional(),
+    spawnAcpSessions: z.boolean().optional(),
+  })
+  .optional();
+
 const matrixDmSchema = z
   .object({
     enabled: z.boolean().optional(),
@@ -60,6 +70,7 @@ export const MatrixConfigSchema = z.object({
     .enum(["group-mentions", "group-all", "direct", "all", "none", "off"])
     .optional(),
   reactionNotifications: z.enum(["off", "own"]).optional(),
+  threadBindings: matrixThreadBindingsSchema,
   startupVerification: z.enum(["off", "if-unverified"]).optional(),
   startupVerificationCooldownHours: z.number().optional(),
   mediaMaxMb: z.number().optional(),

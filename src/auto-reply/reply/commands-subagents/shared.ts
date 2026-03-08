@@ -27,12 +27,17 @@ import {
 } from "../../../shared/subagents-format.js";
 import {
   isDiscordSurface,
+  isMatrixSurface,
   isTelegramSurface,
   resolveCommandSurfaceChannel,
   resolveDiscordAccountId,
   resolveChannelAccountId,
 } from "../channel-context.js";
 import type { CommandHandler, CommandHandlerResult } from "../commands-types.js";
+import {
+  resolveMatrixConversationId,
+  resolveMatrixParentConversationId,
+} from "../matrix-context.ts";
 import {
   formatRunLabel,
   formatRunStatus,
@@ -44,10 +49,13 @@ import { resolveTelegramConversationId } from "../telegram-context.js";
 export { extractAssistantText, stripToolMessages };
 export {
   isDiscordSurface,
+  isMatrixSurface,
   isTelegramSurface,
   resolveCommandSurfaceChannel,
   resolveDiscordAccountId,
   resolveChannelAccountId,
+  resolveMatrixConversationId,
+  resolveMatrixParentConversationId,
   resolveTelegramConversationId,
 };
 

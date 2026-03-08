@@ -760,6 +760,12 @@ export const FIELD_LABELS: Record<string, string> = {
   "channels.discord.threadBindings.maxAgeHours": "Discord Thread Binding Max Age (hours)",
   "channels.discord.threadBindings.spawnSubagentSessions": "Discord Thread-Bound Subagent Spawn",
   "channels.discord.threadBindings.spawnAcpSessions": "Discord Thread-Bound ACP Spawn",
+  "channels.matrix-js.threadBindings.enabled": "Matrix-js Thread Binding Enabled",
+  "channels.matrix-js.threadBindings.idleHours": "Matrix-js Thread Binding Idle Timeout (hours)",
+  "channels.matrix-js.threadBindings.maxAgeHours": "Matrix-js Thread Binding Max Age (hours)",
+  "channels.matrix-js.threadBindings.spawnSubagentSessions":
+    "Matrix-js Thread-Bound Subagent Spawn",
+  "channels.matrix-js.threadBindings.spawnAcpSessions": "Matrix-js Thread-Bound ACP Spawn",
   "channels.discord.ui.components.accentColor": "Discord Component Accent Color",
   "channels.discord.intents.presence": "Discord Presence Intent",
   "channels.discord.intents.guildMembers": "Discord Guild Members Intent",

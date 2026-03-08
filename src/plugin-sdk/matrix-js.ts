@@ -56,6 +56,11 @@ export type {
 export type { ChannelPlugin } from "../channels/plugins/types.plugin.js";
 export type { ChannelSetupInput } from "../channels/plugins/types.js";
 export { createReplyPrefixOptions } from "../channels/reply-prefix.js";
+export { resolveThreadBindingFarewellText } from "../channels/thread-bindings-messages.js";
+export {
+  resolveThreadBindingIdleTimeoutMsForChannel,
+  resolveThreadBindingMaxAgeMsForChannel,
+} from "../channels/thread-bindings-policy.js";
 export { createTypingCallbacks } from "../channels/typing.js";
 export { resolveAckReaction } from "../agents/identity.js";
 export type { OpenClawConfig } from "../config/config.js";
@@ -81,6 +86,16 @@ export { ToolPolicySchema } from "../config/zod-schema.agent-runtime.js";
 export { MarkdownConfigSchema } from "../config/zod-schema.core.js";
 export { formatZonedTimestamp } from "../infra/format-time/format-datetime.js";
 export { fetchWithSsrFGuard } from "../infra/net/fetch-guard.js";
+export {
+  getSessionBindingService,
+  registerSessionBindingAdapter,
+  unregisterSessionBindingAdapter,
+} from "../infra/outbound/session-binding-service.js";
+export type {
+  BindingTargetKind,
+  SessionBindingRecord,
+  SessionBindingAdapter,
+} from "../infra/outbound/session-binding-service.js";
 export { issuePairingChallenge } from "../pairing/pairing-challenge.js";
 export { emptyPluginConfigSchema } from "../plugins/config-schema.js";
 export type { PluginRuntime, RuntimeLogger } from "../plugins/runtime/types.js";
@@ -88,6 +103,9 @@ export type { OpenClawPluginApi } from "../plugins/types.js";
 export type { PollInput } from "../polls.js";
 export { normalizePollInput } from "../polls.js";
 export { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../routing/session-key.js";
+export { resolveAgentIdFromSessionKey } from "../routing/session-key.js";
+export { resolveConfiguredAcpRoute } from "../acp/persistent-bindings.route.js";
+export { ensureConfiguredAcpRouteReady } from "../acp/persistent-bindings.route.js";
 export type { RuntimeEnv } from "../runtime.js";
 export {
   readStoreAllowFromForDmPolicy,

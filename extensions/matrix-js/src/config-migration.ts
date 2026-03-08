@@ -19,6 +19,7 @@ type LegacyAccountField =
   | "textChunkLimit"
   | "chunkMode"
   | "responsePrefix"
+  | "threadBindings"
   | "startupVerification"
   | "startupVerificationCooldownHours"
   | "mediaMaxMb"
@@ -47,6 +48,7 @@ const LEGACY_ACCOUNT_FIELDS: ReadonlyArray<LegacyAccountField> = [
   "textChunkLimit",
   "chunkMode",
   "responsePrefix",
+  "threadBindings",
   "startupVerification",
   "startupVerificationCooldownHours",
   "mediaMaxMb",

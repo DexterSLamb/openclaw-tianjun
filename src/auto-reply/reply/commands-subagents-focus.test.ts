@@ -29,6 +29,8 @@ const hoisted = vi.hoisted(() => {
 function buildFocusSessionBindingService() {
   return {
     touch: vi.fn(),
+    setIdleTimeoutBySession: vi.fn(async () => []),
+    setMaxAgeBySession: vi.fn(async () => []),
     listBySession(targetSessionKey: string) {
       return hoisted.sessionBindingListBySessionMock(targetSessionKey);
     },
@@ -98,6 +100,19 @@ function createTelegramTopicCommandParams(commandBody: string) {
     OriginatingTo: "-100200300:topic:77",
     AccountId: "default",
     MessageThreadId: "77",
+  });
+  params.command.senderId = "user-1";
+  return params;
+}
+
+function createMatrixCommandParams(commandBody: string) {
+  const params = buildCommandTestParams(commandBody, baseCfg, {
+    Provider: "matrix-js",
+    Surface: "matrix-js",
+    OriginatingChannel: "matrix-js",
+    OriginatingTo: "room:!room:example",
+    To: "room:!room:example",
+    AccountId: "default",
   });
   params.command.senderId = "user-1";
   return params;
@@ -215,6 +230,22 @@ describe("/focus, /unfocus, /agents", () => {
         conversation: expect.objectContaining({
           channel: "telegram",
           conversationId: "-100200300:topic:77",
+        }),
+      }),
+    );
+  });
+
+  it("/focus creates Matrix child thread bindings from top-level rooms", async () => {
+    const result = await focusCodexAcp(createMatrixCommandParams("/focus codex-acp"));
+
+    expect(result?.reply?.text).toContain("created thread");
+    expect(hoisted.sessionBindingBindMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        placement: "child",
+        conversation: expect.objectContaining({
+          channel: "matrix-js",
+          conversationId: "!room:example",
+          parentConversationId: "!room:example",
         }),
       }),
     );
@@ -401,6 +432,6 @@ describe("/focus, /unfocus, /agents", () => {
   it("/focus rejects unsupported channels", async () => {
     const params = buildCommandTestParams("/focus codex-acp", baseCfg);
     const result = await handleSubagentsCommand(params, true);
-    expect(result?.reply?.text).toContain("only available on Discord and Telegram");
+    expect(result?.reply?.text).toContain("only available on Discord, Matrix, and Telegram");
   });
 });

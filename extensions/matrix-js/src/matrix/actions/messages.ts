@@ -25,6 +25,7 @@ export async function sendMatrixMessage(
     mediaUrl: opts.mediaUrl,
     replyToId: opts.replyToId,
     threadId: opts.threadId,
+    accountId: opts.accountId,
     client: opts.client,
     timeoutMs: opts.timeoutMs,
   });

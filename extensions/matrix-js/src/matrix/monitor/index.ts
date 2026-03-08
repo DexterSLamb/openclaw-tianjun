@@ -2,6 +2,8 @@ import { format } from "node:util";
 import {
   GROUP_POLICY_BLOCKED_LABEL,
   mergeAllowlist,
+  resolveThreadBindingIdleTimeoutMsForChannel,
+  resolveThreadBindingMaxAgeMsForChannel,
   resolveAllowlistProviderRuntimeGroupPolicy,
   resolveDefaultGroupPolicy,
   summarizeMapping,
@@ -21,6 +23,7 @@ import {
 } from "../client.js";
 import { updateMatrixAccountConfig } from "../config-update.js";
 import { syncMatrixOwnProfile } from "../profile.js";
+import { createMatrixThreadBindingManager } from "../thread-bindings.js";
 import { normalizeMatrixUserId } from "./allowlist.js";
 import { registerMatrixAutoJoin } from "./auto-join.js";
 import { createDirectRoomTracker } from "./direct.js";
@@ -270,6 +273,16 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
   const groupPolicy = allowlistOnly && groupPolicyRaw === "open" ? "allowlist" : groupPolicyRaw;
   const replyToMode = opts.replyToMode ?? accountConfig.replyToMode ?? "off";
   const threadReplies = accountConfig.threadReplies ?? "inbound";
+  const threadBindingIdleTimeoutMs = resolveThreadBindingIdleTimeoutMsForChannel({
+    cfg,
+    channel: "matrix-js",
+    accountId: account.accountId,
+  });
+  const threadBindingMaxAgeMs = resolveThreadBindingMaxAgeMsForChannel({
+    cfg,
+    channel: "matrix-js",
+    accountId: account.accountId,
+  });
   const dmConfig = accountConfig.dm;
   const dmEnabled = dmConfig?.enabled ?? true;
   const dmPolicyRaw = dmConfig?.policy ?? "pairing";
@@ -328,6 +341,18 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
     accountId: opts.accountId,
   });
   logVerboseMessage("matrix: client started");
+  const threadBindingManager = await createMatrixThreadBindingManager({
+    accountId: account.accountId,
+    auth,
+    client,
+    env: process.env,
+    idleTimeoutMs: threadBindingIdleTimeoutMs,
+    maxAgeMs: threadBindingMaxAgeMs,
+    logVerboseMessage,
+  });
+  logVerboseMessage(
+    `matrix: thread bindings ready account=${threadBindingManager.accountId} idleMs=${threadBindingIdleTimeoutMs} maxAgeMs=${threadBindingMaxAgeMs}`,
+  );
 
   // Shared client is already started via resolveSharedMatrixClient.
   logger.info(`matrix: logged in as ${auth.userId}`);
@@ -414,6 +439,7 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
   await new Promise<void>((resolve) => {
     const onAbort = () => {
       try {
+        threadBindingManager.stop();
         logVerboseMessage("matrix: stopping client");
         stopSharedClientForAccount(auth, opts.accountId);
       } finally {

@@ -198,4 +198,66 @@ describe("session binding service", () => {
       placements: [],
     });
   });
+
+  it("routes lifecycle updates through the channel/account adapter", async () => {
+    const setIdleTimeoutBySession = vi.fn(() => [
+      {
+        bindingId: "default:thread-1",
+        targetSessionKey: "agent:main:subagent:child-1",
+        targetKind: "subagent" as const,
+        conversation: {
+          channel: "discord",
+          accountId: "default",
+          conversationId: "thread-1",
+        },
+        status: "active" as const,
+        boundAt: 1,
+      },
+    ]);
+    const setMaxAgeBySession = vi.fn(() => [
+      {
+        bindingId: "default:thread-1",
+        targetSessionKey: "agent:main:subagent:child-1",
+        targetKind: "subagent" as const,
+        conversation: {
+          channel: "discord",
+          accountId: "default",
+          conversationId: "thread-1",
+        },
+        status: "active" as const,
+        boundAt: 1,
+      },
+    ]);
+    registerSessionBindingAdapter({
+      channel: "discord",
+      accountId: "default",
+      listBySession: () => [],
+      resolveByConversation: () => null,
+      setIdleTimeoutBySession,
+      setMaxAgeBySession,
+    });
+
+    const service = getSessionBindingService();
+    await service.setIdleTimeoutBySession({
+      channel: "discord",
+      accountId: "default",
+      targetSessionKey: " agent:main:subagent:child-1 ",
+      idleTimeoutMs: 3_601_999,
+    });
+    await service.setMaxAgeBySession({
+      channel: "discord",
+      accountId: "default",
+      targetSessionKey: " agent:main:subagent:child-1 ",
+      maxAgeMs: 7_202_999,
+    });
+
+    expect(setIdleTimeoutBySession).toHaveBeenCalledWith({
+      targetSessionKey: "agent:main:subagent:child-1",
+      idleTimeoutMs: 3601999,
+    });
+    expect(setMaxAgeBySession).toHaveBeenCalledWith({
+      targetSessionKey: "agent:main:subagent:child-1",
+      maxAgeMs: 7202999,
+    });
+  });
 });

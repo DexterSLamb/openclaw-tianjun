@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  __testing as sessionBindingTesting,
+  registerSessionBindingAdapter,
+} from "../../../../../src/infra/outbound/session-binding-service.js";
 import { createMatrixRoomMessageHandler } from "./handler.js";
 import { EventType, type MatrixRawEvent } from "./types.js";
 
@@ -12,6 +16,10 @@ vi.mock("../send.js", () => ({
   sendReadReceiptMatrix: vi.fn(async () => {}),
   sendTypingMatrix: vi.fn(async () => {}),
 }));
+
+beforeEach(() => {
+  sessionBindingTesting.resetSessionBindingAdaptersForTests();
+});
 
 function createReactionHarness(params?: {
   cfg?: unknown;
@@ -511,6 +519,148 @@ describe("matrix monitor handler pairing account scope", () => {
     expect(recordInboundSession).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionKey: "agent:ops:main",
+      }),
+    );
+  });
+
+  it("routes bound Matrix threads to the target session key", async () => {
+    registerSessionBindingAdapter({
+      channel: "matrix-js",
+      accountId: "ops",
+      listBySession: () => [],
+      resolveByConversation: (ref) =>
+        ref.conversationId === "$root"
+          ? {
+              bindingId: "ops:!room:example:$root",
+              targetSessionKey: "agent:bound:session-1",
+              targetKind: "session",
+              conversation: {
+                channel: "matrix-js",
+                accountId: "ops",
+                conversationId: "$root",
+                parentConversationId: "!room:example",
+              },
+              status: "active",
+              boundAt: Date.now(),
+              metadata: {
+                boundBy: "user-1",
+              },
+            }
+          : null,
+      touch: vi.fn(),
+    });
+    const recordInboundSession = vi.fn(async () => {});
+
+    const handler = createMatrixRoomMessageHandler({
+      client: {
+        getUserId: async () => "@bot:example.org",
+        getEvent: async () => ({
+          event_id: "$root",
+          sender: "@alice:example.org",
+          type: EventType.RoomMessage,
+          origin_server_ts: Date.now(),
+          content: {
+            msgtype: "m.text",
+            body: "Root topic",
+          },
+        }),
+      } as never,
+      core: {
+        channel: {
+          pairing: {
+            readAllowFromStore: async () => [] as string[],
+            upsertPairingRequest: async () => ({ code: "ABCDEFGH", created: false }),
+          },
+          commands: {
+            shouldHandleTextCommands: () => false,
+          },
+          text: {
+            hasControlCommand: () => false,
+            resolveMarkdownTableMode: () => "preserve",
+          },
+          routing: {
+            resolveAgentRoute: () => ({
+              agentId: "ops",
+              channel: "matrix-js",
+              accountId: "ops",
+              sessionKey: "agent:ops:main",
+              mainSessionKey: "agent:ops:main",
+              matchedBy: "binding.account",
+            }),
+          },
+          session: {
+            resolveStorePath: () => "/tmp/session-store",
+            readSessionUpdatedAt: () => undefined,
+            recordInboundSession,
+          },
+          reply: {
+            resolveEnvelopeFormatOptions: () => ({}),
+            formatAgentEnvelope: ({ body }: { body: string }) => body,
+            finalizeInboundContext: (ctx: unknown) => ctx,
+            createReplyDispatcherWithTyping: () => ({
+              dispatcher: {},
+              replyOptions: {},
+              markDispatchIdle: () => {},
+            }),
+            resolveHumanDelayConfig: () => undefined,
+            dispatchReplyFromConfig: async () => ({
+              queuedFinal: false,
+              counts: { final: 0, block: 0, tool: 0 },
+            }),
+          },
+          reactions: {
+            shouldAckReaction: () => false,
+          },
+        },
+      } as never,
+      cfg: {} as never,
+      accountId: "ops",
+      runtime: {
+        error: () => {},
+      } as never,
+      logger: {
+        info: () => {},
+        warn: () => {},
+      } as never,
+      logVerboseMessage: () => {},
+      allowFrom: [],
+      mentionRegexes: [],
+      groupPolicy: "open",
+      replyToMode: "off",
+      threadReplies: "inbound",
+      dmEnabled: true,
+      dmPolicy: "open",
+      textLimit: 8_000,
+      mediaMaxBytes: 10_000_000,
+      startupMs: 0,
+      startupGraceMs: 0,
+      directTracker: {
+        isDirectMessage: async () => false,
+      },
+      getRoomInfo: async () => ({ altAliases: [] }),
+      getMemberDisplayName: async () => "sender",
+    });
+
+    await handler("!room:example", {
+      type: EventType.RoomMessage,
+      sender: "@user:example.org",
+      event_id: "$reply1",
+      origin_server_ts: Date.now(),
+      content: {
+        msgtype: "m.text",
+        body: "follow up",
+        "m.relates_to": {
+          rel_type: "m.thread",
+          event_id: "$root",
+          "m.in_reply_to": { event_id: "$root" },
+        },
+        "m.mentions": { room: true },
+      },
+    } as MatrixRawEvent);
+
+    expect(recordInboundSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: "agent:bound:session-1",
       }),
     );
   });

@@ -7,14 +7,22 @@ const mocks = vi.hoisted(() => ({
   reactMatrixMessage: vi.fn(),
   listMatrixReactions: vi.fn(),
   removeMatrixReactions: vi.fn(),
+  sendMatrixMessage: vi.fn(),
+  listMatrixPins: vi.fn(),
+  getMatrixMemberInfo: vi.fn(),
+  getMatrixRoomInfo: vi.fn(),
 }));
 
 vi.mock("./matrix/actions.js", async () => {
   const actual = await vi.importActual<typeof import("./matrix/actions.js")>("./matrix/actions.js");
   return {
     ...actual,
+    getMatrixMemberInfo: mocks.getMatrixMemberInfo,
+    getMatrixRoomInfo: mocks.getMatrixRoomInfo,
     listMatrixReactions: mocks.listMatrixReactions,
+    listMatrixPins: mocks.listMatrixPins,
     removeMatrixReactions: mocks.removeMatrixReactions,
+    sendMatrixMessage: mocks.sendMatrixMessage,
     voteMatrixPoll: mocks.voteMatrixPoll,
   };
 });
@@ -39,7 +47,14 @@ describe("handleMatrixAction pollVote", () => {
       maxSelections: 2,
     });
     mocks.listMatrixReactions.mockResolvedValue([{ key: "👍", count: 1, users: ["@u:example"] }]);
+    mocks.listMatrixPins.mockResolvedValue({ pinned: ["$pin"], events: [] });
     mocks.removeMatrixReactions.mockResolvedValue({ removed: 1 });
+    mocks.sendMatrixMessage.mockResolvedValue({
+      messageId: "$sent",
+      roomId: "!room:example",
+    });
+    mocks.getMatrixMemberInfo.mockResolvedValue({ userId: "@u:example" });
+    mocks.getMatrixRoomInfo.mockResolvedValue({ roomId: "!room:example" });
   });
 
   it("parses snake_case vote params and forwards normalized selectors", async () => {
@@ -139,6 +154,69 @@ describe("handleMatrixAction pollVote", () => {
     expect(result.details).toMatchObject({
       ok: true,
       reactions: [{ key: "👍", count: 1 }],
+    });
+  });
+
+  it("passes account-scoped opts to message sends", async () => {
+    await handleMatrixAction(
+      {
+        action: "sendMessage",
+        accountId: "ops",
+        to: "room:!room:example",
+        content: "hello",
+        threadId: "$thread",
+      },
+      { channels: { "matrix-js": { actions: { messages: true } } } } as CoreConfig,
+    );
+
+    expect(mocks.sendMatrixMessage).toHaveBeenCalledWith("room:!room:example", "hello", {
+      accountId: "ops",
+      mediaUrl: undefined,
+      replyToId: undefined,
+      threadId: "$thread",
+    });
+  });
+
+  it("passes account-scoped opts to pin listing", async () => {
+    await handleMatrixAction(
+      {
+        action: "listPins",
+        accountId: "ops",
+        roomId: "!room:example",
+      },
+      { channels: { "matrix-js": { actions: { pins: true } } } } as CoreConfig,
+    );
+
+    expect(mocks.listMatrixPins).toHaveBeenCalledWith("!room:example", {
+      accountId: "ops",
+    });
+  });
+
+  it("passes account-scoped opts to member and room info actions", async () => {
+    await handleMatrixAction(
+      {
+        action: "memberInfo",
+        accountId: "ops",
+        userId: "@u:example",
+        roomId: "!room:example",
+      },
+      { channels: { "matrix-js": { actions: { memberInfo: true } } } } as CoreConfig,
+    );
+    await handleMatrixAction(
+      {
+        action: "channelInfo",
+        accountId: "ops",
+        roomId: "!room:example",
+      },
+      { channels: { "matrix-js": { actions: { channelInfo: true } } } } as CoreConfig,
+    );
+
+    expect(mocks.getMatrixMemberInfo).toHaveBeenCalledWith("@u:example", {
+      accountId: "ops",
+      roomId: "!room:example",
+    });
+    expect(mocks.getMatrixRoomInfo).toHaveBeenCalledWith("!room:example", {
+      accountId: "ops",
     });
   });
 });

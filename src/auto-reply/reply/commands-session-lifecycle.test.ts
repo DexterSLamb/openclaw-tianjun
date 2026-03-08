@@ -47,9 +47,62 @@ vi.mock("../../infra/outbound/session-binding-service.js", async (importOriginal
     ...actual,
     getSessionBindingService: () => ({
       bind: vi.fn(),
-      getCapabilities: vi.fn(),
+      getCapabilities: vi.fn(() => ({
+        adapterAvailable: true,
+        bindSupported: true,
+        unbindSupported: true,
+        placements: ["current", "child"],
+      })),
       listBySession: vi.fn(),
       resolveByConversation: (ref: unknown) => hoisted.sessionBindingResolveByConversationMock(ref),
+      setIdleTimeoutBySession: ({
+        channel,
+        targetSessionKey,
+        accountId,
+        idleTimeoutMs,
+      }: {
+        channel: string;
+        targetSessionKey: string;
+        accountId: string;
+        idleTimeoutMs: number;
+      }) =>
+        Promise.resolve(
+          channel === "telegram"
+            ? hoisted.setTelegramThreadBindingIdleTimeoutBySessionKeyMock({
+                targetSessionKey,
+                accountId,
+                idleTimeoutMs,
+              })
+            : hoisted.setThreadBindingIdleTimeoutBySessionKeyMock({
+                targetSessionKey,
+                accountId,
+                idleTimeoutMs,
+              }),
+        ),
+      setMaxAgeBySession: ({
+        channel,
+        targetSessionKey,
+        accountId,
+        maxAgeMs,
+      }: {
+        channel: string;
+        targetSessionKey: string;
+        accountId: string;
+        maxAgeMs: number;
+      }) =>
+        Promise.resolve(
+          channel === "telegram"
+            ? hoisted.setTelegramThreadBindingMaxAgeBySessionKeyMock({
+                targetSessionKey,
+                accountId,
+                maxAgeMs,
+              })
+            : hoisted.setThreadBindingMaxAgeBySessionKeyMock({
+                targetSessionKey,
+                accountId,
+                maxAgeMs,
+              }),
+        ),
       touch: vi.fn(),
       unbind: vi.fn(),
     }),
@@ -62,20 +115,6 @@ const { buildCommandTestParams } = await import("./commands.test-harness.js");
 const baseCfg = {
   session: { mainKey: "main", scope: "per-sender" },
 } satisfies OpenClawConfig;
-
-type FakeBinding = {
-  accountId: string;
-  channelId: string;
-  threadId: string;
-  targetKind: "subagent" | "acp";
-  targetSessionKey: string;
-  agentId: string;
-  boundBy: string;
-  boundAt: number;
-  lastActivityAt: number;
-  idleTimeoutMs?: number;
-  maxAgeMs?: number;
-};
 
 function createDiscordCommandParams(commandBody: string, overrides?: Record<string, unknown>) {
   return buildCommandTestParams(commandBody, baseCfg, {
@@ -101,18 +140,37 @@ function createTelegramCommandParams(commandBody: string, overrides?: Record<str
   });
 }
 
-function createFakeBinding(overrides: Partial<FakeBinding> = {}): FakeBinding {
-  const now = Date.now();
+function createMatrixCommandParams(commandBody: string, overrides?: Record<string, unknown>) {
+  return buildCommandTestParams(commandBody, baseCfg, {
+    Provider: "matrix-js",
+    Surface: "matrix-js",
+    OriginatingChannel: "matrix-js",
+    OriginatingTo: "room:!room:example",
+    To: "room:!room:example",
+    AccountId: "default",
+    MessageThreadId: "$thread-1",
+    ...overrides,
+  });
+}
+
+function createDiscordBinding(overrides?: Partial<SessionBindingRecord>): SessionBindingRecord {
   return {
-    accountId: "default",
-    channelId: "parent-1",
-    threadId: "thread-1",
-    targetKind: "subagent",
+    bindingId: "default:thread-1",
     targetSessionKey: "agent:main:subagent:child",
-    agentId: "main",
-    boundBy: "user-1",
-    boundAt: now,
-    lastActivityAt: now,
+    targetKind: "subagent",
+    conversation: {
+      channel: "discord",
+      accountId: "default",
+      conversationId: "thread-1",
+    },
+    status: "active",
+    boundAt: Date.now(),
+    metadata: {
+      boundBy: "user-1",
+      lastActivityAt: Date.now(),
+      idleTimeoutMs: 24 * 60 * 60 * 1000,
+      maxAgeMs: 0,
+    },
     ...overrides,
   };
 }
@@ -139,11 +197,26 @@ function createTelegramBinding(overrides?: Partial<SessionBindingRecord>): Sessi
   };
 }
 
-function createFakeThreadBindingManager(binding: FakeBinding | null) {
+function createMatrixBinding(overrides?: Partial<SessionBindingRecord>): SessionBindingRecord {
   return {
-    getByThreadId: vi.fn((_threadId: string) => binding),
-    getIdleTimeoutMs: vi.fn(() => 24 * 60 * 60 * 1000),
-    getMaxAgeMs: vi.fn(() => 0),
+    bindingId: "default:!room:example:$thread-1",
+    targetSessionKey: "agent:main:subagent:child",
+    targetKind: "subagent",
+    conversation: {
+      channel: "matrix-js",
+      accountId: "default",
+      conversationId: "$thread-1",
+      parentConversationId: "!room:example",
+    },
+    status: "active",
+    boundAt: Date.now(),
+    metadata: {
+      boundBy: "user-1",
+      lastActivityAt: Date.now(),
+      idleTimeoutMs: 24 * 60 * 60 * 1000,
+      maxAgeMs: 0,
+    },
+    ...overrides,
   };
 }
 
@@ -162,11 +235,12 @@ describe("/session idle and /session max-age", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-20T00:00:00.000Z"));
 
-    const binding = createFakeBinding();
-    hoisted.getThreadBindingManagerMock.mockReturnValue(createFakeThreadBindingManager(binding));
+    const binding = createDiscordBinding();
+    hoisted.sessionBindingResolveByConversationMock.mockReturnValue(binding);
     hoisted.setThreadBindingIdleTimeoutBySessionKeyMock.mockReturnValue([
       {
-        ...binding,
+        targetSessionKey: binding.targetSessionKey,
+        boundAt: Date.now(),
         lastActivityAt: Date.now(),
         idleTimeoutMs: 2 * 60 * 60 * 1000,
       },
@@ -188,11 +262,15 @@ describe("/session idle and /session max-age", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-20T00:00:00.000Z"));
 
-    const binding = createFakeBinding({
-      idleTimeoutMs: 2 * 60 * 60 * 1000,
-      lastActivityAt: Date.now(),
+    const binding = createDiscordBinding({
+      metadata: {
+        boundBy: "user-1",
+        lastActivityAt: Date.now(),
+        idleTimeoutMs: 2 * 60 * 60 * 1000,
+        maxAgeMs: 0,
+      },
     });
-    hoisted.getThreadBindingManagerMock.mockReturnValue(createFakeThreadBindingManager(binding));
+    hoisted.sessionBindingResolveByConversationMock.mockReturnValue(binding);
 
     const result = await handleSessionCommand(createDiscordCommandParams("/session idle"), true);
     expect(result?.reply?.text).toContain("Idle timeout active (2h");
@@ -203,11 +281,11 @@ describe("/session idle and /session max-age", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-20T00:00:00.000Z"));
 
-    const binding = createFakeBinding();
-    hoisted.getThreadBindingManagerMock.mockReturnValue(createFakeThreadBindingManager(binding));
+    const binding = createDiscordBinding();
+    hoisted.sessionBindingResolveByConversationMock.mockReturnValue(binding);
     hoisted.setThreadBindingMaxAgeBySessionKeyMock.mockReturnValue([
       {
-        ...binding,
+        targetSessionKey: binding.targetSessionKey,
         boundAt: Date.now(),
         maxAgeMs: 3 * 60 * 60 * 1000,
       },
@@ -289,10 +367,49 @@ describe("/session idle and /session max-age", () => {
     expect(text).toContain("2026-02-20T01:00:00.000Z");
   });
 
+  it("sets idle timeout for focused Matrix threads", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-20T00:00:00.000Z"));
+
+    hoisted.sessionBindingResolveByConversationMock.mockReturnValue(createMatrixBinding());
+    hoisted.setThreadBindingIdleTimeoutBySessionKeyMock.mockReturnValue([
+      {
+        targetSessionKey: "agent:main:subagent:child",
+        boundAt: Date.now(),
+        lastActivityAt: Date.now(),
+        idleTimeoutMs: 2 * 60 * 60 * 1000,
+      },
+    ]);
+
+    const result = await handleSessionCommand(createMatrixCommandParams("/session idle 2h"), true);
+    const text = result?.reply?.text ?? "";
+
+    expect(hoisted.setThreadBindingIdleTimeoutBySessionKeyMock).toHaveBeenCalledWith({
+      targetSessionKey: "agent:main:subagent:child",
+      accountId: "default",
+      idleTimeoutMs: 2 * 60 * 60 * 1000,
+    });
+    expect(text).toContain("Idle timeout set to 2h");
+    expect(text).toContain("2026-02-20T02:00:00.000Z");
+  });
+
   it("disables max age when set to off", async () => {
-    const binding = createFakeBinding({ maxAgeMs: 2 * 60 * 60 * 1000 });
-    hoisted.getThreadBindingManagerMock.mockReturnValue(createFakeThreadBindingManager(binding));
-    hoisted.setThreadBindingMaxAgeBySessionKeyMock.mockReturnValue([{ ...binding, maxAgeMs: 0 }]);
+    const binding = createDiscordBinding({
+      metadata: {
+        boundBy: "user-1",
+        lastActivityAt: Date.now(),
+        idleTimeoutMs: 24 * 60 * 60 * 1000,
+        maxAgeMs: 2 * 60 * 60 * 1000,
+      },
+    });
+    hoisted.sessionBindingResolveByConversationMock.mockReturnValue(binding);
+    hoisted.setThreadBindingMaxAgeBySessionKeyMock.mockReturnValue([
+      {
+        targetSessionKey: binding.targetSessionKey,
+        boundAt: binding.boundAt,
+        maxAgeMs: 0,
+      },
+    ]);
 
     const result = await handleSessionCommand(
       createDiscordCommandParams("/session max-age off"),
@@ -311,13 +428,20 @@ describe("/session idle and /session max-age", () => {
     const params = buildCommandTestParams("/session idle 2h", baseCfg);
     const result = await handleSessionCommand(params, true);
     expect(result?.reply?.text).toContain(
-      "currently available for Discord and Telegram bound sessions",
+      "currently available for Discord, Matrix, and Telegram bound sessions",
     );
   });
 
   it("requires binding owner for lifecycle updates", async () => {
-    const binding = createFakeBinding({ boundBy: "owner-1" });
-    hoisted.getThreadBindingManagerMock.mockReturnValue(createFakeThreadBindingManager(binding));
+    const binding = createDiscordBinding({
+      metadata: {
+        boundBy: "owner-1",
+        lastActivityAt: Date.now(),
+        idleTimeoutMs: 24 * 60 * 60 * 1000,
+        maxAgeMs: 0,
+      },
+    });
+    hoisted.sessionBindingResolveByConversationMock.mockReturnValue(binding);
 
     const result = await handleSessionCommand(
       createDiscordCommandParams("/session idle 2h", {

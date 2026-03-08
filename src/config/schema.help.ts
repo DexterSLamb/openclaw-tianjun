@@ -449,7 +449,7 @@ export const FIELD_HELP: Record<string, string> = {
   "bindings[].match":
     "Match rule object for deciding when a binding applies, including channel and optional account/peer constraints. Keep rules narrow to avoid accidental agent takeover across contexts.",
   "bindings[].match.channel":
-    "Channel/provider identifier this binding applies to, such as `telegram`, `discord`, or a plugin channel ID. Use the configured channel key exactly so binding evaluation works reliably.",
+    "Channel/provider identifier this binding applies to, such as `telegram`, `discord`, `matrix-js`, or another plugin channel ID. Use the configured channel key exactly so binding evaluation works reliably.",
   "bindings[].match.accountId":
     "Optional account selector for multi-account channel setups so the binding applies only to one identity. Use this when account scoping is required for the route and leave unset otherwise.",
   "bindings[].match.peer":
@@ -1521,6 +1521,16 @@ export const FIELD_HELP: Record<string, string> = {
     "Allow subagent spawns with thread=true to auto-create and bind Discord threads (default: false; opt-in). Set true to enable thread-bound subagent spawns for this account/channel.",
   "channels.discord.threadBindings.spawnAcpSessions":
     "Allow /acp spawn to auto-create and bind Discord threads for ACP sessions (default: false; opt-in). Set true to enable thread-bound ACP spawns for this account/channel.",
+  "channels.matrix-js.threadBindings.enabled":
+    "Enable Matrix-js thread binding features (/focus, /unfocus, /agents, /session idle|max-age, and thread-bound routing). Overrides session.threadBindings.enabled when set.",
+  "channels.matrix-js.threadBindings.idleHours":
+    "Inactivity window in hours for Matrix-js thread-bound sessions. Set 0 to disable idle auto-unfocus (default: 24). Overrides session.threadBindings.idleHours when set.",
+  "channels.matrix-js.threadBindings.maxAgeHours":
+    "Optional hard max age in hours for Matrix-js thread-bound sessions. Set 0 to disable hard cap (default: 0). Overrides session.threadBindings.maxAgeHours when set.",
+  "channels.matrix-js.threadBindings.spawnSubagentSessions":
+    "Allow subagent spawns/focus flows to auto-create and bind Matrix threads when starting from a top-level Matrix room or DM.",
+  "channels.matrix-js.threadBindings.spawnAcpSessions":
+    "Allow /acp spawn to auto-create and bind Matrix threads for ACP sessions when starting from a top-level Matrix room or DM.",
   "channels.discord.ui.components.accentColor":
     "Accent color for Discord component containers (hex). Set per account via channels.discord.accounts.<id>.ui.components.accentColor.",
   "channels.discord.voice.enabled":
