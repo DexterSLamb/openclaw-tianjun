@@ -390,6 +390,10 @@ export function registerMatrixMonitorEvents(params: {
         `matrix: member event room=${roomId} stateKey=${stateKey} membership=${membership ?? "unknown"}`,
       );
     }
+    if (eventType === EventType.Reaction) {
+      void onRoomMessage(roomId, event);
+      return;
+    }
 
     routeVerificationEvent(roomId, event);
   });

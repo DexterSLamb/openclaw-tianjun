@@ -1,3 +1,9 @@
+import {
+  MATRIX_ANNOTATION_RELATION_TYPE,
+  MATRIX_REACTION_EVENT_TYPE,
+  type MatrixReactionEventContent,
+  type MatrixReactionSummary,
+} from "../reaction-common.js";
 import type { MatrixClient, MessageEventContent } from "../sdk.js";
 export type { MatrixRawEvent } from "../sdk.js";
 
@@ -7,14 +13,14 @@ export const MsgType = {
 
 export const RelationType = {
   Replace: "m.replace",
-  Annotation: "m.annotation",
+  Annotation: MATRIX_ANNOTATION_RELATION_TYPE,
 } as const;
 
 export const EventType = {
   RoomMessage: "m.room.message",
   RoomPinnedEvents: "m.room.pinned_events",
   RoomTopic: "m.room.topic",
-  Reaction: "m.reaction",
+  Reaction: MATRIX_REACTION_EVENT_TYPE,
 } as const;
 
 export type RoomMessageEventContent = MessageEventContent & {
@@ -28,13 +34,7 @@ export type RoomMessageEventContent = MessageEventContent & {
   };
 };
 
-export type ReactionEventContent = {
-  "m.relates_to": {
-    rel_type: string;
-    event_id: string;
-    key: string;
-  };
-};
+export type ReactionEventContent = MatrixReactionEventContent;
 
 export type RoomPinnedEventsEventContent = {
   pinned: string[];
@@ -61,12 +61,6 @@ export type MatrixMessageSummary = {
     eventId?: string;
     key?: string;
   };
-};
-
-export type MatrixReactionSummary = {
-  key: string;
-  count: number;
-  users: string[];
 };
 
 export type MatrixActionClient = {

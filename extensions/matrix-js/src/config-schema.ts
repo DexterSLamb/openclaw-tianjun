@@ -55,6 +55,11 @@ export const MatrixConfigSchema = z.object({
   textChunkLimit: z.number().optional(),
   chunkMode: z.enum(["length", "newline"]).optional(),
   responsePrefix: z.string().optional(),
+  ackReaction: z.string().optional(),
+  ackReactionScope: z
+    .enum(["group-mentions", "group-all", "direct", "all", "none", "off"])
+    .optional(),
+  reactionNotifications: z.enum(["off", "own"]).optional(),
   mediaMaxMb: z.number().optional(),
   autoJoin: z.enum(["always", "allowlist", "off"]).optional(),
   autoJoinAllowlist: z.array(allowFromEntry).optional(),

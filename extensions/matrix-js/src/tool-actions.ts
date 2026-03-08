@@ -143,14 +143,19 @@ export async function handleMatrixAction(
       });
       if (remove || isEmpty) {
         const result = await removeMatrixReactions(roomId, messageId, {
+          accountId,
           emoji: remove ? emoji : undefined,
         });
         return jsonResult({ ok: true, removed: result.removed });
       }
-      await reactMatrixMessage(roomId, messageId, emoji);
+      await reactMatrixMessage(roomId, messageId, emoji, { accountId });
       return jsonResult({ ok: true, added: emoji });
     }
-    const reactions = await listMatrixReactions(roomId, messageId);
+    const limit = readNumberParam(params, "limit", { integer: true });
+    const reactions = await listMatrixReactions(roomId, messageId, {
+      accountId,
+      limit: limit ?? undefined,
+    });
     return jsonResult({ ok: true, reactions });
   }
 

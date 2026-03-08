@@ -24,6 +24,7 @@ import {
   sendReadReceiptMatrix,
   sendTypingMatrix,
 } from "../send.js";
+import { resolveMatrixAckReactionConfig } from "./ack-config.js";
 import {
   normalizeMatrixAllowList,
   resolveMatrixAllowListMatch,
@@ -32,6 +33,7 @@ import {
 import { resolveMatrixLocation, type MatrixLocationPayload } from "./location.js";
 import { downloadMatrixMedia } from "./media.js";
 import { resolveMentions } from "./mentions.js";
+import { handleInboundMatrixReaction } from "./reaction-events.js";
 import { deliverMatrixReplies } from "./replies.js";
 import { resolveMatrixRoomConfig } from "./rooms.js";
 import { resolveMatrixThreadRootId, resolveMatrixThreadTarget } from "./threads.js";
@@ -155,15 +157,21 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
       }
 
       const isPollEvent = isPollStartType(eventType);
+      const isReactionEvent = eventType === EventType.Reaction;
       const locationContent = event.content as LocationMessageEventContent;
       const isLocationEvent =
         eventType === EventType.Location ||
         (eventType === EventType.RoomMessage && locationContent.msgtype === EventType.Location);
-      if (eventType !== EventType.RoomMessage && !isPollEvent && !isLocationEvent) {
+      if (
+        eventType !== EventType.RoomMessage &&
+        !isPollEvent &&
+        !isLocationEvent &&
+        !isReactionEvent
+      ) {
         return;
       }
       logVerboseMessage(
-        `matrix: room.message recv room=${roomId} type=${eventType} id=${event.event_id ?? "unknown"}`,
+        `matrix: inbound event room=${roomId} type=${eventType} id=${event.event_id ?? "unknown"}`,
       );
       if (event.unsigned?.redacted_because) {
         return;
@@ -295,7 +303,7 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
           });
           const allowMatchMeta = formatAllowlistMatchMeta(allowMatch);
           if (!allowMatch.allowed) {
-            if (dmPolicy === "pairing") {
+            if (!isReactionEvent && dmPolicy === "pairing") {
               const { code, created } = await core.channel.pairing.upsertPairingRequest({
                 channel: "matrix-js",
                 id: senderId,
@@ -330,9 +338,9 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
                 );
               }
             }
-            if (dmPolicy !== "pairing") {
+            if (isReactionEvent || dmPolicy !== "pairing") {
               logVerboseMessage(
-                `matrix: blocked dm sender ${senderId} (dmPolicy=${dmPolicy}, ${allowMatchMeta})`,
+                `matrix: blocked ${isReactionEvent ? "reaction" : "dm"} sender ${senderId} (dmPolicy=${dmPolicy}, ${allowMatchMeta})`,
               );
             }
             return;
@@ -371,6 +379,23 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
       }
       if (isRoom) {
         logVerboseMessage(`matrix: allow room ${roomId} (${roomMatchMeta})`);
+      }
+
+      if (isReactionEvent) {
+        await handleInboundMatrixReaction({
+          client,
+          core,
+          cfg,
+          accountId,
+          roomId,
+          event,
+          senderId,
+          senderLabel: senderName,
+          selfUserId,
+          isDirectMessage,
+          logVerboseMessage,
+        });
+        return;
       }
 
       const rawBody =
@@ -585,8 +610,11 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
       const preview = bodyText.slice(0, 200).replace(/\n/g, "\\n");
       logVerboseMessage(`matrix inbound: room=${roomId} from=${senderId} preview="${preview}"`);
 
-      const ackReaction = (cfg.messages?.ackReaction ?? "").trim();
-      const ackScope = cfg.messages?.ackReactionScope ?? "group-mentions";
+      const { ackReaction, ackReactionScope: ackScope } = resolveMatrixAckReactionConfig({
+        cfg,
+        agentId: route.agentId,
+        accountId,
+      });
       const shouldAckReaction = () =>
         Boolean(
           ackReaction &&

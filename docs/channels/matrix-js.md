@@ -225,6 +225,41 @@ Inbound SAS requests are auto-confirmed by the bot device, so once the user conf
 in their Matrix client, verification completes without requiring a manual OpenClaw tool step.
 Verification protocol/system notices are not forwarded to the agent chat pipeline, so they do not produce `NO_REPLY`.
 
+## Reactions
+
+Matrix-js supports outbound reaction actions, inbound reaction notifications, and inbound ack reactions.
+
+- Outbound reaction tooling is gated by `channels["matrix-js"].actions.reactions`.
+- `react` adds a reaction to a specific Matrix event.
+- `reactions` lists the current reaction summary for a specific Matrix event.
+- `emoji=""` removes the bot account's own reactions on that event.
+- `remove: true` removes only the specified emoji reaction from the bot account.
+
+Ack reactions use the standard OpenClaw resolution order:
+
+- `channels["matrix-js"].accounts.<accountId>.ackReaction`
+- `channels["matrix-js"].ackReaction`
+- `messages.ackReaction`
+- agent identity emoji fallback
+
+Ack reaction scope resolves in this order:
+
+- `channels["matrix-js"].accounts.<accountId>.ackReactionScope`
+- `channels["matrix-js"].ackReactionScope`
+- `messages.ackReactionScope`
+
+Reaction notification mode resolves in this order:
+
+- `channels["matrix-js"].accounts.<accountId>.reactionNotifications`
+- `channels["matrix-js"].reactionNotifications`
+- default: `own`
+
+Current behavior:
+
+- `reactionNotifications: "own"` forwards added `m.reaction` events when they target bot-authored Matrix messages.
+- `reactionNotifications: "off"` disables reaction system events.
+- Reaction removals are still not synthesized into system events because Matrix surfaces those as redactions, not as standalone `m.reaction` removals.
+
 ## DM and room policy example
 
 ```json5
@@ -296,6 +331,9 @@ See [Groups](/channels/groups) for mention-gating and allowlist behavior.
 - `textChunkLimit`: outbound message chunk size.
 - `chunkMode`: `length` or `newline`.
 - `responsePrefix`: optional message prefix for outbound replies.
+- `ackReaction`: optional ack reaction override for this channel/account.
+- `ackReactionScope`: optional ack reaction scope override (`group-mentions`, `group-all`, `direct`, `all`, `none`, `off`).
+- `reactionNotifications`: inbound reaction notification mode (`own`, `off`).
 - `mediaMaxMb`: outbound media size cap in MB.
 - `autoJoin`: invite auto-join policy (`always`, `allowlist`, `off`).
 - `autoJoinAllowlist`: rooms/aliases allowed when `autoJoin` is `allowlist`.

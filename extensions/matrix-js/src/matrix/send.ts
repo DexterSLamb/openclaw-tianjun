@@ -1,6 +1,7 @@
 import type { PollInput } from "openclaw/plugin-sdk/matrix-js";
 import { getMatrixRuntime } from "../runtime.js";
 import { buildPollStartContent, M_POLL_START } from "./poll-types.js";
+import { buildMatrixReactionContent } from "./reaction-common.js";
 import type { MatrixClient } from "./sdk.js";
 import { resolveMatrixClient, resolveMediaMaxBytes } from "./send/client.js";
 import {
@@ -20,11 +21,9 @@ import { normalizeThreadId, resolveMatrixRoomId } from "./send/targets.js";
 import {
   EventType,
   MsgType,
-  RelationType,
   type MatrixOutboundContent,
   type MatrixSendOpts,
   type MatrixSendResult,
-  type ReactionEventContent,
 } from "./send/types.js";
 
 const MATRIX_TEXT_LIMIT = 4000;
@@ -32,6 +31,24 @@ const getCore = () => getMatrixRuntime();
 
 export type { MatrixSendOpts, MatrixSendResult } from "./send/types.js";
 export { resolveMatrixRoomId } from "./send/targets.js";
+
+type MatrixClientResolveOpts = {
+  client?: MatrixClient;
+  timeoutMs?: number;
+  accountId?: string | null;
+};
+
+function normalizeMatrixClientResolveOpts(
+  opts?: MatrixClient | MatrixClientResolveOpts,
+): MatrixClientResolveOpts {
+  if (!opts) {
+    return {};
+  }
+  if (typeof (opts as MatrixClient).sendEvent === "function") {
+    return { client: opts as MatrixClient };
+  }
+  return opts;
+}
 
 export async function sendMessageMatrix(
   to: string,
@@ -238,23 +255,17 @@ export async function reactMatrixMessage(
   roomId: string,
   messageId: string,
   emoji: string,
-  client?: MatrixClient,
+  opts?: MatrixClient | MatrixClientResolveOpts,
 ): Promise<void> {
-  if (!emoji.trim()) {
-    throw new Error("Matrix reaction requires an emoji");
-  }
+  const clientOpts = normalizeMatrixClientResolveOpts(opts);
   const { client: resolved, stopOnDone } = await resolveMatrixClient({
-    client,
+    client: clientOpts.client,
+    timeoutMs: clientOpts.timeoutMs,
+    accountId: clientOpts.accountId ?? undefined,
   });
   try {
     const resolvedRoom = await resolveMatrixRoomId(resolved, roomId);
-    const reaction: ReactionEventContent = {
-      "m.relates_to": {
-        rel_type: RelationType.Annotation,
-        event_id: messageId,
-        key: emoji,
-      },
-    };
+    const reaction = buildMatrixReactionContent(messageId, emoji);
     await resolved.sendEvent(resolvedRoom, EventType.Reaction, reaction);
   } finally {
     if (stopOnDone) {

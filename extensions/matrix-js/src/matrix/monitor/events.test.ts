@@ -69,6 +69,32 @@ function createHarness(params?: {
 }
 
 describe("registerMatrixMonitorEvents verification routing", () => {
+  it("forwards reaction room events into the shared room handler", async () => {
+    const { onRoomMessage, sendMessage, roomEventListener } = createHarness();
+
+    roomEventListener("!room:example.org", {
+      event_id: "$reaction1",
+      sender: "@alice:example.org",
+      type: EventType.Reaction,
+      origin_server_ts: Date.now(),
+      content: {
+        "m.relates_to": {
+          rel_type: "m.annotation",
+          event_id: "$msg1",
+          key: "👍",
+        },
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(onRoomMessage).toHaveBeenCalledWith(
+        "!room:example.org",
+        expect.objectContaining({ event_id: "$reaction1", type: EventType.Reaction }),
+      );
+    });
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
   it("posts verification request notices directly into the room", async () => {
     const { onRoomMessage, sendMessage, roomMessageListener } = createHarness();
     if (!roomMessageListener) {

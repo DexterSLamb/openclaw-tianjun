@@ -5,12 +5,16 @@ import type { CoreConfig } from "./types.js";
 const mocks = vi.hoisted(() => ({
   voteMatrixPoll: vi.fn(),
   reactMatrixMessage: vi.fn(),
+  listMatrixReactions: vi.fn(),
+  removeMatrixReactions: vi.fn(),
 }));
 
 vi.mock("./matrix/actions.js", async () => {
   const actual = await vi.importActual<typeof import("./matrix/actions.js")>("./matrix/actions.js");
   return {
     ...actual,
+    listMatrixReactions: mocks.listMatrixReactions,
+    removeMatrixReactions: mocks.removeMatrixReactions,
     voteMatrixPoll: mocks.voteMatrixPoll,
   };
 });
@@ -34,6 +38,8 @@ describe("handleMatrixAction pollVote", () => {
       labels: ["Pizza", "Sushi"],
       maxSelections: 2,
     });
+    mocks.listMatrixReactions.mockResolvedValue([{ key: "👍", count: 1, users: ["@u:example"] }]);
+    mocks.removeMatrixReactions.mockResolvedValue({ removed: 1 });
   });
 
   it("parses snake_case vote params and forwards normalized selectors", async () => {
@@ -76,5 +82,63 @@ describe("handleMatrixAction pollVote", () => {
         {} as CoreConfig,
       ),
     ).rejects.toThrow("pollId required");
+  });
+
+  it("passes account-scoped opts to add reactions", async () => {
+    await handleMatrixAction(
+      {
+        action: "react",
+        accountId: "ops",
+        roomId: "!room:example",
+        messageId: "$msg",
+        emoji: "👍",
+      },
+      { channels: { "matrix-js": { actions: { reactions: true } } } } as CoreConfig,
+    );
+
+    expect(mocks.reactMatrixMessage).toHaveBeenCalledWith("!room:example", "$msg", "👍", {
+      accountId: "ops",
+    });
+  });
+
+  it("passes account-scoped opts to remove reactions", async () => {
+    await handleMatrixAction(
+      {
+        action: "react",
+        account_id: "ops",
+        room_id: "!room:example",
+        message_id: "$msg",
+        emoji: "👍",
+        remove: true,
+      },
+      { channels: { "matrix-js": { actions: { reactions: true } } } } as CoreConfig,
+    );
+
+    expect(mocks.removeMatrixReactions).toHaveBeenCalledWith("!room:example", "$msg", {
+      accountId: "ops",
+      emoji: "👍",
+    });
+  });
+
+  it("passes account-scoped opts and limit to reaction listing", async () => {
+    const result = await handleMatrixAction(
+      {
+        action: "reactions",
+        account_id: "ops",
+        room_id: "!room:example",
+        message_id: "$msg",
+        limit: "5",
+      },
+      { channels: { "matrix-js": { actions: { reactions: true } } } } as CoreConfig,
+    );
+
+    expect(mocks.listMatrixReactions).toHaveBeenCalledWith("!room:example", "$msg", {
+      accountId: "ops",
+      limit: 5,
+    });
+    expect(result.details).toMatchObject({
+      ok: true,
+      reactions: [{ key: "👍", count: 1 }],
+    });
   });
 });

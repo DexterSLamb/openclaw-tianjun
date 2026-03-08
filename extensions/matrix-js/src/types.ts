@@ -84,6 +84,12 @@ export type MatrixConfig = {
   chunkMode?: "length" | "newline";
   /** Outbound response prefix override for this channel/account. */
   responsePrefix?: string;
+  /** Ack reaction emoji override for this channel/account. */
+  ackReaction?: string;
+  /** Ack reaction scope override for this channel/account. */
+  ackReactionScope?: "group-mentions" | "group-all" | "direct" | "all" | "none" | "off";
+  /** Inbound reaction notifications for bot-authored Matrix messages. */
+  reactionNotifications?: "off" | "own";
   /** Max outbound media size in MB. */
   mediaMaxMb?: number;
   /** Auto-join invites (always|allowlist|off). Default: always. */

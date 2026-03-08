@@ -1,3 +1,4 @@
+import { MATRIX_REACTION_EVENT_TYPE } from "../reaction-common.js";
 import type { EncryptedFile, MessageEventContent } from "../sdk.js";
 export type { MatrixRawEvent } from "../sdk.js";
 
@@ -6,6 +7,7 @@ export const EventType = {
   RoomMessageEncrypted: "m.room.encrypted",
   RoomMember: "m.room.member",
   Location: "m.location",
+  Reaction: MATRIX_REACTION_EVENT_TYPE,
 } as const;
 
 export const RelationType = {
