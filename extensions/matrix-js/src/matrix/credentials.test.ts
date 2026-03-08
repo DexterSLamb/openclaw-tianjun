@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { setMatrixRuntime } from "../runtime.js";
 import {
   loadMatrixCredentials,
+  clearMatrixCredentials,
   resolveMatrixCredentialsPath,
   saveMatrixCredentials,
   touchMatrixCredentials,
@@ -31,7 +32,7 @@ describe("matrix credentials storage", () => {
   }
 
   it("writes credentials atomically with secure file permissions", async () => {
-    setupStateDir();
+    const stateDir = setupStateDir();
     await saveMatrixCredentials(
       {
         homeserver: "https://matrix.example.org",
@@ -45,6 +46,7 @@ describe("matrix credentials storage", () => {
 
     const credPath = resolveMatrixCredentialsPath({}, "ops");
     expect(fs.existsSync(credPath)).toBe(true);
+    expect(credPath).toBe(path.join(stateDir, "credentials", "matrix", "credentials-ops.json"));
     const mode = fs.statSync(credPath).mode & 0o777;
     expect(mode).toBe(0o600);
   });
@@ -76,5 +78,41 @@ describe("matrix credentials storage", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("migrates legacy matrix-js credential files on read", async () => {
+    const stateDir = setupStateDir();
+    const legacyPath = path.join(stateDir, "credentials", "matrix-js", "credentials.json");
+    fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+    fs.writeFileSync(
+      legacyPath,
+      JSON.stringify({
+        homeserver: "https://matrix.example.org",
+        userId: "@bot:example.org",
+        accessToken: "legacy-token",
+        createdAt: "2026-03-01T10:00:00.000Z",
+      }),
+    );
+
+    const loaded = loadMatrixCredentials({}, "default");
+
+    expect(loaded?.accessToken).toBe("legacy-token");
+    expect(fs.existsSync(legacyPath)).toBe(false);
+    expect(fs.existsSync(resolveMatrixCredentialsPath({}, "default"))).toBe(true);
+  });
+
+  it("clears both current and legacy credential paths", () => {
+    const stateDir = setupStateDir();
+    const currentPath = path.join(stateDir, "credentials", "matrix", "credentials.json");
+    const legacyPath = path.join(stateDir, "credentials", "matrix-js", "credentials.json");
+    fs.mkdirSync(path.dirname(currentPath), { recursive: true });
+    fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+    fs.writeFileSync(currentPath, "{}");
+    fs.writeFileSync(legacyPath, "{}");
+
+    clearMatrixCredentials({}, "default");
+
+    expect(fs.existsSync(currentPath)).toBe(false);
+    expect(fs.existsSync(legacyPath)).toBe(false);
   });
 });

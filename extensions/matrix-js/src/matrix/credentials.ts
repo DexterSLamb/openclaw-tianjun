@@ -29,6 +29,14 @@ export function resolveMatrixCredentialsDir(
   stateDir?: string,
 ): string {
   const resolvedStateDir = stateDir ?? getMatrixRuntime().state.resolveStateDir(env, os.homedir);
+  return path.join(resolvedStateDir, "credentials", "matrix");
+}
+
+function resolveLegacyMatrixJsCredentialsDir(
+  env: NodeJS.ProcessEnv = process.env,
+  stateDir?: string,
+): string {
+  const resolvedStateDir = stateDir ?? getMatrixRuntime().state.resolveStateDir(env, os.homedir);
   return path.join(resolvedStateDir, "credentials", "matrix-js");
 }
 
@@ -40,10 +48,39 @@ export function resolveMatrixCredentialsPath(
   return path.join(dir, credentialsFilename(accountId));
 }
 
+function resolveLegacyMatrixJsCredentialsPath(
+  env: NodeJS.ProcessEnv = process.env,
+  accountId?: string | null,
+): string {
+  const dir = resolveLegacyMatrixJsCredentialsDir(env);
+  return path.join(dir, credentialsFilename(accountId));
+}
+
+function maybeMigrateLegacyMatrixJsCredentials(
+  env: NodeJS.ProcessEnv = process.env,
+  accountId?: string | null,
+): void {
+  const nextPath = resolveMatrixCredentialsPath(env, accountId);
+  if (fs.existsSync(nextPath)) {
+    return;
+  }
+  const legacyPath = resolveLegacyMatrixJsCredentialsPath(env, accountId);
+  if (!fs.existsSync(legacyPath)) {
+    return;
+  }
+  fs.mkdirSync(path.dirname(nextPath), { recursive: true });
+  try {
+    fs.renameSync(legacyPath, nextPath);
+  } catch {
+    // Best-effort compatibility migration only.
+  }
+}
+
 export function loadMatrixCredentials(
   env: NodeJS.ProcessEnv = process.env,
   accountId?: string | null,
 ): MatrixStoredCredentials | null {
+  maybeMigrateLegacyMatrixJsCredentials(env, accountId);
   const credPath = resolveMatrixCredentialsPath(env, accountId);
   try {
     if (!fs.existsSync(credPath)) {
@@ -69,6 +106,7 @@ export async function saveMatrixCredentials(
   env: NodeJS.ProcessEnv = process.env,
   accountId?: string | null,
 ): Promise<void> {
+  maybeMigrateLegacyMatrixJsCredentials(env, accountId);
   const credPath = resolveMatrixCredentialsPath(env, accountId);
 
   const existing = loadMatrixCredentials(env, accountId);
@@ -87,6 +125,7 @@ export async function touchMatrixCredentials(
   env: NodeJS.ProcessEnv = process.env,
   accountId?: string | null,
 ): Promise<void> {
+  maybeMigrateLegacyMatrixJsCredentials(env, accountId);
   const existing = loadMatrixCredentials(env, accountId);
   if (!existing) {
     return;
@@ -102,9 +141,13 @@ export function clearMatrixCredentials(
   accountId?: string | null,
 ): void {
   const credPath = resolveMatrixCredentialsPath(env, accountId);
+  const legacyPath = resolveLegacyMatrixJsCredentialsPath(env, accountId);
   try {
     if (fs.existsSync(credPath)) {
       fs.unlinkSync(credPath);
+    }
+    if (fs.existsSync(legacyPath)) {
+      fs.unlinkSync(legacyPath);
     }
   } catch {
     // ignore

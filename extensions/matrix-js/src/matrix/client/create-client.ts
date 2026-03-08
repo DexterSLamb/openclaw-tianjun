@@ -31,7 +31,14 @@ export async function createMatrixClient(params: {
     accountId: params.accountId,
     env,
   });
-  maybeMigrateLegacyStorage({ storagePaths, env });
+  maybeMigrateLegacyStorage({
+    storagePaths,
+    homeserver: params.homeserver,
+    userId,
+    accessToken: params.accessToken,
+    accountId: params.accountId,
+    env,
+  });
   fs.mkdirSync(storagePaths.rootDir, { recursive: true });
 
   writeStorageMeta({

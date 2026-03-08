@@ -44,6 +44,30 @@ function resolveLegacyStoragePaths(env: NodeJS.ProcessEnv = process.env): {
   };
 }
 
+function resolveLegacyMatrixJsAccountRoot(params: {
+  homeserver: string;
+  userId: string;
+  accessToken: string;
+  accountId?: string | null;
+  env?: NodeJS.ProcessEnv;
+}): string {
+  const env = params.env ?? process.env;
+  const stateDir = getMatrixRuntime().state.resolveStateDir(env, os.homedir);
+  const accountKey = sanitizePathSegment(params.accountId ?? DEFAULT_ACCOUNT_KEY);
+  const userKey = sanitizePathSegment(params.userId);
+  const serverKey = resolveHomeserverKey(params.homeserver);
+  const tokenHash = hashAccessToken(params.accessToken);
+  return path.join(
+    stateDir,
+    "credentials",
+    "matrix-js",
+    "accounts",
+    accountKey,
+    `${serverKey}__${userKey}`,
+    tokenHash,
+  );
+}
+
 export function resolveMatrixStoragePaths(params: {
   homeserver: string;
   userId: string;
@@ -59,8 +83,7 @@ export function resolveMatrixStoragePaths(params: {
   const tokenHash = hashAccessToken(params.accessToken);
   const rootDir = path.join(
     stateDir,
-    "credentials",
-    "matrix-js",
+    "matrix",
     "accounts",
     accountKey,
     `${serverKey}__${userKey}`,
@@ -80,18 +103,43 @@ export function resolveMatrixStoragePaths(params: {
 
 export function maybeMigrateLegacyStorage(params: {
   storagePaths: MatrixStoragePaths;
+  homeserver?: string;
+  userId?: string;
+  accessToken?: string;
+  accountId?: string | null;
   env?: NodeJS.ProcessEnv;
 }): void {
+  const hasNewStorage =
+    fs.existsSync(params.storagePaths.storagePath) || fs.existsSync(params.storagePaths.cryptoPath);
+  if (hasNewStorage) {
+    return;
+  }
+
+  const legacyAccountRoot =
+    params.homeserver && params.userId && params.accessToken
+      ? resolveLegacyMatrixJsAccountRoot({
+          homeserver: params.homeserver,
+          userId: params.userId,
+          accessToken: params.accessToken,
+          accountId: params.accountId,
+          env: params.env,
+        })
+      : null;
+
+  if (legacyAccountRoot && fs.existsSync(legacyAccountRoot)) {
+    fs.mkdirSync(path.dirname(params.storagePaths.rootDir), { recursive: true });
+    try {
+      fs.renameSync(legacyAccountRoot, params.storagePaths.rootDir);
+      return;
+    } catch {
+      // Fall through to older one-off migration paths.
+    }
+  }
+
   const legacy = resolveLegacyStoragePaths(params.env);
   const hasLegacyStorage = fs.existsSync(legacy.storagePath);
   const hasLegacyCrypto = fs.existsSync(legacy.cryptoPath);
-  const hasNewStorage =
-    fs.existsSync(params.storagePaths.storagePath) || fs.existsSync(params.storagePaths.cryptoPath);
-
   if (!hasLegacyStorage && !hasLegacyCrypto) {
-    return;
-  }
-  if (hasNewStorage) {
     return;
   }
 

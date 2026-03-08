@@ -124,24 +124,39 @@ function resolveDefaultIdbSnapshotPath(): string {
     process.env.OPENCLAW_STATE_DIR ||
     process.env.MOLTBOT_STATE_DIR ||
     path.join(process.env.HOME || "/tmp", ".openclaw");
+  return path.join(stateDir, "matrix", "crypto-idb-snapshot.json");
+}
+
+function resolveLegacyIdbSnapshotPath(): string {
+  const stateDir =
+    process.env.OPENCLAW_STATE_DIR ||
+    process.env.MOLTBOT_STATE_DIR ||
+    path.join(process.env.HOME || "/tmp", ".openclaw");
   return path.join(stateDir, "credentials", "matrix-js", "crypto-idb-snapshot.json");
 }
 
 export async function restoreIdbFromDisk(snapshotPath?: string): Promise<boolean> {
-  const resolvedPath = snapshotPath ?? resolveDefaultIdbSnapshotPath();
-  try {
-    const data = fs.readFileSync(resolvedPath, "utf8");
-    const snapshot: IdbDatabaseSnapshot[] = JSON.parse(data);
-    if (!Array.isArray(snapshot) || snapshot.length === 0) return false;
-    await restoreIndexedDatabases(snapshot);
-    LogService.info(
-      "IdbPersistence",
-      `Restored ${snapshot.length} IndexedDB database(s) from ${resolvedPath}`,
-    );
-    return true;
-  } catch {
-    return false;
+  const candidatePaths = snapshotPath
+    ? [snapshotPath]
+    : [resolveDefaultIdbSnapshotPath(), resolveLegacyIdbSnapshotPath()];
+  for (const resolvedPath of candidatePaths) {
+    try {
+      const data = fs.readFileSync(resolvedPath, "utf8");
+      const snapshot: IdbDatabaseSnapshot[] = JSON.parse(data);
+      if (!Array.isArray(snapshot) || snapshot.length === 0) {
+        continue;
+      }
+      await restoreIndexedDatabases(snapshot);
+      LogService.info(
+        "IdbPersistence",
+        `Restored ${snapshot.length} IndexedDB database(s) from ${resolvedPath}`,
+      );
+      return true;
+    } catch {
+      continue;
+    }
   }
+  return false;
 }
 
 export async function persistIdbToDisk(params?: {

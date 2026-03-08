@@ -73,6 +73,9 @@ Password-based setup (token is cached after login):
 }
 ```
 
+Matrix-js stores cached credentials in `~/.openclaw/credentials/matrix/`.
+The default account uses `credentials.json`; named accounts use `credentials-<account>.json`.
+
 Environment variable equivalents (used when the config key is not set):
 
 - `MATRIX_HOMESERVER`
@@ -217,6 +220,13 @@ skip duplicate requests while one is already pending, and apply a local cooldown
 Failed request attempts retry sooner than successful request creation by default.
 Set `startupVerification: "off"` to disable automatic startup requests, or tune `startupVerificationCooldownHours`
 if you want a shorter or longer retry window.
+
+Encrypted runtime state is stored per account and per access token in
+`~/.openclaw/matrix/accounts/<account>/<homeserver>__<user>/<token-hash>/`.
+That directory contains the sync store (`bot-storage.json`), crypto store (`crypto/`),
+recovery key file (`recovery-key.json`), IndexedDB snapshot (`crypto-idb-snapshot.json`),
+thread bindings (`thread-bindings.json`), and startup verification state (`startup-verification.json`)
+when those features are in use.
 
 ## Automatic verification notices
 
