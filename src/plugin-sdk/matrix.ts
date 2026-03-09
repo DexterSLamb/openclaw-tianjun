@@ -16,7 +16,14 @@ export {
   ensureConfiguredAcpRouteReady,
 } from "../acp/persistent-bindings.route.js";
 export { resolveAllowlistMatchByCandidates } from "../channels/allowlist-match.js";
-export { mergeAllowlist, summarizeMapping } from "../channels/allowlists/resolve-utils.js";
+export {
+  addAllowlistUserEntriesFromConfigEntry,
+  buildAllowlistResolutionSummary,
+  canonicalizeAllowlistWithResolvedIds,
+  mergeAllowlist,
+  patchAllowlistUsersInConfigEntries,
+  summarizeMapping,
+} from "../channels/allowlists/resolve-utils.js";
 export { resolveControlCommandGate } from "../channels/command-gating.js";
 export type { NormalizedLocation } from "../channels/location.js";
 export { formatLocationText, toLocationContext } from "../channels/location.js";

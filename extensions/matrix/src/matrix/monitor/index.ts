@@ -1,16 +1,13 @@
 import { format } from "node:util";
 import {
   GROUP_POLICY_BLOCKED_LABEL,
-  mergeAllowlist,
   resolveThreadBindingIdleTimeoutMsForChannel,
   resolveThreadBindingMaxAgeMsForChannel,
   resolveAllowlistProviderRuntimeGroupPolicy,
   resolveDefaultGroupPolicy,
-  summarizeMapping,
   warnMissingProviderGroupPolicyFallbackOnce,
   type RuntimeEnv,
 } from "openclaw/plugin-sdk/matrix";
-import { resolveMatrixTargets } from "../../resolve-targets.js";
 import { getMatrixRuntime } from "../../runtime.js";
 import type { CoreConfig, ReplyToMode } from "../../types.js";
 import { resolveMatrixAccount } from "../accounts.js";
@@ -26,8 +23,8 @@ import { updateMatrixAccountConfig } from "../config-update.js";
 import { summarizeMatrixDeviceHealth } from "../device-health.js";
 import { syncMatrixOwnProfile } from "../profile.js";
 import { createMatrixThreadBindingManager } from "../thread-bindings.js";
-import { normalizeMatrixUserId } from "./allowlist.js";
 import { registerMatrixAutoJoin } from "./auto-join.js";
+import { resolveMatrixMonitorConfig } from "./config.js";
 import { createDirectRoomTracker } from "./direct.js";
 import { registerMatrixMonitorEvents } from "./events.js";
 import { createMatrixRoomMessageHandler } from "./handler.js";
@@ -76,69 +73,6 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
     logger.debug?.(message);
   };
 
-  const normalizeUserEntry = (raw: string) =>
-    raw
-      .replace(/^matrix:/i, "")
-      .replace(/^user:/i, "")
-      .trim();
-  const normalizeRoomEntry = (raw: string) =>
-    raw
-      .replace(/^matrix:/i, "")
-      .replace(/^(room|channel):/i, "")
-      .trim();
-  const isMatrixUserId = (value: string) => value.startsWith("@") && value.includes(":");
-  const resolveUserAllowlist = async (
-    label: string,
-    list?: Array<string | number>,
-  ): Promise<string[]> => {
-    let allowList = list ?? [];
-    if (allowList.length === 0) {
-      return allowList.map(String);
-    }
-    const entries = allowList
-      .map((entry) => normalizeUserEntry(String(entry)))
-      .filter((entry) => entry && entry !== "*");
-    if (entries.length === 0) {
-      return allowList.map(String);
-    }
-    const mapping: string[] = [];
-    const unresolved: string[] = [];
-    const additions: string[] = [];
-    const pending: string[] = [];
-    for (const entry of entries) {
-      if (isMatrixUserId(entry)) {
-        additions.push(normalizeMatrixUserId(entry));
-        continue;
-      }
-      pending.push(entry);
-    }
-    if (pending.length > 0) {
-      const resolved = await resolveMatrixTargets({
-        cfg,
-        inputs: pending,
-        kind: "user",
-        runtime,
-      });
-      for (const entry of resolved) {
-        if (entry.resolved && entry.id) {
-          const normalizedId = normalizeMatrixUserId(entry.id);
-          additions.push(normalizedId);
-          mapping.push(`${entry.input}→${normalizedId}`);
-        } else {
-          unresolved.push(entry.input);
-        }
-      }
-    }
-    allowList = mergeAllowlist({ existing: allowList, additions });
-    summarizeMapping(label, mapping, unresolved, runtime);
-    if (unresolved.length > 0) {
-      runtime.log?.(
-        `${label} entries must be full Matrix IDs (example: @user:server). Unresolved entries are ignored.`,
-      );
-    }
-    return allowList.map(String);
-  };
-
   const authContext = resolveMatrixAuthContext({
     cfg,
     accountId: opts.accountId,
@@ -154,82 +88,13 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
   let groupAllowFrom: string[] = (accountConfig.groupAllowFrom ?? []).map(String);
   let roomsConfig = accountConfig.groups ?? accountConfig.rooms;
 
-  allowFrom = await resolveUserAllowlist("matrix dm allowlist", allowFrom);
-  groupAllowFrom = await resolveUserAllowlist("matrix group allowlist", groupAllowFrom);
-
-  if (roomsConfig && Object.keys(roomsConfig).length > 0) {
-    const mapping: string[] = [];
-    const unresolved: string[] = [];
-    const nextRooms: Record<string, (typeof roomsConfig)[string]> = {};
-    if (roomsConfig["*"]) {
-      nextRooms["*"] = roomsConfig["*"];
-    }
-    const pending: Array<{ input: string; query: string; config: (typeof roomsConfig)[string] }> =
-      [];
-    for (const [entry, roomConfig] of Object.entries(roomsConfig)) {
-      if (entry === "*") {
-        continue;
-      }
-      const trimmed = entry.trim();
-      if (!trimmed) {
-        continue;
-      }
-      const cleaned = normalizeRoomEntry(trimmed);
-      if ((cleaned.startsWith("!") || cleaned.startsWith("#")) && cleaned.includes(":")) {
-        if (!nextRooms[cleaned]) {
-          nextRooms[cleaned] = roomConfig;
-        }
-        if (cleaned !== entry) {
-          mapping.push(`${entry}→${cleaned}`);
-        }
-        continue;
-      }
-      pending.push({ input: entry, query: trimmed, config: roomConfig });
-    }
-    if (pending.length > 0) {
-      const resolved = await resolveMatrixTargets({
-        cfg,
-        inputs: pending.map((entry) => entry.query),
-        kind: "group",
-        runtime,
-      });
-      resolved.forEach((entry, index) => {
-        const source = pending[index];
-        if (!source) {
-          return;
-        }
-        if (entry.resolved && entry.id) {
-          if (!nextRooms[entry.id]) {
-            nextRooms[entry.id] = source.config;
-          }
-          mapping.push(`${source.input}→${entry.id}`);
-        } else {
-          unresolved.push(source.input);
-        }
-      });
-    }
-    roomsConfig = nextRooms;
-    summarizeMapping("matrix rooms", mapping, unresolved, runtime);
-    if (unresolved.length > 0) {
-      runtime.log?.(
-        "matrix rooms must be room IDs or aliases (example: !room:server or #alias:server). Unresolved entries are ignored.",
-      );
-    }
-  }
-  if (roomsConfig && Object.keys(roomsConfig).length > 0) {
-    const nextRooms = { ...roomsConfig };
-    for (const [roomKey, roomConfig] of Object.entries(roomsConfig)) {
-      const users = roomConfig?.users ?? [];
-      if (users.length === 0) {
-        continue;
-      }
-      const resolvedUsers = await resolveUserAllowlist(`matrix room users (${roomKey})`, users);
-      if (resolvedUsers !== users) {
-        nextRooms[roomKey] = { ...roomConfig, users: resolvedUsers };
-      }
-    }
-    roomsConfig = nextRooms;
-  }
+  ({ allowFrom, groupAllowFrom, roomsConfig } = await resolveMatrixMonitorConfig({
+    cfg,
+    allowFrom,
+    groupAllowFrom,
+    roomsConfig,
+    runtime,
+  }));
 
   cfg = {
     ...cfg,
