@@ -50,4 +50,22 @@ describe("probeMatrix", () => {
       localTimeoutMs: 500,
     });
   });
+
+  it("passes accountId through to client creation", async () => {
+    await probeMatrix({
+      homeserver: "https://matrix.example.org",
+      accessToken: "tok",
+      userId: "@bot:example.org",
+      timeoutMs: 500,
+      accountId: "ops",
+    });
+
+    expect(createMatrixClientMock).toHaveBeenCalledWith({
+      homeserver: "https://matrix.example.org",
+      userId: "@bot:example.org",
+      accessToken: "tok",
+      localTimeoutMs: 500,
+      accountId: "ops",
+    });
+  });
 });

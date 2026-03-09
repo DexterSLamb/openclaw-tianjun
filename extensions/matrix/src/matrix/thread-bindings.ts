@@ -339,6 +339,11 @@ export async function createMatrixThreadBindingManager(params: {
   enableSweeper?: boolean;
   logVerboseMessage?: (message: string) => void;
 }): Promise<MatrixThreadBindingManager> {
+  if (params.auth.accountId !== params.accountId) {
+    throw new Error(
+      `Matrix thread binding account mismatch: requested ${params.accountId}, auth resolved ${params.auth.accountId}`,
+    );
+  }
   const existing = MANAGERS_BY_ACCOUNT_ID.get(params.accountId);
   if (existing) {
     return existing;

@@ -1,3 +1,5 @@
+import { fetchMatrixPollMessageSummary, resolveMatrixPollRootEventId } from "../poll-summary.js";
+import { isPollEventType } from "../poll-types.js";
 import { resolveMatrixRoomId, sendMessageMatrix } from "../send.js";
 import { withResolvedActionClient } from "./client.js";
 import { resolveMatrixActionLimit } from "./limits.js";
@@ -99,10 +101,30 @@ export async function readMatrixMessages(
         from: token,
       },
     )) as { chunk: MatrixRawEvent[]; start?: string; end?: string };
-    const messages = res.chunk
-      .filter((event) => event.type === EventType.RoomMessage)
-      .filter((event) => !event.unsigned?.redacted_because)
-      .map(summarizeMatrixRawEvent);
+    const hydratedChunk = await client.hydrateEvents(resolvedRoom, res.chunk);
+    const seenPollRoots = new Set<string>();
+    const messages: MatrixMessageSummary[] = [];
+    for (const event of hydratedChunk) {
+      if (event.unsigned?.redacted_because) {
+        continue;
+      }
+      if (event.type === EventType.RoomMessage) {
+        messages.push(summarizeMatrixRawEvent(event));
+        continue;
+      }
+      if (!isPollEventType(event.type)) {
+        continue;
+      }
+      const pollRootId = resolveMatrixPollRootEventId(event);
+      if (!pollRootId || seenPollRoots.has(pollRootId)) {
+        continue;
+      }
+      seenPollRoots.add(pollRootId);
+      const pollSummary = await fetchMatrixPollMessageSummary(client, resolvedRoom, event);
+      if (pollSummary) {
+        messages.push(pollSummary);
+      }
+    }
     return {
       messages,
       nextBatch: res.end ?? null,

@@ -104,8 +104,10 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
   pairing: {
     idLabel: "matrixUserId",
     normalizeAllowEntry: (entry) => entry.replace(/^matrix:/i, ""),
-    notifyApproval: async ({ id }) => {
-      await sendMessageMatrix(`user:${id}`, PAIRING_APPROVED_MESSAGE);
+    notifyApproval: async ({ id, accountId }) => {
+      await sendMessageMatrix(`user:${id}`, PAIRING_APPROVED_MESSAGE, {
+        accountId,
+      });
     },
   },
   capabilities: {
@@ -442,6 +444,7 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
           accessToken: auth.accessToken,
           userId: auth.userId,
           timeoutMs,
+          accountId: account.accountId,
         });
       } catch (err) {
         return {

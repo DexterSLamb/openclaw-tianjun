@@ -5,6 +5,8 @@ const getActiveMatrixClientMock = vi.fn();
 const createMatrixClientMock = vi.fn();
 const isBunRuntimeMock = vi.fn(() => false);
 const resolveMatrixAuthMock = vi.fn();
+const resolveMatrixAuthContextMock = vi.fn();
+const getMatrixRuntimeMock = vi.fn();
 
 vi.mock("../active-client.js", () => ({
   getActiveMatrixClient: (...args: unknown[]) => getActiveMatrixClientMock(...args),
@@ -14,6 +16,11 @@ vi.mock("../client.js", () => ({
   createMatrixClient: (...args: unknown[]) => createMatrixClientMock(...args),
   isBunRuntime: () => isBunRuntimeMock(),
   resolveMatrixAuth: (...args: unknown[]) => resolveMatrixAuthMock(...args),
+  resolveMatrixAuthContext: (...args: unknown[]) => resolveMatrixAuthContextMock(...args),
+}));
+
+vi.mock("../../runtime.js", () => ({
+  getMatrixRuntime: () => getMatrixRuntimeMock(),
 }));
 
 let resolveMatrixClient: typeof import("./client.js").resolveMatrixClient;
@@ -30,7 +37,19 @@ describe("resolveMatrixClient", () => {
     vi.clearAllMocks();
     getActiveMatrixClientMock.mockReturnValue(null);
     isBunRuntimeMock.mockReturnValue(false);
+    getMatrixRuntimeMock.mockReturnValue({
+      config: {
+        loadConfig: () => ({}),
+      },
+    });
+    resolveMatrixAuthContextMock.mockReturnValue({
+      cfg: {},
+      env: process.env,
+      accountId: "default",
+      resolved: {},
+    });
     resolveMatrixAuthMock.mockResolvedValue({
+      accountId: "default",
       homeserver: "https://matrix.example.org",
       userId: "@bot:example.org",
       accessToken: "token",
@@ -74,5 +93,36 @@ describe("resolveMatrixClient", () => {
     expect(result).toEqual({ client: activeClient, stopOnDone: false });
     expect(resolveMatrixAuthMock).not.toHaveBeenCalled();
     expect(createMatrixClientMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the effective account id when auth resolution is implicit", async () => {
+    resolveMatrixAuthContextMock.mockReturnValue({
+      cfg: {},
+      env: process.env,
+      accountId: "ops",
+      resolved: {},
+    });
+    resolveMatrixAuthMock.mockResolvedValue({
+      accountId: "ops",
+      homeserver: "https://matrix.example.org",
+      userId: "@bot:example.org",
+      accessToken: "token",
+      password: undefined,
+      deviceId: "DEVICE123",
+      encryption: false,
+    });
+
+    await resolveMatrixClient({});
+
+    expect(getActiveMatrixClientMock).toHaveBeenCalledWith("ops");
+    expect(resolveMatrixAuthMock).toHaveBeenCalledWith({
+      cfg: {},
+      accountId: "ops",
+    });
+    expect(createMatrixClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "ops",
+      }),
+    );
   });
 });

@@ -220,6 +220,28 @@ describe("pairing cli", () => {
     });
   });
 
+  it("forwards --account to approval notifications", async () => {
+    mockApprovedPairing();
+
+    await runPairing([
+      "pairing",
+      "approve",
+      "--channel",
+      "telegram",
+      "--account",
+      "yy",
+      "--notify",
+      "ABCDEFGH",
+    ]);
+
+    expect(notifyPairingApproved).toHaveBeenCalledWith({
+      channelId: "telegram",
+      id: "123",
+      cfg: {},
+      accountId: "yy",
+    });
+  });
+
   it("defaults approve to the sole available channel when only code is provided", async () => {
     listPairingChannels.mockReturnValueOnce(["slack"]);
     mockApprovedPairing();

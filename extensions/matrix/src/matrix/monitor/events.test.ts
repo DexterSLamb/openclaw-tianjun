@@ -45,7 +45,7 @@ function createHarness(params?: {
 
   registerMatrixMonitorEvents({
     client,
-    auth: { encryption: true } as MatrixAuth,
+    auth: { accountId: "default", encryption: true } as MatrixAuth,
     logVerboseMessage: vi.fn(),
     warnedEncryptedRooms: new Set<string>(),
     warnedCryptoMissingRooms: new Set<string>(),

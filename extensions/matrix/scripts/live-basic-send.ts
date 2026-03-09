@@ -14,6 +14,7 @@ async function main() {
     password: auth.password,
     deviceId: auth.deviceId,
     encryption: false,
+    accountId: auth.accountId,
   });
 
   const targetUserId = process.argv[2]?.trim() || "@user:example.org";

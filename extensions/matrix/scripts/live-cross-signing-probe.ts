@@ -25,6 +25,7 @@ async function main() {
     password: auth.password,
     deviceId: auth.deviceId,
     encryption: true,
+    accountId: auth.accountId,
   });
   const initCrypto = (client as unknown as { initializeCryptoIfNeeded?: () => Promise<void> })
     .initializeCryptoIfNeeded;

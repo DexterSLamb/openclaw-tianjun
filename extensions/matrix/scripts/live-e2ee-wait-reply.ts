@@ -40,6 +40,7 @@ async function main() {
     password: auth.password,
     deviceId: auth.deviceId,
     encryption: true,
+    accountId: auth.accountId,
   });
 
   try {

@@ -18,6 +18,7 @@ import { setActiveMatrixClient } from "../active-client.js";
 import {
   isBunRuntime,
   resolveMatrixAuth,
+  resolveMatrixAuthContext,
   resolveSharedMatrixClient,
   stopSharedClientForAccount,
 } from "../client.js";
@@ -137,8 +138,14 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
     return allowList.map(String);
   };
 
+  const authContext = resolveMatrixAuthContext({
+    cfg,
+    accountId: opts.accountId,
+  });
+  const effectiveAccountId = authContext.accountId;
+
   // Resolve account-specific config for multi-account support
-  const account = resolveMatrixAccount({ cfg, accountId: opts.accountId });
+  const account = resolveMatrixAccount({ cfg, accountId: effectiveAccountId });
   const accountConfig = account.config;
 
   const allowlistOnly = accountConfig.allowlistOnly === true;
@@ -239,7 +246,7 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
     },
   };
 
-  const auth = await resolveMatrixAuth({ cfg, accountId: opts.accountId });
+  const auth = await resolveMatrixAuth({ cfg, accountId: effectiveAccountId });
   const resolvedInitialSyncLimit =
     typeof opts.initialSyncLimit === "number"
       ? Math.max(0, Math.floor(opts.initialSyncLimit))
@@ -252,9 +259,9 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
     cfg,
     auth: authWithLimit,
     startClient: false,
-    accountId: opts.accountId ?? undefined,
+    accountId: auth.accountId,
   });
-  setActiveMatrixClient(client, opts.accountId);
+  setActiveMatrixClient(client, auth.accountId);
 
   const mentionRegexes = core.channel.mentions.buildMentionRegexes(cfg);
   const defaultGroupPolicy = resolveDefaultGroupPolicy(cfg);
@@ -339,7 +346,7 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
   await resolveSharedMatrixClient({
     cfg,
     auth: authWithLimit,
-    accountId: opts.accountId,
+    accountId: auth.accountId,
   });
   logVerboseMessage("matrix: client started");
   const threadBindingManager = await createMatrixThreadBindingManager({
@@ -398,7 +405,6 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
         client,
         auth,
         accountConfig,
-        accountId: account.accountId,
         env: process.env,
       });
       if (startupVerification.kind === "verified") {
@@ -440,7 +446,6 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
       const legacyCryptoRestore = await maybeRestoreLegacyMatrixBackup({
         client,
         auth,
-        accountId: account.accountId,
         env: process.env,
       });
       if (legacyCryptoRestore.kind === "restored") {
@@ -474,9 +479,9 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
       try {
         threadBindingManager.stop();
         logVerboseMessage("matrix: stopping client");
-        stopSharedClientForAccount(auth, opts.accountId);
+        stopSharedClientForAccount(auth);
       } finally {
-        setActiveMatrixClient(null, opts.accountId);
+        setActiveMatrixClient(null, auth.accountId);
         resolve();
       }
     };

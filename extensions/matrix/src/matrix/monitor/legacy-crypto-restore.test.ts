@@ -27,6 +27,7 @@ describe("maybeRestoreLegacyMatrixBackup", () => {
     await withTempHome(async (home) => {
       const stateDir = path.join(home, ".openclaw");
       const auth = {
+        accountId: "default",
         homeserver: "https://matrix.example.org",
         userId: "@bot:example.org",
         accessToken: "tok-123",
@@ -89,6 +90,7 @@ describe("maybeRestoreLegacyMatrixBackup", () => {
     await withTempHome(async (home) => {
       const stateDir = path.join(home, ".openclaw");
       const auth = {
+        accountId: "default",
         homeserver: "https://matrix.example.org",
         userId: "@bot:example.org",
         accessToken: "tok-123",

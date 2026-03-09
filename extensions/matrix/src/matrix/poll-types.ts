@@ -322,7 +322,9 @@ export function buildPollResultsSummary(params: {
     });
   }
 
-  const voteCounts = new Map(parsed.answers.map((answer) => [answer.id, 0] as const));
+  const voteCounts = new Map<string, number>(
+    parsed.answers.map((answer): [string, number] => [answer.id, 0]),
+  );
   let totalVotes = 0;
   for (const latestVote of latestVoteBySender.values()) {
     if (latestVote.answerIds.length === 0) {

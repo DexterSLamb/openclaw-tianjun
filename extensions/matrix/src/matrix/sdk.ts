@@ -579,6 +579,25 @@ export class MatrixClient {
     };
   }
 
+  async hydrateEvents(
+    roomId: string,
+    events: Array<Record<string, unknown>>,
+  ): Promise<MatrixRawEvent[]> {
+    if (events.length === 0) {
+      return [];
+    }
+
+    const mapper = this.client.getEventMapper();
+    const mappedEvents = events.map((event) =>
+      mapper({
+        room_id: roomId,
+        ...event,
+      }),
+    );
+    await Promise.all(mappedEvents.map((event) => this.client.decryptEventIfNeeded(event)));
+    return mappedEvents.map((event) => matrixEventToRaw(event));
+  }
+
   async setTyping(roomId: string, typing: boolean, timeoutMs: number): Promise<void> {
     await this.client.sendTyping(roomId, typing, timeoutMs);
   }

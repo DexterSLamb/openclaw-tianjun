@@ -47,6 +47,7 @@ describe("matrix thread bindings", () => {
     await createMatrixThreadBindingManager({
       accountId: "ops",
       auth: {
+        accountId: "ops",
         homeserver: "https://matrix.example.org",
         userId: "@bot:example.org",
         accessToken: "token",
@@ -87,6 +88,7 @@ describe("matrix thread bindings", () => {
     await createMatrixThreadBindingManager({
       accountId: "ops",
       auth: {
+        accountId: "ops",
         homeserver: "https://matrix.example.org",
         userId: "@bot:example.org",
         accessToken: "token",
@@ -137,6 +139,7 @@ describe("matrix thread bindings", () => {
       await createMatrixThreadBindingManager({
         accountId: "ops",
         auth: {
+          accountId: "ops",
           homeserver: "https://matrix.example.org",
           userId: "@bot:example.org",
           accessToken: "token",
@@ -182,6 +185,7 @@ describe("matrix thread bindings", () => {
     await createMatrixThreadBindingManager({
       accountId: "ops",
       auth: {
+        accountId: "ops",
         homeserver: "https://matrix.example.org",
         userId: "@bot:example.org",
         accessToken: "token",

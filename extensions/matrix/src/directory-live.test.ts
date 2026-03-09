@@ -12,6 +12,7 @@ describe("matrix directory live", () => {
   beforeEach(() => {
     vi.mocked(resolveMatrixAuth).mockReset();
     vi.mocked(resolveMatrixAuth).mockResolvedValue({
+      accountId: "assistant",
       homeserver: "https://matrix.example.org",
       userId: "@bot:example.org",
       accessToken: "test-token",

@@ -43,7 +43,7 @@ export async function resolveActionClient(
     deviceId: auth.deviceId,
     encryption: auth.encryption,
     localTimeoutMs: opts.timeoutMs,
-    accountId: authContext.accountId,
+    accountId: auth.accountId,
     autoBootstrapCrypto: false,
   });
   await client.prepareForOneOff();

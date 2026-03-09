@@ -12,6 +12,7 @@ export async function probeMatrix(params: {
   accessToken: string;
   userId?: string;
   timeoutMs: number;
+  accountId?: string | null;
 }): Promise<MatrixProbe> {
   const started = Date.now();
   const result: MatrixProbe = {
@@ -48,6 +49,7 @@ export async function probeMatrix(params: {
       userId: inputUserId,
       accessToken: params.accessToken,
       localTimeoutMs: params.timeoutMs,
+      accountId: params.accountId,
     });
     // The client wrapper resolves user ID via whoami when needed.
     const userId = await client.getUserId();

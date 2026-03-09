@@ -12,6 +12,16 @@ function createStateFilePath(rootDir: string): string {
   return path.join(rootDir, "startup-verification.json");
 }
 
+function createAuth(accountId = "default") {
+  return {
+    accountId,
+    homeserver: "https://matrix.example.org",
+    userId: "@bot:example.org",
+    accessToken: "token",
+    encryption: true,
+  };
+}
+
 type VerificationSummaryLike = {
   id: string;
   transactionId?: string;
@@ -80,12 +90,7 @@ describe("ensureMatrixStartupVerification", () => {
 
     const result = await ensureMatrixStartupVerification({
       client: harness.client as never,
-      auth: {
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-        encryption: true,
-      },
+      auth: createAuth(),
       accountConfig: {},
       stateFilePath: createStateFilePath(tempHome),
     });
@@ -105,12 +110,7 @@ describe("ensureMatrixStartupVerification", () => {
 
     const result = await ensureMatrixStartupVerification({
       client: harness.client as never,
-      auth: {
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-        encryption: true,
-      },
+      auth: createAuth(),
       accountConfig: {},
       stateFilePath: createStateFilePath(tempHome),
     });
@@ -135,12 +135,7 @@ describe("ensureMatrixStartupVerification", () => {
 
     const result = await ensureMatrixStartupVerification({
       client: harness.client as never,
-      auth: {
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-        encryption: true,
-      },
+      auth: createAuth(),
       accountConfig: {},
       stateFilePath: createStateFilePath(tempHome),
     });
@@ -156,12 +151,7 @@ describe("ensureMatrixStartupVerification", () => {
     const harness = createHarness();
     await ensureMatrixStartupVerification({
       client: harness.client as never,
-      auth: {
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-        encryption: true,
-      },
+      auth: createAuth(),
       accountConfig: {},
       stateFilePath: createStateFilePath(tempHome),
       nowMs: Date.now(),
@@ -170,12 +160,7 @@ describe("ensureMatrixStartupVerification", () => {
 
     const second = await ensureMatrixStartupVerification({
       client: harness.client as never,
-      auth: {
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-        encryption: true,
-      },
+      auth: createAuth(),
       accountConfig: {},
       stateFilePath: createStateFilePath(tempHome),
       nowMs: Date.now() + 60_000,
@@ -193,12 +178,7 @@ describe("ensureMatrixStartupVerification", () => {
 
     const result = await ensureMatrixStartupVerification({
       client: harness.client as never,
-      auth: {
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-        encryption: true,
-      },
+      auth: createAuth(),
       accountConfig: {
         startupVerification: "off",
       },
@@ -216,12 +196,7 @@ describe("ensureMatrixStartupVerification", () => {
 
     const result = await ensureMatrixStartupVerification({
       client: harness.client as never,
-      auth: {
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-        encryption: true,
-      },
+      auth: createAuth(),
       accountConfig: {},
       stateFilePath: createStateFilePath(tempHome),
       nowMs: Date.parse("2026-03-08T12:00:00.000Z"),
@@ -243,12 +218,7 @@ describe("ensureMatrixStartupVerification", () => {
 
     const result = await ensureMatrixStartupVerification({
       client: harness.client as never,
-      auth: {
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-        encryption: true,
-      },
+      auth: createAuth(),
       accountConfig: {},
       stateFilePath: createStateFilePath(tempHome),
     });
@@ -261,12 +231,7 @@ describe("ensureMatrixStartupVerification", () => {
 
     const cooledDown = await ensureMatrixStartupVerification({
       client: harness.client as never,
-      auth: {
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-        encryption: true,
-      },
+      auth: createAuth(),
       accountConfig: {},
       stateFilePath: createStateFilePath(tempHome),
       nowMs: Date.now() + 60_000,
@@ -286,12 +251,7 @@ describe("ensureMatrixStartupVerification", () => {
 
     await ensureMatrixStartupVerification({
       client: failingHarness.client as never,
-      auth: {
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-        encryption: true,
-      },
+      auth: createAuth(),
       accountConfig: {},
       stateFilePath,
       nowMs: Date.parse("2026-03-08T12:00:00.000Z"),
@@ -300,12 +260,7 @@ describe("ensureMatrixStartupVerification", () => {
     const retryingHarness = createHarness();
     const result = await ensureMatrixStartupVerification({
       client: retryingHarness.client as never,
-      auth: {
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-        encryption: true,
-      },
+      auth: createAuth(),
       accountConfig: {},
       stateFilePath,
       nowMs: Date.parse("2026-03-08T13:30:00.000Z"),
@@ -322,12 +277,7 @@ describe("ensureMatrixStartupVerification", () => {
 
     await ensureMatrixStartupVerification({
       client: unverified.client as never,
-      auth: {
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-        encryption: true,
-      },
+      auth: createAuth(),
       accountConfig: {},
       stateFilePath,
       nowMs: Date.parse("2026-03-08T12:00:00.000Z"),
@@ -338,12 +288,7 @@ describe("ensureMatrixStartupVerification", () => {
     const verified = createHarness({ verified: true });
     const result = await ensureMatrixStartupVerification({
       client: verified.client as never,
-      auth: {
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-        encryption: true,
-      },
+      auth: createAuth(),
       accountConfig: {},
       stateFilePath,
     });

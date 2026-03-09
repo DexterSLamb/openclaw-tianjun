@@ -291,7 +291,7 @@ export function resolveMatrixAuthContext(params?: {
 }): {
   cfg: CoreConfig;
   env: NodeJS.ProcessEnv;
-  accountId?: string;
+  accountId: string;
   resolved: MatrixResolvedConfig;
 } {
   const cfg = params?.cfg ?? (getMatrixRuntime().config.loadConfig() as CoreConfig);
@@ -301,11 +301,12 @@ export function resolveMatrixAuthContext(params?: {
   const effectiveAccountId =
     explicitAccountId ??
     (defaultResolved.homeserver
-      ? undefined
-      : (resolveImplicitMatrixAccountId(cfg, env) ?? undefined));
-  const resolved = effectiveAccountId
-    ? resolveMatrixConfigForAccount(cfg, effectiveAccountId, env)
-    : defaultResolved;
+      ? DEFAULT_ACCOUNT_ID
+      : (resolveImplicitMatrixAccountId(cfg, env) ?? DEFAULT_ACCOUNT_ID));
+  const resolved =
+    effectiveAccountId === DEFAULT_ACCOUNT_ID && defaultResolved.homeserver
+      ? defaultResolved
+      : resolveMatrixConfigForAccount(cfg, effectiveAccountId, env);
 
   return {
     cfg,
@@ -390,6 +391,7 @@ export async function resolveMatrixAuth(params?: {
       await touchMatrixCredentials(env, accountId);
     }
     return {
+      accountId,
       homeserver: resolved.homeserver,
       userId,
       accessToken: resolved.accessToken,
@@ -404,6 +406,7 @@ export async function resolveMatrixAuth(params?: {
   if (cachedCredentials) {
     await touchMatrixCredentials(env, accountId);
     return {
+      accountId,
       homeserver: cachedCredentials.homeserver,
       userId: cachedCredentials.userId,
       accessToken: cachedCredentials.accessToken,
@@ -446,6 +449,7 @@ export async function resolveMatrixAuth(params?: {
   }
 
   const auth: MatrixAuth = {
+    accountId,
     homeserver: resolved.homeserver,
     userId: login.user_id ?? resolved.userId,
     accessToken,

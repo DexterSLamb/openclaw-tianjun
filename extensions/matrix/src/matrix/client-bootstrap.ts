@@ -1,11 +1,5 @@
 import { createMatrixClient } from "./client.js";
-
-type MatrixClientBootstrapAuth = {
-  homeserver: string;
-  userId: string;
-  accessToken: string;
-  encryption?: boolean;
-};
+import type { MatrixAuth } from "./client/types.js";
 
 type MatrixCryptoPrepare = {
   prepare: (rooms?: string[]) => Promise<void>;
@@ -14,9 +8,8 @@ type MatrixCryptoPrepare = {
 type MatrixBootstrapClient = Awaited<ReturnType<typeof createMatrixClient>>;
 
 export async function createPreparedMatrixClient(opts: {
-  auth: MatrixClientBootstrapAuth;
+  auth: Pick<MatrixAuth, "accountId" | "homeserver" | "userId" | "accessToken" | "encryption">;
   timeoutMs?: number;
-  accountId?: string;
 }): Promise<MatrixBootstrapClient> {
   const client = await createMatrixClient({
     homeserver: opts.auth.homeserver,
@@ -24,7 +17,7 @@ export async function createPreparedMatrixClient(opts: {
     accessToken: opts.auth.accessToken,
     encryption: opts.auth.encryption,
     localTimeoutMs: opts.timeoutMs,
-    accountId: opts.accountId,
+    accountId: opts.auth.accountId,
   });
   if (opts.auth.encryption && client.crypto) {
     try {

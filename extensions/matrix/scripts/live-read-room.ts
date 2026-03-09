@@ -21,6 +21,7 @@ async function main() {
     password: auth.password,
     deviceId: auth.deviceId,
     encryption: false,
+    accountId: auth.accountId,
   });
 
   try {

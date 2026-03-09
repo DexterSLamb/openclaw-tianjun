@@ -42,6 +42,7 @@ describe("resolveActionClient", () => {
     getActiveMatrixClientMock.mockReturnValue(null);
     isBunRuntimeMock.mockReturnValue(false);
     resolveMatrixAuthMock.mockResolvedValue({
+      accountId: "default",
       homeserver: "https://matrix.example.org",
       userId: "@bot:example.org",
       accessToken: "token",
@@ -53,7 +54,7 @@ describe("resolveActionClient", () => {
       ({ cfg, accountId }: { cfg: unknown; accountId?: string | null }) => ({
         cfg,
         env: process.env,
-        accountId: accountId ?? undefined,
+        accountId: accountId ?? "default",
         resolved: {
           homeserver: "https://matrix.example.org",
           userId: "@bot:example.org",
@@ -129,6 +130,7 @@ describe("resolveActionClient", () => {
       },
     });
     resolveMatrixAuthMock.mockResolvedValue({
+      accountId: "ops",
       homeserver: "https://ops.example.org",
       userId: "@ops:example.org",
       accessToken: "ops-token",

@@ -1,9 +1,9 @@
+import { normalizeOptionalAccountId } from "openclaw/plugin-sdk/account-id";
 import type { CoreConfig } from "../../types.js";
 import type { MatrixClient } from "../sdk.js";
 import { LogService } from "../sdk/logger.js";
-import { resolveMatrixAuth } from "./config.js";
+import { resolveMatrixAuth, resolveMatrixAuthContext } from "./config.js";
 import { createMatrixClient } from "./create-client.js";
-import { DEFAULT_ACCOUNT_KEY } from "./storage.js";
 import type { MatrixAuth } from "./types.js";
 
 type SharedMatrixClientState = {
@@ -17,20 +17,19 @@ type SharedMatrixClientState = {
 const sharedClientStates = new Map<string, SharedMatrixClientState>();
 const sharedClientPromises = new Map<string, Promise<SharedMatrixClientState>>();
 
-function buildSharedClientKey(auth: MatrixAuth, accountId?: string | null): string {
+function buildSharedClientKey(auth: MatrixAuth): string {
   return [
     auth.homeserver,
     auth.userId,
     auth.accessToken,
     auth.encryption ? "e2ee" : "plain",
-    accountId ?? DEFAULT_ACCOUNT_KEY,
+    auth.accountId,
   ].join("|");
 }
 
 async function createSharedMatrixClient(params: {
   auth: MatrixAuth;
   timeoutMs?: number;
-  accountId?: string | null;
 }): Promise<SharedMatrixClientState> {
   const client = await createMatrixClient({
     homeserver: params.auth.homeserver,
@@ -41,11 +40,11 @@ async function createSharedMatrixClient(params: {
     encryption: params.auth.encryption,
     localTimeoutMs: params.timeoutMs,
     initialSyncLimit: params.auth.initialSyncLimit,
-    accountId: params.accountId,
+    accountId: params.auth.accountId,
   });
   return {
     client,
-    key: buildSharedClientKey(params.auth, params.accountId),
+    key: buildSharedClientKey(params.auth),
     started: false,
     cryptoReady: false,
     startPromise: null,
@@ -103,14 +102,27 @@ export async function resolveSharedMatrixClient(
     accountId?: string | null;
   } = {},
 ): Promise<MatrixClient> {
+  const requestedAccountId = normalizeOptionalAccountId(params.accountId);
+  if (params.auth && requestedAccountId && requestedAccountId !== params.auth.accountId) {
+    throw new Error(
+      `Matrix shared client account mismatch: requested ${requestedAccountId}, auth resolved ${params.auth.accountId}`,
+    );
+  }
+  const authContext = params.auth
+    ? null
+    : resolveMatrixAuthContext({
+        cfg: params.cfg,
+        env: params.env,
+        accountId: params.accountId,
+      });
   const auth =
     params.auth ??
     (await resolveMatrixAuth({
-      cfg: params.cfg,
-      env: params.env,
-      accountId: params.accountId,
+      cfg: authContext?.cfg ?? params.cfg,
+      env: authContext?.env ?? params.env,
+      accountId: authContext?.accountId,
     }));
-  const key = buildSharedClientKey(auth, params.accountId);
+  const key = buildSharedClientKey(auth);
   const shouldStart = params.startClient !== false;
 
   const existingState = sharedClientStates.get(key);
@@ -143,7 +155,6 @@ export async function resolveSharedMatrixClient(
   const creationPromise = createSharedMatrixClient({
     auth,
     timeoutMs: params.timeoutMs,
-    accountId: params.accountId,
   });
   sharedClientPromises.set(key, creationPromise);
 
@@ -181,8 +192,8 @@ export function stopSharedClient(): void {
   sharedClientPromises.clear();
 }
 
-export function stopSharedClientForAccount(auth: MatrixAuth, accountId?: string | null): void {
-  const key = buildSharedClientKey(auth, accountId);
+export function stopSharedClientForAccount(auth: MatrixAuth): void {
+  const key = buildSharedClientKey(auth);
   const state = sharedClientStates.get(key);
   if (!state) {
     return;

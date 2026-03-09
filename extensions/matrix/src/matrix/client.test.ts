@@ -130,6 +130,7 @@ describe("resolveMatrixAuth", () => {
       }),
     );
     expect(auth).toMatchObject({
+      accountId: "default",
       homeserver: "https://matrix.example.org",
       userId: "@bot:example.org",
       accessToken: "tok-123",
@@ -144,7 +145,7 @@ describe("resolveMatrixAuth", () => {
         deviceId: "DEVICE123",
       }),
       expect.any(Object),
-      undefined,
+      "default",
     );
   });
 
@@ -206,6 +207,7 @@ describe("resolveMatrixAuth", () => {
     });
 
     expect(auth).toMatchObject({
+      accountId: "default",
       homeserver: "https://matrix.example.org",
       userId: "@bot:example.org",
       accessToken: "cached-token",
@@ -238,6 +240,7 @@ describe("resolveMatrixAuth", () => {
     const auth = await resolveMatrixAuth({ cfg, env: {} as NodeJS.ProcessEnv });
 
     expect(auth.deviceId).toBe("DEVICE123");
+    expect(auth.accountId).toBe("default");
     expect(saveMatrixCredentialsMock).toHaveBeenCalledWith(
       expect.objectContaining({
         homeserver: "https://matrix.example.org",
@@ -246,7 +249,7 @@ describe("resolveMatrixAuth", () => {
         deviceId: "DEVICE123",
       }),
       expect.any(Object),
-      undefined,
+      "default",
     );
   });
 
@@ -273,6 +276,7 @@ describe("resolveMatrixAuth", () => {
 
     expect(doRequestSpy).toHaveBeenCalledWith("GET", "/_matrix/client/v3/account/whoami");
     expect(auth).toMatchObject({
+      accountId: "default",
       homeserver: "https://matrix.example.org",
       userId: "@bot:example.org",
       accessToken: "tok-123",
@@ -304,6 +308,7 @@ describe("resolveMatrixAuth", () => {
     const auth = await resolveMatrixAuth({ cfg, env: {} as NodeJS.ProcessEnv });
 
     expect(auth).toMatchObject({
+      accountId: "default",
       homeserver: "https://matrix.example.org",
       userId: "@bot:example.org",
       accessToken: "tok-123",
@@ -332,6 +337,7 @@ describe("resolveMatrixAuth", () => {
     const auth = await resolveMatrixAuth({ cfg, env: {} as NodeJS.ProcessEnv });
 
     expect(auth).toMatchObject({
+      accountId: "ops",
       homeserver: "https://ops.example.org",
       userId: "@ops:example.org",
       accessToken: "ops-token",

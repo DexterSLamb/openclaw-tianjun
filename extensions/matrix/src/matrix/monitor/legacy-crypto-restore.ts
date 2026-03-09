@@ -45,8 +45,7 @@ function isMigrationState(value: unknown): value is MatrixLegacyCryptoMigrationS
 
 export async function maybeRestoreLegacyMatrixBackup(params: {
   client: Pick<MatrixClient, "restoreRoomKeyBackup">;
-  auth: Pick<MatrixAuth, "homeserver" | "userId" | "accessToken">;
-  accountId?: string | null;
+  auth: Pick<MatrixAuth, "homeserver" | "userId" | "accessToken" | "accountId">;
   env?: NodeJS.ProcessEnv;
   stateDir?: string;
 }): Promise<MatrixLegacyCryptoRestoreResult> {
@@ -57,7 +56,7 @@ export async function maybeRestoreLegacyMatrixBackup(params: {
     homeserver: params.auth.homeserver,
     userId: params.auth.userId,
     accessToken: params.auth.accessToken,
-    accountId: params.accountId,
+    accountId: params.auth.accountId,
   });
   const statePath = path.join(rootDir, "legacy-crypto-migration.json");
   const { value } = await readJsonFileWithFallback<MatrixLegacyCryptoMigrationState | null>(

@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MatrixAuth } from "./types.js";
 
 const resolveMatrixAuthMock = vi.hoisted(() => vi.fn());
+const resolveMatrixAuthContextMock = vi.hoisted(() => vi.fn());
 const createMatrixClientMock = vi.hoisted(() => vi.fn());
 
 vi.mock("./config.js", () => ({
   resolveMatrixAuth: resolveMatrixAuthMock,
+  resolveMatrixAuthContext: resolveMatrixAuthContextMock,
 }));
 
 vi.mock("./create-client.js", () => ({
@@ -20,6 +22,7 @@ import {
 
 function authFor(accountId: string): MatrixAuth {
   return {
+    accountId,
     homeserver: "https://matrix.example.org",
     userId: `@${accountId}:example.org`,
     accessToken: `token-${accountId}`,
@@ -45,7 +48,16 @@ function createMockClient(name: string) {
 describe("resolveSharedMatrixClient", () => {
   beforeEach(() => {
     resolveMatrixAuthMock.mockReset();
+    resolveMatrixAuthContextMock.mockReset();
     createMatrixClientMock.mockReset();
+    resolveMatrixAuthContextMock.mockImplementation(
+      ({ accountId }: { accountId?: string | null } = {}) => ({
+        cfg: undefined,
+        env: undefined,
+        accountId: accountId ?? "default",
+        resolved: {},
+      }),
+    );
   });
 
   afterEach(() => {
@@ -100,7 +112,7 @@ describe("resolveSharedMatrixClient", () => {
     await resolveSharedMatrixClient({ accountId: "main", startClient: false });
     await resolveSharedMatrixClient({ accountId: "ops", startClient: false });
 
-    stopSharedClientForAccount(mainAuth, "main");
+    stopSharedClientForAccount(mainAuth);
 
     expect(mainClient.stop).toHaveBeenCalledTimes(1);
     expect(poeClient.stop).toHaveBeenCalledTimes(0);
@@ -108,5 +120,46 @@ describe("resolveSharedMatrixClient", () => {
     stopSharedClient();
 
     expect(poeClient.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses the effective implicit account instead of keying it as default", async () => {
+    const poeAuth = authFor("ops");
+    const poeClient = createMockClient("ops");
+
+    resolveMatrixAuthContextMock.mockReturnValue({
+      cfg: undefined,
+      env: undefined,
+      accountId: "ops",
+      resolved: {},
+    });
+    resolveMatrixAuthMock.mockResolvedValue(poeAuth);
+    createMatrixClientMock.mockResolvedValue(poeClient);
+
+    const first = await resolveSharedMatrixClient({ startClient: false });
+    const second = await resolveSharedMatrixClient({ startClient: false });
+
+    expect(first).toBe(poeClient);
+    expect(second).toBe(poeClient);
+    expect(resolveMatrixAuthMock).toHaveBeenCalledWith({
+      cfg: undefined,
+      env: undefined,
+      accountId: "ops",
+    });
+    expect(createMatrixClientMock).toHaveBeenCalledTimes(1);
+    expect(createMatrixClientMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "ops",
+      }),
+    );
+  });
+
+  it("rejects mismatched explicit account ids when auth is already resolved", async () => {
+    await expect(
+      resolveSharedMatrixClient({
+        auth: authFor("ops"),
+        accountId: "main",
+        startClient: false,
+      }),
+    ).rejects.toThrow("Matrix shared client account mismatch");
   });
 });

@@ -44,14 +44,13 @@ function normalizeCooldownHours(value: number | undefined): number {
 
 function resolveStartupVerificationStatePath(params: {
   auth: MatrixAuth;
-  accountId?: string | null;
   env?: NodeJS.ProcessEnv;
 }): string {
   const storagePaths = resolveMatrixStoragePaths({
     homeserver: params.auth.homeserver,
     userId: params.auth.userId,
     accessToken: params.auth.accessToken,
-    accountId: params.accountId,
+    accountId: params.auth.accountId,
     env: params.env,
   });
   return path.join(storagePaths.rootDir, STARTUP_VERIFICATION_STATE_FILENAME);
@@ -143,7 +142,6 @@ export async function ensureMatrixStartupVerification(params: {
   client: Pick<MatrixClient, "crypto" | "getOwnDeviceVerificationStatus">;
   auth: MatrixAuth;
   accountConfig: Pick<MatrixConfig, "startupVerification" | "startupVerificationCooldownHours">;
-  accountId?: string | null;
   env?: NodeJS.ProcessEnv;
   nowMs?: number;
   stateFilePath?: string;
@@ -157,7 +155,6 @@ export async function ensureMatrixStartupVerification(params: {
     params.stateFilePath ??
     resolveStartupVerificationStatePath({
       auth: params.auth,
-      accountId: params.accountId,
       env: params.env,
     });
 

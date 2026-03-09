@@ -99,6 +99,7 @@ describe("createMatrixRoomMessageHandler inbound body formatting", () => {
       logger: {
         info: () => {},
         warn: () => {},
+        error: () => {},
       } as RuntimeLogger,
       logVerboseMessage: () => {},
       allowFrom: [],
@@ -247,6 +248,7 @@ describe("createMatrixRoomMessageHandler inbound body formatting", () => {
       logger: {
         info: () => {},
         warn: () => {},
+        error: () => {},
       } as RuntimeLogger,
       logVerboseMessage: () => {},
       allowFrom: [],

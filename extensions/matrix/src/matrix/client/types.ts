@@ -17,6 +17,7 @@ export type MatrixResolvedConfig = {
  * both will need to be recreated together.
  */
 export type MatrixAuth = {
+  accountId: string;
   homeserver: string;
   userId: string;
   accessToken: string;
