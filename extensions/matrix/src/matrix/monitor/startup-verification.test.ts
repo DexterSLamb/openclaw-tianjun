@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ensureMatrixStartupVerification } from "./startup-verification.js";
 
 function createTempStateDir(): string {
@@ -79,10 +79,6 @@ function createHarness(params?: {
   };
 }
 
-afterEach(() => {
-  vi.useRealTimers();
-});
-
 describe("ensureMatrixStartupVerification", () => {
   it("skips automatic requests when the device is already verified", async () => {
     const tempHome = createTempStateDir();
@@ -145,16 +141,15 @@ describe("ensureMatrixStartupVerification", () => {
   });
 
   it("respects the startup verification cooldown", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-03-08T12:00:00.000Z"));
     const tempHome = createTempStateDir();
     const harness = createHarness();
+    const initialNowMs = Date.parse("2026-03-08T12:00:00.000Z");
     await ensureMatrixStartupVerification({
       client: harness.client as never,
       auth: createAuth(),
       accountConfig: {},
       stateFilePath: createStateFilePath(tempHome),
-      nowMs: Date.now(),
+      nowMs: initialNowMs,
     });
     expect(harness.client.crypto.requestVerification).toHaveBeenCalledTimes(1);
 
@@ -163,7 +158,7 @@ describe("ensureMatrixStartupVerification", () => {
       auth: createAuth(),
       accountConfig: {},
       stateFilePath: createStateFilePath(tempHome),
-      nowMs: Date.now() + 60_000,
+      nowMs: initialNowMs + 60_000,
     });
 
     expect(second.kind).toBe("cooldown");

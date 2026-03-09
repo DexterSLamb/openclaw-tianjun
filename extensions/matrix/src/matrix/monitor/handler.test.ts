@@ -79,6 +79,37 @@ describe("matrix monitor handler pairing account scope", () => {
     expect(readAllowFromStore).toHaveBeenCalledTimes(1);
   });
 
+  it("refreshes the account-scoped allowFrom cache after its ttl expires", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-01T10:00:00.000Z"));
+    try {
+      const readAllowFromStore = vi.fn(async () => [] as string[]);
+      const { handler } = createMatrixHandlerTestHarness({
+        readAllowFromStore,
+        dmPolicy: "pairing",
+        buildPairingReply: () => "pairing",
+      });
+
+      const makeEvent = (id: string): MatrixRawEvent =>
+        createMatrixTextMessageEvent({
+          eventId: id,
+          body: "hello",
+          mentions: { room: true },
+        });
+
+      await handler("!room:example.org", makeEvent("$event1"));
+      await handler("!room:example.org", makeEvent("$event2"));
+      expect(readAllowFromStore).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(30_001);
+      await handler("!room:example.org", makeEvent("$event3"));
+
+      expect(readAllowFromStore).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("sends pairing reminders for pending requests with cooldown", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-01T10:00:00.000Z"));

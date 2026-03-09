@@ -40,6 +40,24 @@ describe("matrix thread bindings", () => {
     accessToken: "token",
   } as const;
 
+  function resolveBindingsFilePath() {
+    return path.join(
+      resolveMatrixStoragePaths({
+        ...auth,
+        env: process.env,
+      }).rootDir,
+      "thread-bindings.json",
+    );
+  }
+
+  async function readPersistedLastActivityAt(bindingsPath: string) {
+    const raw = await fs.readFile(bindingsPath, "utf-8");
+    const parsed = JSON.parse(raw) as {
+      bindings?: Array<{ lastActivityAt?: number }>;
+    };
+    return parsed.bindings?.[0]?.lastActivityAt;
+  }
+
   beforeEach(async () => {
     stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "matrix-thread-bindings-"));
     __testing.resetSessionBindingAdaptersForTests();
@@ -274,6 +292,50 @@ describe("matrix thread bindings", () => {
     }
   });
 
+  it("persists the latest touched activity only after the debounce window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-06T10:00:00.000Z"));
+    try {
+      await createMatrixThreadBindingManager({
+        accountId: "ops",
+        auth,
+        client: {} as never,
+        idleTimeoutMs: 24 * 60 * 60 * 1000,
+        maxAgeMs: 0,
+        enableSweeper: false,
+      });
+      const binding = await getSessionBindingService().bind({
+        targetSessionKey: "agent:ops:subagent:child",
+        targetKind: "subagent",
+        conversation: {
+          channel: "matrix",
+          accountId: "ops",
+          conversationId: "$thread",
+          parentConversationId: "!room:example",
+        },
+        placement: "current",
+      });
+
+      const bindingsPath = resolveBindingsFilePath();
+      const originalLastActivityAt = await readPersistedLastActivityAt(bindingsPath);
+      const firstTouchedAt = Date.parse("2026-03-06T10:05:00.000Z");
+      const secondTouchedAt = Date.parse("2026-03-06T10:10:00.000Z");
+
+      getSessionBindingService().touch(binding.bindingId, firstTouchedAt);
+      getSessionBindingService().touch(binding.bindingId, secondTouchedAt);
+
+      await vi.advanceTimersByTimeAsync(29_000);
+      expect(await readPersistedLastActivityAt(bindingsPath)).toBe(originalLastActivityAt);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.waitFor(async () => {
+        expect(await readPersistedLastActivityAt(bindingsPath)).toBe(secondTouchedAt);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("flushes pending touch persistence on stop", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-06T10:00:00.000Z"));
@@ -303,19 +365,9 @@ describe("matrix thread bindings", () => {
       manager.stop();
       vi.useRealTimers();
 
-      const bindingsPath = path.join(
-        resolveMatrixStoragePaths({
-          ...auth,
-          env: process.env,
-        }).rootDir,
-        "thread-bindings.json",
-      );
+      const bindingsPath = resolveBindingsFilePath();
       await vi.waitFor(async () => {
-        const raw = await fs.readFile(bindingsPath, "utf-8");
-        const parsed = JSON.parse(raw) as {
-          bindings?: Array<{ lastActivityAt?: number }>;
-        };
-        expect(parsed.bindings?.[0]?.lastActivityAt).toBe(touchedAt);
+        expect(await readPersistedLastActivityAt(bindingsPath)).toBe(touchedAt);
       });
     } finally {
       vi.useRealTimers();
