@@ -445,6 +445,18 @@ function buildProfileSchema() {
           "snake_case alias of avatarUrl for self-profile update actions. Matrix accepts mxc:// and http(s) URLs.",
       }),
     ),
+    avatarPath: Type.Optional(
+      Type.String({
+        description:
+          "Local avatar file path for self-profile update actions. Matrix uploads this file and sets the resulting MXC URI.",
+      }),
+    ),
+    avatar_path: Type.Optional(
+      Type.String({
+        description:
+          "snake_case alias of avatarPath for self-profile update actions. Matrix uploads this file and sets the resulting MXC URI.",
+      }),
+    ),
   };
 }
 

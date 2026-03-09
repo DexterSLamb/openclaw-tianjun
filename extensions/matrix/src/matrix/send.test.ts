@@ -343,4 +343,36 @@ describe("voteMatrixPoll", () => {
     ).rejects.toThrow("is not a Matrix poll start event");
     expect(sendEvent).not.toHaveBeenCalled();
   });
+
+  it("accepts decrypted poll start events returned from encrypted rooms", async () => {
+    const { client, getEvent, sendEvent } = makeClient();
+    getEvent.mockResolvedValue({
+      type: "m.poll.start",
+      content: {
+        "m.poll.start": {
+          question: { "m.text": "Lunch?" },
+          max_selections: 1,
+          answers: [{ id: "a1", "m.text": "Pizza" }],
+        },
+      },
+    });
+
+    await expect(
+      voteMatrixPoll("room:!room:example", "$poll", {
+        client,
+        optionIndex: 1,
+      }),
+    ).resolves.toMatchObject({
+      pollId: "$poll",
+      answerIds: ["a1"],
+    });
+    expect(sendEvent).toHaveBeenCalledWith("!room:example", "m.poll.response", {
+      "m.poll.response": { answers: ["a1"] },
+      "org.matrix.msc3381.poll.response": { answers: ["a1"] },
+      "m.relates_to": {
+        rel_type: "m.reference",
+        event_id: "$poll",
+      },
+    });
+  });
 });

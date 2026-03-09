@@ -103,11 +103,13 @@ type MatrixJsClientStub = EventEmitter & {
   mxcUrlToHttp: ReturnType<typeof vi.fn>;
   uploadContent: ReturnType<typeof vi.fn>;
   fetchRoomEvent: ReturnType<typeof vi.fn>;
+  getEventMapper: ReturnType<typeof vi.fn>;
   sendTyping: ReturnType<typeof vi.fn>;
   getRoom: ReturnType<typeof vi.fn>;
   getRooms: ReturnType<typeof vi.fn>;
   getCrypto: ReturnType<typeof vi.fn>;
   decryptEventIfNeeded: ReturnType<typeof vi.fn>;
+  relations: ReturnType<typeof vi.fn>;
 };
 
 function createMatrixJsClientStub(): MatrixJsClientStub {
@@ -132,11 +134,42 @@ function createMatrixJsClientStub(): MatrixJsClientStub {
   client.mxcUrlToHttp = vi.fn(() => null);
   client.uploadContent = vi.fn(async () => ({ content_uri: "mxc://example/file" }));
   client.fetchRoomEvent = vi.fn(async () => ({}));
+  client.getEventMapper = vi.fn(
+    () =>
+      (
+        raw: Partial<{
+          room_id: string;
+          event_id: string;
+          sender: string;
+          type: string;
+          origin_server_ts: number;
+          content: Record<string, unknown>;
+          state_key?: string;
+          unsigned?: { age?: number; redacted_because?: unknown };
+        }>,
+      ) =>
+        new FakeMatrixEvent({
+          roomId: raw.room_id ?? "!mapped:example.org",
+          eventId: raw.event_id ?? "$mapped",
+          sender: raw.sender ?? "@mapped:example.org",
+          type: raw.type ?? "m.room.message",
+          ts: raw.origin_server_ts ?? Date.now(),
+          content: raw.content ?? {},
+          stateKey: raw.state_key,
+          unsigned: raw.unsigned,
+        }),
+  );
   client.sendTyping = vi.fn(async () => {});
   client.getRoom = vi.fn(() => ({ hasEncryptionStateEvent: () => false }));
   client.getRooms = vi.fn(() => []);
   client.getCrypto = vi.fn(() => undefined);
   client.decryptEventIfNeeded = vi.fn(async () => {});
+  client.relations = vi.fn(async () => ({
+    originalEvent: null,
+    events: [],
+    nextBatch: null,
+    prevBatch: null,
+  }));
   return client;
 }
 
@@ -181,6 +214,90 @@ describe("MatrixClient request hardening", () => {
       "Absolute Matrix endpoint is blocked by default",
     );
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("decrypts encrypted room events returned by getEvent", async () => {
+    const client = new MatrixClient("https://matrix.example.org", "token");
+    matrixJsClient.fetchRoomEvent = vi.fn(async () => ({
+      room_id: "!room:example.org",
+      event_id: "$poll",
+      sender: "@alice:example.org",
+      type: "m.room.encrypted",
+      origin_server_ts: 1,
+      content: {},
+    }));
+    matrixJsClient.decryptEventIfNeeded = vi.fn(async (event: FakeMatrixEvent) => {
+      event.emit(
+        "decrypted",
+        new FakeMatrixEvent({
+          roomId: "!room:example.org",
+          eventId: "$poll",
+          sender: "@alice:example.org",
+          type: "m.poll.start",
+          ts: 1,
+          content: {
+            "m.poll.start": {
+              question: { "m.text": "Lunch?" },
+              answers: [{ id: "a1", "m.text": "Pizza" }],
+            },
+          },
+        }),
+      );
+    });
+
+    const event = await client.getEvent("!room:example.org", "$poll");
+
+    expect(matrixJsClient.decryptEventIfNeeded).toHaveBeenCalledTimes(1);
+    expect(event).toMatchObject({
+      event_id: "$poll",
+      type: "m.poll.start",
+      sender: "@alice:example.org",
+    });
+  });
+
+  it("maps relations pages back to raw events", async () => {
+    const client = new MatrixClient("https://matrix.example.org", "token");
+    matrixJsClient.relations = vi.fn(async () => ({
+      originalEvent: new FakeMatrixEvent({
+        roomId: "!room:example.org",
+        eventId: "$poll",
+        sender: "@alice:example.org",
+        type: "m.poll.start",
+        ts: 1,
+        content: {
+          "m.poll.start": {
+            question: { "m.text": "Lunch?" },
+            answers: [{ id: "a1", "m.text": "Pizza" }],
+          },
+        },
+      }),
+      events: [
+        new FakeMatrixEvent({
+          roomId: "!room:example.org",
+          eventId: "$vote",
+          sender: "@bob:example.org",
+          type: "m.poll.response",
+          ts: 2,
+          content: {
+            "m.poll.response": { answers: ["a1"] },
+            "m.relates_to": { rel_type: "m.reference", event_id: "$poll" },
+          },
+        }),
+      ],
+      nextBatch: null,
+      prevBatch: null,
+    }));
+
+    const page = await client.getRelations("!room:example.org", "$poll", "m.reference");
+
+    expect(page.originalEvent).toMatchObject({ event_id: "$poll", type: "m.poll.start" });
+    expect(page.events).toEqual([
+      expect.objectContaining({
+        event_id: "$vote",
+        type: "m.poll.response",
+        sender: "@bob:example.org",
+      }),
+    ]);
   });
 
   it("blocks cross-protocol redirects when absolute endpoints are allowed", async () => {

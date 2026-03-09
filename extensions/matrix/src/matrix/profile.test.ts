@@ -29,6 +29,7 @@ describe("matrix profile sync", () => {
 
     expect(result.skipped).toBe(true);
     expectNoUpdates(result);
+    expect(result.uploadedAvatarSource).toBeNull();
     expect(client.setDisplayName).not.toHaveBeenCalled();
     expect(client.setAvatarUrl).not.toHaveBeenCalled();
   });
@@ -49,6 +50,7 @@ describe("matrix profile sync", () => {
     expect(result.skipped).toBe(false);
     expect(result.displayNameUpdated).toBe(true);
     expect(result.avatarUpdated).toBe(false);
+    expect(result.uploadedAvatarSource).toBeNull();
     expect(client.setDisplayName).toHaveBeenCalledWith("New Name");
   });
 
@@ -93,6 +95,7 @@ describe("matrix profile sync", () => {
     });
 
     expect(result.convertedAvatarFromHttp).toBe(true);
+    expect(result.uploadedAvatarSource).toBe("http");
     expect(result.resolvedAvatarUrl).toBe("mxc://example/new-avatar");
     expect(result.avatarUpdated).toBe(true);
     expect(loadAvatarFromUrl).toHaveBeenCalledWith(
@@ -100,6 +103,34 @@ describe("matrix profile sync", () => {
       10 * 1024 * 1024,
     );
     expect(client.setAvatarUrl).toHaveBeenCalledWith("mxc://example/new-avatar");
+  });
+
+  it("uploads avatar media from a local path and then updates profile avatar", async () => {
+    const client = createClientStub();
+    client.getUserProfile.mockResolvedValue({
+      displayname: "Bot",
+      avatar_url: "mxc://example/old",
+    });
+    client.uploadContent.mockResolvedValue("mxc://example/path-avatar");
+    const loadAvatarFromPath = vi.fn(async () => ({
+      buffer: Buffer.from("avatar-bytes"),
+      contentType: "image/jpeg",
+      fileName: "avatar.jpg",
+    }));
+
+    const result = await syncMatrixOwnProfile({
+      client,
+      userId: "@bot:example.org",
+      avatarPath: "/tmp/avatar.jpg",
+      loadAvatarFromPath,
+    });
+
+    expect(result.convertedAvatarFromHttp).toBe(false);
+    expect(result.uploadedAvatarSource).toBe("path");
+    expect(result.resolvedAvatarUrl).toBe("mxc://example/path-avatar");
+    expect(result.avatarUpdated).toBe(true);
+    expect(loadAvatarFromPath).toHaveBeenCalledWith("/tmp/avatar.jpg", 10 * 1024 * 1024);
+    expect(client.setAvatarUrl).toHaveBeenCalledWith("mxc://example/path-avatar");
   });
 
   it("rejects unsupported avatar URL schemes", async () => {

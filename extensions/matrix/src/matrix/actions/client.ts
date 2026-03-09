@@ -1,7 +1,12 @@
 import { getMatrixRuntime } from "../../runtime.js";
 import type { CoreConfig } from "../../types.js";
 import { getActiveMatrixClient } from "../active-client.js";
-import { createMatrixClient, isBunRuntime, resolveMatrixAuth } from "../client.js";
+import {
+  createMatrixClient,
+  isBunRuntime,
+  resolveMatrixAuth,
+  resolveMatrixAuthContext,
+} from "../client.js";
 import type { MatrixActionClient, MatrixActionClientOpts } from "./types.js";
 
 export function ensureNodeRuntime() {
@@ -17,13 +22,18 @@ export async function resolveActionClient(
   if (opts.client) {
     return { client: opts.client, stopOnDone: false };
   }
-  const active = getActiveMatrixClient(opts.accountId);
+  const cfg = getMatrixRuntime().config.loadConfig() as CoreConfig;
+  const authContext = resolveMatrixAuthContext({
+    cfg,
+    accountId: opts.accountId,
+  });
+  const active = getActiveMatrixClient(authContext.accountId);
   if (active) {
     return { client: active, stopOnDone: false };
   }
   const auth = await resolveMatrixAuth({
-    cfg: getMatrixRuntime().config.loadConfig() as CoreConfig,
-    accountId: opts.accountId,
+    cfg,
+    accountId: authContext.accountId,
   });
   const client = await createMatrixClient({
     homeserver: auth.homeserver,
@@ -33,7 +43,7 @@ export async function resolveActionClient(
     deviceId: auth.deviceId,
     encryption: auth.encryption,
     localTimeoutMs: opts.timeoutMs,
-    accountId: opts.accountId,
+    accountId: authContext.accountId,
     autoBootstrapCrypto: false,
   });
   await client.prepareForOneOff();

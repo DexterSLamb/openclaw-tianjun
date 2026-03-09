@@ -18,6 +18,7 @@ export type MatrixProfileSyncResult = {
   displayNameUpdated: boolean;
   avatarUpdated: boolean;
   resolvedAvatarUrl: string | null;
+  uploadedAvatarSource: "http" | "path" | null;
   convertedAvatarFromHttp: boolean;
 };
 
@@ -42,16 +43,54 @@ export function isSupportedMatrixAvatarSource(value: string): boolean {
   return isMatrixMxcUri(value) || isMatrixHttpAvatarUri(value);
 }
 
+async function uploadAvatarMedia(params: {
+  client: MatrixProfileClient;
+  avatarSource: string;
+  avatarMaxBytes: number;
+  loadAvatar: (source: string, maxBytes: number) => Promise<MatrixProfileLoadResult>;
+}): Promise<string> {
+  const media = await params.loadAvatar(params.avatarSource, params.avatarMaxBytes);
+  return await params.client.uploadContent(
+    media.buffer,
+    media.contentType,
+    media.fileName || "avatar",
+  );
+}
+
 async function resolveAvatarUrl(params: {
   client: MatrixProfileClient;
   avatarUrl: string | null;
+  avatarPath?: string | null;
   avatarMaxBytes: number;
   loadAvatarFromUrl?: (url: string, maxBytes: number) => Promise<MatrixProfileLoadResult>;
-}): Promise<{ resolvedAvatarUrl: string | null; convertedAvatarFromHttp: boolean }> {
+  loadAvatarFromPath?: (path: string, maxBytes: number) => Promise<MatrixProfileLoadResult>;
+}): Promise<{
+  resolvedAvatarUrl: string | null;
+  uploadedAvatarSource: "http" | "path" | null;
+  convertedAvatarFromHttp: boolean;
+}> {
+  const avatarPath = normalizeOptionalText(params.avatarPath);
+  if (avatarPath) {
+    if (!params.loadAvatarFromPath) {
+      throw new Error("Matrix avatar path upload requires a media loader.");
+    }
+    return {
+      resolvedAvatarUrl: await uploadAvatarMedia({
+        client: params.client,
+        avatarSource: avatarPath,
+        avatarMaxBytes: params.avatarMaxBytes,
+        loadAvatar: params.loadAvatarFromPath,
+      }),
+      uploadedAvatarSource: "path",
+      convertedAvatarFromHttp: false,
+    };
+  }
+
   const avatarUrl = normalizeOptionalText(params.avatarUrl);
   if (!avatarUrl) {
     return {
       resolvedAvatarUrl: null,
+      uploadedAvatarSource: null,
       convertedAvatarFromHttp: false,
     };
   }
@@ -59,6 +98,7 @@ async function resolveAvatarUrl(params: {
   if (isMatrixMxcUri(avatarUrl)) {
     return {
       resolvedAvatarUrl: avatarUrl,
+      uploadedAvatarSource: null,
       convertedAvatarFromHttp: false,
     };
   }
@@ -71,15 +111,14 @@ async function resolveAvatarUrl(params: {
     throw new Error("Matrix avatar URL conversion requires a media loader.");
   }
 
-  const media = await params.loadAvatarFromUrl(avatarUrl, params.avatarMaxBytes);
-  const uploadedMxc = await params.client.uploadContent(
-    media.buffer,
-    media.contentType,
-    media.fileName || "avatar",
-  );
-
   return {
-    resolvedAvatarUrl: uploadedMxc,
+    resolvedAvatarUrl: await uploadAvatarMedia({
+      client: params.client,
+      avatarSource: avatarUrl,
+      avatarMaxBytes: params.avatarMaxBytes,
+      loadAvatar: params.loadAvatarFromUrl,
+    }),
+    uploadedAvatarSource: "http",
     convertedAvatarFromHttp: true,
   };
 }
@@ -89,15 +128,19 @@ export async function syncMatrixOwnProfile(params: {
   userId: string;
   displayName?: string | null;
   avatarUrl?: string | null;
+  avatarPath?: string | null;
   avatarMaxBytes?: number;
   loadAvatarFromUrl?: (url: string, maxBytes: number) => Promise<MatrixProfileLoadResult>;
+  loadAvatarFromPath?: (path: string, maxBytes: number) => Promise<MatrixProfileLoadResult>;
 }): Promise<MatrixProfileSyncResult> {
   const desiredDisplayName = normalizeOptionalText(params.displayName);
   const avatar = await resolveAvatarUrl({
     client: params.client,
     avatarUrl: params.avatarUrl ?? null,
+    avatarPath: params.avatarPath ?? null,
     avatarMaxBytes: params.avatarMaxBytes ?? MATRIX_PROFILE_AVATAR_MAX_BYTES,
     loadAvatarFromUrl: params.loadAvatarFromUrl,
+    loadAvatarFromPath: params.loadAvatarFromPath,
   });
   const desiredAvatarUrl = avatar.resolvedAvatarUrl;
 
@@ -107,6 +150,7 @@ export async function syncMatrixOwnProfile(params: {
       displayNameUpdated: false,
       avatarUpdated: false,
       resolvedAvatarUrl: null,
+      uploadedAvatarSource: avatar.uploadedAvatarSource,
       convertedAvatarFromHttp: avatar.convertedAvatarFromHttp,
     };
   }
@@ -138,6 +182,7 @@ export async function syncMatrixOwnProfile(params: {
     displayNameUpdated,
     avatarUpdated,
     resolvedAvatarUrl: desiredAvatarUrl,
+    uploadedAvatarSource: avatar.uploadedAvatarSource,
     convertedAvatarFromHttp: avatar.convertedAvatarFromHttp,
   };
 }

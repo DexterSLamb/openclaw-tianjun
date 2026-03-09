@@ -1,141 +1,292 @@
-import type { PluginRuntime, RuntimeEnv, RuntimeLogger } from "openclaw/plugin-sdk/matrix";
-import { describe, expect, it, vi } from "vitest";
+import type { RuntimeEnv, RuntimeLogger } from "openclaw/plugin-sdk/matrix";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setMatrixRuntime } from "../../runtime.js";
 import type { MatrixClient } from "../sdk.js";
 import { createMatrixRoomMessageHandler } from "./handler.js";
 import { EventType, type MatrixRawEvent } from "./types.js";
 
-describe("createMatrixRoomMessageHandler BodyForAgent sender label", () => {
-  it("stores sender-labeled BodyForAgent for group thread messages", async () => {
-    const recordInboundSession = vi.fn().mockResolvedValue(undefined);
-    const formatInboundEnvelope = vi
-      .fn()
-      .mockImplementation((params: { senderLabel?: string; body: string }) => params.body);
-    const finalizeInboundContext = vi
-      .fn()
-      .mockImplementation((ctx: Record<string, unknown>) => ctx);
-
-    const core = {
+describe("createMatrixRoomMessageHandler inbound body formatting", () => {
+  beforeEach(() => {
+    setMatrixRuntime({
       channel: {
-        pairing: {
-          readAllowFromStore: vi.fn().mockResolvedValue([]),
+        mentions: {
+          matchesMentionPatterns: () => false,
         },
-        routing: {
-          resolveAgentRoute: vi.fn().mockReturnValue({
-            agentId: "main",
-            accountId: undefined,
-            sessionKey: "agent:main:matrix:channel:!room:example.org",
-            mainSessionKey: "agent:main:main",
-          }),
-        },
-        session: {
-          resolveStorePath: vi.fn().mockReturnValue("/tmp/openclaw-test-session.json"),
-          readSessionUpdatedAt: vi.fn().mockReturnValue(123),
-          recordInboundSession,
-        },
-        reply: {
-          resolveEnvelopeFormatOptions: vi.fn().mockReturnValue({}),
-          formatInboundEnvelope,
-          formatAgentEnvelope: vi
-            .fn()
-            .mockImplementation((params: { body: string }) => params.body),
-          finalizeInboundContext,
-          resolveHumanDelayConfig: vi.fn().mockReturnValue(undefined),
-          createReplyDispatcherWithTyping: vi.fn().mockReturnValue({
-            dispatcher: {},
-            replyOptions: {},
-            markDispatchIdle: vi.fn(),
-          }),
-          withReplyDispatcher: vi
-            .fn()
-            .mockResolvedValue({ queuedFinal: false, counts: { final: 0, partial: 0, tool: 0 } }),
-        },
-        commands: {
-          shouldHandleTextCommands: vi.fn().mockReturnValue(true),
-        },
-        text: {
-          hasControlCommand: vi.fn().mockReturnValue(false),
-          resolveMarkdownTableMode: vi.fn().mockReturnValue("code"),
+        media: {
+          saveMediaBuffer: vi.fn(),
         },
       },
-      system: {
-        enqueueSystemEvent: vi.fn(),
+      config: {
+        loadConfig: () => ({}),
       },
-    } as unknown as PluginRuntime;
+      state: {
+        resolveStateDir: () => "/tmp",
+      },
+    } as never);
+  });
 
-    const runtime = {
-      error: vi.fn(),
-    } as unknown as RuntimeEnv;
-    const logger = {
-      info: vi.fn(),
-      warn: vi.fn(),
-    } as unknown as RuntimeLogger;
-    const logVerboseMessage = vi.fn();
-
-    const client = {
-      getUserId: vi.fn().mockResolvedValue("@bot:matrix.example.org"),
-    } as unknown as MatrixClient;
+  it("records thread metadata for group thread messages", async () => {
+    const recordInboundSession = vi.fn(async () => {});
+    const finalizeInboundContext = vi.fn((ctx) => ctx);
 
     const handler = createMatrixRoomMessageHandler({
-      client,
-      core,
-      cfg: {},
-      runtime,
-      logger,
-      logVerboseMessage,
+      client: {
+        getUserId: async () => "@bot:example.org",
+        getEvent: async () => ({
+          event_id: "$thread-root",
+          sender: "@alice:example.org",
+          type: EventType.RoomMessage,
+          origin_server_ts: Date.now(),
+          content: {
+            msgtype: "m.text",
+            body: "Root topic",
+          },
+        }),
+      } as never,
+      core: {
+        channel: {
+          pairing: {
+            readAllowFromStore: async () => [] as string[],
+            upsertPairingRequest: async () => ({ code: "ABCDEFGH", created: false }),
+          },
+          commands: {
+            shouldHandleTextCommands: () => false,
+          },
+          text: {
+            hasControlCommand: () => false,
+            resolveMarkdownTableMode: () => "preserve",
+          },
+          routing: {
+            resolveAgentRoute: () => ({
+              agentId: "ops",
+              channel: "matrix",
+              accountId: "ops",
+              sessionKey: "agent:ops:main",
+              mainSessionKey: "agent:ops:main",
+              matchedBy: "binding.account",
+            }),
+          },
+          session: {
+            resolveStorePath: () => "/tmp/session-store",
+            readSessionUpdatedAt: () => undefined,
+            recordInboundSession,
+          },
+          reply: {
+            resolveEnvelopeFormatOptions: () => ({}),
+            formatAgentEnvelope: ({ body }: { body: string }) => body,
+            finalizeInboundContext,
+            createReplyDispatcherWithTyping: () => ({
+              dispatcher: {},
+              replyOptions: {},
+              markDispatchIdle: () => {},
+            }),
+            resolveHumanDelayConfig: () => undefined,
+            dispatchReplyFromConfig: async () => ({
+              queuedFinal: false,
+              counts: { final: 0, block: 0, tool: 0 },
+            }),
+          },
+          reactions: {
+            shouldAckReaction: () => false,
+          },
+        },
+      } as never,
+      cfg: {} as never,
+      accountId: "ops",
+      runtime: {
+        error: () => {},
+      } as RuntimeEnv,
+      logger: {
+        info: () => {},
+        warn: () => {},
+      } as RuntimeLogger,
+      logVerboseMessage: () => {},
       allowFrom: [],
-      roomsConfig: undefined,
       mentionRegexes: [],
       groupPolicy: "open",
-      replyToMode: "first",
+      replyToMode: "off",
       threadReplies: "inbound",
       dmEnabled: true,
       dmPolicy: "open",
-      textLimit: 4000,
-      mediaMaxBytes: 5 * 1024 * 1024,
-      startupMs: Date.now(),
-      startupGraceMs: 60_000,
+      textLimit: 8_000,
+      mediaMaxBytes: 10_000_000,
+      startupMs: 0,
+      startupGraceMs: 0,
       directTracker: {
-        isDirectMessage: vi.fn().mockResolvedValue(false),
+        isDirectMessage: async () => false,
       },
-      getRoomInfo: vi.fn().mockResolvedValue({
-        name: "Dev Room",
-        canonicalAlias: "#dev:matrix.example.org",
-        altAliases: [],
-      }),
-      getMemberDisplayName: vi.fn().mockResolvedValue("Bu"),
-      accountId: "default",
+      getRoomInfo: async () => ({ altAliases: [] }),
+      getMemberDisplayName: async (_roomId, userId) =>
+        userId === "@alice:example.org" ? "Alice" : "sender",
     });
 
-    const event = {
+    await handler("!room:example.org", {
       type: EventType.RoomMessage,
-      event_id: "$event1",
-      sender: "@bu:matrix.example.org",
+      sender: "@user:example.org",
+      event_id: "$reply1",
       origin_server_ts: Date.now(),
       content: {
         msgtype: "m.text",
-        body: "show me my commits",
-        "m.mentions": { user_ids: ["@bot:matrix.example.org"] },
+        body: "follow up",
         "m.relates_to": {
           rel_type: "m.thread",
           event_id: "$thread-root",
+          "m.in_reply_to": { event_id: "$thread-root" },
         },
+        "m.mentions": { room: true },
       },
-    } as unknown as MatrixRawEvent;
+    } as MatrixRawEvent);
 
-    await handler("!room:example.org", event);
-
-    expect(formatInboundEnvelope).toHaveBeenCalledWith(
+    expect(finalizeInboundContext).toHaveBeenCalledWith(
       expect.objectContaining({
-        chatType: "channel",
-        senderLabel: "Bu (bu)",
+        MessageThreadId: "$thread-root",
+        ThreadStarterBody: "Matrix thread root $thread-root from Alice:\nRoot topic",
       }),
     );
     expect(recordInboundSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        ctx: expect.objectContaining({
-          ChatType: "thread",
-          BodyForAgent: "Bu (bu): show me my commits",
+        sessionKey: "agent:ops:main",
+      }),
+    );
+  });
+
+  it("records formatted poll results for inbound poll response events", async () => {
+    const recordInboundSession = vi.fn(async () => {});
+    const finalizeInboundContext = vi.fn((ctx) => ctx);
+
+    const handler = createMatrixRoomMessageHandler({
+      client: {
+        getUserId: async () => "@bot:example.org",
+        getEvent: async () => ({
+          event_id: "$poll",
+          sender: "@bot:example.org",
+          type: "m.poll.start",
+          origin_server_ts: 1,
+          content: {
+            "m.poll.start": {
+              question: { "m.text": "Lunch?" },
+              kind: "m.poll.disclosed",
+              max_selections: 1,
+              answers: [
+                { id: "a1", "m.text": "Pizza" },
+                { id: "a2", "m.text": "Sushi" },
+              ],
+            },
+          },
         }),
+        getRelations: async () => ({
+          events: [
+            {
+              type: "m.poll.response",
+              event_id: "$vote1",
+              sender: "@user:example.org",
+              origin_server_ts: 2,
+              content: {
+                "m.poll.response": { answers: ["a1"] },
+                "m.relates_to": { rel_type: "m.reference", event_id: "$poll" },
+              },
+            },
+          ],
+          nextBatch: null,
+          prevBatch: null,
+        }),
+      } as unknown as MatrixClient,
+      core: {
+        channel: {
+          pairing: {
+            readAllowFromStore: async () => [] as string[],
+            upsertPairingRequest: async () => ({ code: "ABCDEFGH", created: false }),
+          },
+          commands: {
+            shouldHandleTextCommands: () => false,
+          },
+          text: {
+            hasControlCommand: () => false,
+            resolveMarkdownTableMode: () => "preserve",
+          },
+          routing: {
+            resolveAgentRoute: () => ({
+              agentId: "ops",
+              channel: "matrix",
+              accountId: "ops",
+              sessionKey: "agent:ops:main",
+              mainSessionKey: "agent:ops:main",
+              matchedBy: "binding.account",
+            }),
+          },
+          session: {
+            resolveStorePath: () => "/tmp/session-store",
+            readSessionUpdatedAt: () => undefined,
+            recordInboundSession,
+          },
+          reply: {
+            resolveEnvelopeFormatOptions: () => ({}),
+            formatAgentEnvelope: ({ body }: { body: string }) => body,
+            finalizeInboundContext,
+            createReplyDispatcherWithTyping: () => ({
+              dispatcher: {},
+              replyOptions: {},
+              markDispatchIdle: () => {},
+            }),
+            resolveHumanDelayConfig: () => undefined,
+            dispatchReplyFromConfig: async () => ({
+              queuedFinal: false,
+              counts: { final: 0, block: 0, tool: 0 },
+            }),
+          },
+          reactions: {
+            shouldAckReaction: () => false,
+          },
+        },
+      } as never,
+      cfg: {} as never,
+      accountId: "ops",
+      runtime: {
+        error: () => {},
+      } as RuntimeEnv,
+      logger: {
+        info: () => {},
+        warn: () => {},
+      } as RuntimeLogger,
+      logVerboseMessage: () => {},
+      allowFrom: [],
+      mentionRegexes: [],
+      groupPolicy: "open",
+      replyToMode: "off",
+      threadReplies: "inbound",
+      dmEnabled: true,
+      dmPolicy: "open",
+      textLimit: 8_000,
+      mediaMaxBytes: 10_000_000,
+      startupMs: 0,
+      startupGraceMs: 0,
+      directTracker: {
+        isDirectMessage: async () => true,
+      },
+      getRoomInfo: async () => ({ altAliases: [] }),
+      getMemberDisplayName: async (_roomId, userId) =>
+        userId === "@bot:example.org" ? "Bot" : "sender",
+    });
+
+    await handler("!room:example.org", {
+      type: "m.poll.response",
+      sender: "@user:example.org",
+      event_id: "$vote1",
+      origin_server_ts: 2,
+      content: {
+        "m.poll.response": { answers: ["a1"] },
+        "m.relates_to": { rel_type: "m.reference", event_id: "$poll" },
+      },
+    } as MatrixRawEvent);
+
+    expect(finalizeInboundContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        RawBody: expect.stringMatching(/1\. Pizza \(1 vote\)[\s\S]*Total voters: 1/),
+      }),
+    );
+    expect(recordInboundSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: "agent:ops:main",
       }),
     );
   });

@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPollResultsSummary,
   buildPollResponseContent,
   buildPollStartContent,
+  formatPollResultsAsText,
   parsePollStart,
+  parsePollResponseAnswerIds,
   parsePollStartContent,
+  resolvePollReferenceEventId,
 } from "./poll-types.js";
 
 describe("parsePollStartContent", () => {
@@ -91,5 +95,111 @@ describe("buildPollResponseContent", () => {
         event_id: "$poll",
       },
     });
+  });
+});
+
+describe("poll relation parsing", () => {
+  it("parses stable and unstable poll response answer ids", () => {
+    expect(
+      parsePollResponseAnswerIds({
+        "m.poll.response": { answers: ["a1"] },
+        "m.relates_to": { rel_type: "m.reference", event_id: "$poll" },
+      }),
+    ).toEqual(["a1"]);
+    expect(
+      parsePollResponseAnswerIds({
+        "org.matrix.msc3381.poll.response": { answers: ["a2"] },
+      }),
+    ).toEqual(["a2"]);
+  });
+
+  it("extracts poll relation targets", () => {
+    expect(
+      resolvePollReferenceEventId({
+        "m.relates_to": { rel_type: "m.reference", event_id: "$poll" },
+      }),
+    ).toBe("$poll");
+  });
+});
+
+describe("buildPollResultsSummary", () => {
+  it("counts only the latest valid response from each sender", () => {
+    const summary = buildPollResultsSummary({
+      pollEventId: "$poll",
+      roomId: "!room:example.org",
+      sender: "@alice:example.org",
+      senderName: "Alice",
+      content: {
+        "m.poll.start": {
+          question: { "m.text": "Lunch?" },
+          kind: "m.poll.disclosed",
+          max_selections: 1,
+          answers: [
+            { id: "a1", "m.text": "Pizza" },
+            { id: "a2", "m.text": "Sushi" },
+          ],
+        },
+      },
+      relationEvents: [
+        {
+          event_id: "$vote1",
+          sender: "@bob:example.org",
+          type: "m.poll.response",
+          origin_server_ts: 1,
+          content: {
+            "m.poll.response": { answers: ["a1"] },
+            "m.relates_to": { rel_type: "m.reference", event_id: "$poll" },
+          },
+        },
+        {
+          event_id: "$vote2",
+          sender: "@bob:example.org",
+          type: "m.poll.response",
+          origin_server_ts: 2,
+          content: {
+            "m.poll.response": { answers: ["a2"] },
+            "m.relates_to": { rel_type: "m.reference", event_id: "$poll" },
+          },
+        },
+        {
+          event_id: "$vote3",
+          sender: "@carol:example.org",
+          type: "m.poll.response",
+          origin_server_ts: 3,
+          content: {
+            "m.poll.response": { answers: [] },
+            "m.relates_to": { rel_type: "m.reference", event_id: "$poll" },
+          },
+        },
+      ],
+    });
+
+    expect(summary?.entries).toEqual([
+      { id: "a1", text: "Pizza", votes: 0 },
+      { id: "a2", text: "Sushi", votes: 1 },
+    ]);
+    expect(summary?.totalVotes).toBe(1);
+  });
+
+  it("formats disclosed poll results with vote totals", () => {
+    const text = formatPollResultsAsText({
+      eventId: "$poll",
+      roomId: "!room:example.org",
+      sender: "@alice:example.org",
+      senderName: "Alice",
+      question: "Lunch?",
+      answers: ["Pizza", "Sushi"],
+      kind: "m.poll.disclosed",
+      maxSelections: 1,
+      entries: [
+        { id: "a1", text: "Pizza", votes: 1 },
+        { id: "a2", text: "Sushi", votes: 0 },
+      ],
+      totalVotes: 1,
+      closed: false,
+    });
+
+    expect(text).toContain("1. Pizza (1 vote)");
+    expect(text).toContain("Total voters: 1");
   });
 });

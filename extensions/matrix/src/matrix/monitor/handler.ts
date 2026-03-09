@@ -17,8 +17,12 @@ import {
 import type { CoreConfig, MatrixRoomConfig, ReplyToMode } from "../../types.js";
 import {
   formatPollAsText,
+  formatPollResultsAsText,
+  isPollEventType,
   isPollStartType,
   parsePollStartContent,
+  resolvePollReferenceEventId,
+  buildPollResultsSummary,
   type PollStartContent,
 } from "../poll-types.js";
 import type { LocationMessageEventContent, MatrixClient } from "../sdk.js";
@@ -166,7 +170,7 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
         return;
       }
 
-      const isPollEvent = isPollStartType(eventType);
+      const isPollEvent = isPollEventType(eventType);
       const isReactionEvent = eventType === EventType.Reaction;
       const locationContent = event.content as LocationMessageEventContent;
       const isLocationEvent =
@@ -213,22 +217,61 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
 
       let content = event.content as RoomMessageEventContent;
       if (isPollEvent) {
-        const pollStartContent = event.content as PollStartContent;
-        const pollSummary = parsePollStartContent(pollStartContent);
-        if (pollSummary) {
-          pollSummary.eventId = event.event_id ?? "";
-          pollSummary.roomId = roomId;
-          pollSummary.sender = senderId;
-          const senderDisplayName = await getMemberDisplayName(roomId, senderId);
-          pollSummary.senderName = senderDisplayName;
-          const pollText = formatPollAsText(pollSummary);
-          content = {
-            msgtype: "m.text",
-            body: pollText,
-          } as unknown as RoomMessageEventContent;
-        } else {
+        const pollEventId = isPollStartType(eventType)
+          ? (event.event_id ?? "")
+          : resolvePollReferenceEventId(event.content);
+        if (!pollEventId) {
           return;
         }
+        const pollEvent = isPollStartType(eventType)
+          ? event
+          : await client.getEvent(roomId, pollEventId).catch((err) => {
+              logVerboseMessage(
+                `matrix: failed resolving poll root room=${roomId} id=${pollEventId}: ${String(err)}`,
+              );
+              return null;
+            });
+        if (
+          !pollEvent ||
+          !isPollStartType(typeof pollEvent.type === "string" ? pollEvent.type : "")
+        ) {
+          return;
+        }
+        const pollStartContent = pollEvent.content as PollStartContent;
+        const pollSummary = parsePollStartContent(pollStartContent);
+        if (!pollSummary) {
+          return;
+        }
+        pollSummary.eventId = pollEventId;
+        pollSummary.roomId = roomId;
+        pollSummary.sender = typeof pollEvent.sender === "string" ? pollEvent.sender : senderId;
+        pollSummary.senderName = await getMemberDisplayName(roomId, pollSummary.sender);
+
+        const relationEvents: MatrixRawEvent[] = [];
+        let nextBatch: string | undefined;
+        do {
+          const page = await client.getRelations(roomId, pollEventId, "m.reference", undefined, {
+            from: nextBatch,
+          });
+          relationEvents.push(...page.events);
+          nextBatch = page.nextBatch ?? undefined;
+        } while (nextBatch);
+
+        const pollResults = buildPollResultsSummary({
+          pollEventId,
+          roomId,
+          sender: pollSummary.sender,
+          senderName: pollSummary.senderName,
+          content: pollStartContent,
+          relationEvents,
+        });
+        const pollText = pollResults
+          ? formatPollResultsAsText(pollResults)
+          : formatPollAsText(pollSummary);
+        content = {
+          msgtype: "m.text",
+          body: pollText,
+        } as unknown as RoomMessageEventContent;
       }
 
       if (

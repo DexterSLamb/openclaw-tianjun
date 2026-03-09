@@ -105,4 +105,25 @@ describe("matrixMessageActions account propagation", () => {
       expect.any(Object),
     );
   });
+
+  it("forwards local avatar paths for self-profile updates", async () => {
+    await matrixMessageActions.handleAction?.(
+      createContext({
+        action: "set-profile",
+        accountId: "ops",
+        params: {
+          path: "/tmp/avatar.jpg",
+        },
+      }),
+    );
+
+    expect(mocks.handleMatrixAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "setProfile",
+        accountId: "ops",
+        avatarPath: "/tmp/avatar.jpg",
+      }),
+      expect.any(Object),
+    );
+  });
 });

@@ -264,10 +264,15 @@ export async function handleMatrixAction(
     if (!isActionEnabled("profile")) {
       throw new Error("Matrix profile updates are disabled.");
     }
+    const avatarPath =
+      readStringParam(params, "avatarPath") ??
+      readStringParam(params, "path") ??
+      readStringParam(params, "filePath");
     const result = await applyMatrixProfileUpdate({
       account: accountId,
       displayName: readStringParam(params, "displayName") ?? readStringParam(params, "name"),
       avatarUrl: readStringParam(params, "avatarUrl"),
+      avatarPath,
     });
     return jsonResult({ ok: true, ...result });
   }

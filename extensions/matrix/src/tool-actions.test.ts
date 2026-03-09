@@ -68,6 +68,7 @@ describe("handleMatrixAction pollVote", () => {
         displayNameUpdated: true,
         avatarUpdated: true,
         resolvedAvatarUrl: "mxc://example/avatar",
+        uploadedAvatarSource: null,
         convertedAvatarFromHttp: false,
       },
       configPath: "channels.matrix.accounts.ops",
@@ -260,6 +261,24 @@ describe("handleMatrixAction pollVote", () => {
         displayNameUpdated: true,
         avatarUpdated: true,
       },
+    });
+  });
+
+  it("accepts local avatar paths for self-profile updates", async () => {
+    await handleMatrixAction(
+      {
+        action: "setProfile",
+        accountId: "ops",
+        path: "/tmp/avatar.jpg",
+      },
+      { channels: { matrix: { actions: { profile: true } } } } as CoreConfig,
+    );
+
+    expect(mocks.applyMatrixProfileUpdate).toHaveBeenCalledWith({
+      account: "ops",
+      displayName: undefined,
+      avatarUrl: undefined,
+      avatarPath: "/tmp/avatar.jpg",
     });
   });
 });

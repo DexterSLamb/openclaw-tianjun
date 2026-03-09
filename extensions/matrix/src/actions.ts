@@ -189,10 +189,15 @@ export const matrixMessageActions: ChannelMessageActionAdapter = {
     }
 
     if (action === "set-profile") {
+      const avatarPath =
+        readStringParam(params, "avatarPath") ??
+        readStringParam(params, "path") ??
+        readStringParam(params, "filePath");
       return await dispatch({
         action: "setProfile",
         displayName: readStringParam(params, "displayName") ?? readStringParam(params, "name"),
         avatarUrl: readStringParam(params, "avatarUrl"),
+        avatarPath,
       });
     }
 

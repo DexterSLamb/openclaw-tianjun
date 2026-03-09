@@ -13,6 +13,13 @@ export type MatrixRawEvent = {
   state_key?: string;
 };
 
+export type MatrixRelationsPage = {
+  originalEvent?: MatrixRawEvent | null;
+  events: MatrixRawEvent[];
+  nextBatch?: string | null;
+  prevBatch?: string | null;
+};
+
 export type MatrixClientEventMap = {
   "room.event": [roomId: string, event: MatrixRawEvent];
   "room.message": [roomId: string, event: MatrixRawEvent];

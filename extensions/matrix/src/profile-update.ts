@@ -12,6 +12,7 @@ export type MatrixProfileUpdateResult = {
     displayNameUpdated: boolean;
     avatarUpdated: boolean;
     resolvedAvatarUrl: string | null;
+    uploadedAvatarSource: "http" | "path" | null;
     convertedAvatarFromHttp: boolean;
   };
   configPath: string;
@@ -21,25 +22,26 @@ export async function applyMatrixProfileUpdate(params: {
   account?: string;
   displayName?: string;
   avatarUrl?: string;
+  avatarPath?: string;
 }): Promise<MatrixProfileUpdateResult> {
   const runtime = getMatrixRuntime();
   const cfg = runtime.config.loadConfig() as CoreConfig;
   const accountId = normalizeAccountId(params.account);
   const displayName = params.displayName?.trim() || null;
   const avatarUrl = params.avatarUrl?.trim() || null;
-  if (!displayName && !avatarUrl) {
-    throw new Error("Provide name/displayName and/or avatarUrl.");
+  const avatarPath = params.avatarPath?.trim() || null;
+  if (!displayName && !avatarUrl && !avatarPath) {
+    throw new Error("Provide name/displayName and/or avatarUrl/avatarPath.");
   }
 
   const synced = await updateMatrixOwnProfile({
     accountId,
     displayName: displayName ?? undefined,
     avatarUrl: avatarUrl ?? undefined,
+    avatarPath: avatarPath ?? undefined,
   });
   const persistedAvatarUrl =
-    synced.convertedAvatarFromHttp && synced.resolvedAvatarUrl
-      ? synced.resolvedAvatarUrl
-      : avatarUrl;
+    synced.uploadedAvatarSource && synced.resolvedAvatarUrl ? synced.resolvedAvatarUrl : avatarUrl;
   const updated = updateMatrixAccountConfig(cfg, accountId, {
     name: displayName ?? undefined,
     avatarUrl: persistedAvatarUrl ?? undefined,
@@ -54,6 +56,7 @@ export async function applyMatrixProfileUpdate(params: {
       displayNameUpdated: synced.displayNameUpdated,
       avatarUpdated: synced.avatarUpdated,
       resolvedAvatarUrl: synced.resolvedAvatarUrl,
+      uploadedAvatarSource: synced.uploadedAvatarSource,
       convertedAvatarFromHttp: synced.convertedAvatarFromHttp,
     },
     configPath: resolveMatrixConfigPath(updated, accountId),

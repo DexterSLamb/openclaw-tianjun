@@ -3,6 +3,7 @@ import "fake-indexeddb/auto";
 import { EventEmitter } from "node:events";
 import {
   ClientEvent,
+  MatrixEventEvent,
   createClient as createMatrixJsClient,
   type MatrixClient as MatrixJsClient,
   type MatrixEvent,
@@ -23,6 +24,7 @@ import type {
   MatrixClientEventMap,
   MatrixCryptoBootstrapApi,
   MatrixDeviceVerificationStatusLike,
+  MatrixRelationsPage,
   MatrixRawEvent,
   MessageEventContent,
 } from "./sdk/types.js";
@@ -539,7 +541,42 @@ export class MatrixClient {
   }
 
   async getEvent(roomId: string, eventId: string): Promise<Record<string, unknown>> {
-    return (await this.client.fetchRoomEvent(roomId, eventId)) as Record<string, unknown>;
+    const rawEvent = (await this.client.fetchRoomEvent(roomId, eventId)) as Record<string, unknown>;
+    if (rawEvent.type !== "m.room.encrypted") {
+      return rawEvent;
+    }
+
+    const mapper = this.client.getEventMapper();
+    const event = mapper(rawEvent);
+    let decryptedEvent: MatrixEvent | undefined;
+    const onDecrypted = (candidate: MatrixEvent) => {
+      decryptedEvent = candidate;
+    };
+    event.once(MatrixEventEvent.Decrypted, onDecrypted);
+    try {
+      await this.client.decryptEventIfNeeded(event);
+    } finally {
+      event.off(MatrixEventEvent.Decrypted, onDecrypted);
+    }
+    return matrixEventToRaw(decryptedEvent ?? event);
+  }
+
+  async getRelations(
+    roomId: string,
+    eventId: string,
+    relationType: string | null,
+    eventType?: string | null,
+    opts: {
+      from?: string;
+    } = {},
+  ): Promise<MatrixRelationsPage> {
+    const result = await this.client.relations(roomId, eventId, relationType, eventType, opts);
+    return {
+      originalEvent: result.originalEvent ? matrixEventToRaw(result.originalEvent) : null,
+      events: result.events.map((event) => matrixEventToRaw(event)),
+      nextBatch: result.nextBatch ?? null,
+      prevBatch: result.prevBatch ?? null,
+    };
   }
 
   async setTyping(roomId: string, typing: boolean, timeoutMs: number): Promise<void> {

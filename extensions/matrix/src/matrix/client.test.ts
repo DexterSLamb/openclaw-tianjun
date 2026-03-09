@@ -311,4 +311,42 @@ describe("resolveMatrixAuth", () => {
       encryption: true,
     });
   });
+
+  it("falls back to the sole configured account when no global homeserver is set", async () => {
+    const cfg = {
+      channels: {
+        matrix: {
+          accounts: {
+            ops: {
+              homeserver: "https://ops.example.org",
+              userId: "@ops:example.org",
+              accessToken: "ops-token",
+              deviceId: "OPSDEVICE",
+              encryption: true,
+            },
+          },
+        },
+      },
+    } as CoreConfig;
+
+    const auth = await resolveMatrixAuth({ cfg, env: {} as NodeJS.ProcessEnv });
+
+    expect(auth).toMatchObject({
+      homeserver: "https://ops.example.org",
+      userId: "@ops:example.org",
+      accessToken: "ops-token",
+      deviceId: "OPSDEVICE",
+      encryption: true,
+    });
+    expect(saveMatrixCredentialsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        homeserver: "https://ops.example.org",
+        userId: "@ops:example.org",
+        accessToken: "ops-token",
+        deviceId: "OPSDEVICE",
+      }),
+      expect.any(Object),
+      "ops",
+    );
+  });
 });

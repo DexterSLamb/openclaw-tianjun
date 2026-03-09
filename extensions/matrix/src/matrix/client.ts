@@ -6,7 +6,9 @@ export {
   resolveMatrixConfig,
   resolveMatrixConfigForAccount,
   resolveScopedMatrixEnvConfig,
+  resolveImplicitMatrixAccountId,
   resolveMatrixAuth,
+  resolveMatrixAuthContext,
 } from "./client/config.js";
 export { createMatrixClient } from "./client/create-client.js";
 export {

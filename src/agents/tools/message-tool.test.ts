@@ -245,6 +245,7 @@ describe("message tool schema scoping", () => {
       expect(properties.pollOptionIndex).toBeDefined();
       expect(properties.pollOptionId).toBeDefined();
       expect(properties.avatarUrl).toBeDefined();
+      expect(properties.avatarPath).toBeDefined();
       expect(properties.displayName).toBeDefined();
     },
   );
