@@ -6,6 +6,7 @@ import {
 } from "openclaw/plugin-sdk/matrix";
 import { matrixPlugin } from "./channel.js";
 import { resolveMatrixAccount, resolveMatrixAccountConfig } from "./matrix/accounts.js";
+import { listMatrixOwnDevices, pruneMatrixStaleGatewayDevices } from "./matrix/actions/devices.js";
 import { updateMatrixOwnProfile } from "./matrix/actions/profile.js";
 import {
   bootstrapMatrixVerification,
@@ -16,6 +17,7 @@ import {
 } from "./matrix/actions/verification.js";
 import { setMatrixSdkConsoleLogging, setMatrixSdkLogMode } from "./matrix/client/logging.js";
 import { resolveMatrixConfigPath, updateMatrixAccountConfig } from "./matrix/config-update.js";
+import { isOpenClawManagedMatrixDevice } from "./matrix/device-health.js";
 import { applyMatrixProfileUpdate, type MatrixProfileUpdateResult } from "./profile-update.js";
 import { getMatrixRuntime } from "./runtime.js";
 import type { CoreConfig } from "./types.js";
@@ -67,6 +69,31 @@ function printAccountLabel(accountId?: string): void {
   console.log(`Account: ${normalizeAccountId(accountId)}`);
 }
 
+function printMatrixOwnDevices(
+  devices: Array<{
+    deviceId: string;
+    displayName: string | null;
+    lastSeenIp: string | null;
+    lastSeenTs: number | null;
+    current: boolean;
+  }>,
+): void {
+  if (devices.length === 0) {
+    console.log("Devices: none");
+    return;
+  }
+  for (const device of devices) {
+    const labels = [device.current ? "current" : null, device.displayName].filter(Boolean);
+    console.log(`- ${device.deviceId}${labels.length ? ` (${labels.join(", ")})` : ""}`);
+    if (device.lastSeenTs) {
+      printTimestamp("  Last seen", new Date(device.lastSeenTs).toISOString());
+    }
+    if (device.lastSeenIp) {
+      console.log(`  Last IP: ${device.lastSeenIp}`);
+    }
+  }
+}
+
 function configureCliLogMode(verbose: boolean): void {
   setMatrixSdkLogMode(verbose ? "default" : "quiet");
   setMatrixSdkConsoleLogging(verbose);
@@ -88,6 +115,10 @@ type MatrixCliAccountAddResult = {
   accountId: string;
   configPath: string;
   useEnv: boolean;
+  deviceHealth: {
+    currentDeviceId: string | null;
+    staleOpenClawDeviceIds: string[];
+  };
   verificationBootstrap: {
     attempted: boolean;
     success: boolean;
@@ -233,10 +264,20 @@ async function addMatrixAccount(params: {
     }
   }
 
+  const addedDevices = await listMatrixOwnDevices({ accountId });
+  const currentDeviceId = addedDevices.find((device) => device.current)?.deviceId ?? null;
+  const staleOpenClawDeviceIds = addedDevices
+    .filter((device) => !device.current && isOpenClawManagedMatrixDevice(device.displayName))
+    .map((device) => device.deviceId);
+
   return {
     accountId,
     configPath: resolveMatrixConfigPath(updated, accountId),
     useEnv: input.useEnv === true,
+    deviceHealth: {
+      currentDeviceId,
+      staleOpenClawDeviceIds,
+    },
     verificationBootstrap,
     profile,
   };
@@ -638,6 +679,11 @@ export function registerMatrixCli(params: { program: Command }): void {
                 );
               }
             }
+            if (result.deviceHealth.staleOpenClawDeviceIds.length > 0) {
+              console.log(
+                `Matrix device hygiene warning: stale OpenClaw devices detected (${result.deviceHealth.staleOpenClawDeviceIds.join(", ")}). Run 'openclaw matrix devices prune-stale --account ${result.accountId}'.`,
+              );
+            }
             if (result.profile.attempted) {
               if (result.profile.error) {
                 console.error(`Profile sync warning: ${result.profile.error}`);
@@ -900,4 +946,54 @@ export function registerMatrixCli(params: { program: Command }): void {
         });
       },
     );
+
+  const devices = root.command("devices").description("Inspect and clean up Matrix devices");
+
+  devices
+    .command("list")
+    .description("List server-side Matrix devices for this account")
+    .option("--account <id>", "Account ID (for multi-account setups)")
+    .option("--verbose", "Show detailed diagnostics")
+    .option("--json", "Output as JSON")
+    .action(async (options: { account?: string; verbose?: boolean; json?: boolean }) => {
+      await runMatrixCliCommand({
+        verbose: options.verbose === true,
+        json: options.json === true,
+        run: async () => await listMatrixOwnDevices({ accountId: options.account }),
+        onText: (result) => {
+          printAccountLabel(options.account);
+          printMatrixOwnDevices(result);
+        },
+        errorPrefix: "Device listing failed",
+      });
+    });
+
+  devices
+    .command("prune-stale")
+    .description("Delete stale OpenClaw-managed devices for this account")
+    .option("--account <id>", "Account ID (for multi-account setups)")
+    .option("--verbose", "Show detailed diagnostics")
+    .option("--json", "Output as JSON")
+    .action(async (options: { account?: string; verbose?: boolean; json?: boolean }) => {
+      await runMatrixCliCommand({
+        verbose: options.verbose === true,
+        json: options.json === true,
+        run: async () => await pruneMatrixStaleGatewayDevices({ accountId: options.account }),
+        onText: (result, verbose) => {
+          printAccountLabel(options.account);
+          console.log(
+            `Deleted stale OpenClaw devices: ${result.deletedDeviceIds.length ? result.deletedDeviceIds.join(", ") : "none"}`,
+          );
+          console.log(`Current device: ${result.currentDeviceId ?? "unknown"}`);
+          console.log(`Remaining devices: ${result.remainingDevices.length}`);
+          if (verbose) {
+            console.log("Devices before cleanup:");
+            printMatrixOwnDevices(result.before);
+            console.log("Devices after cleanup:");
+            printMatrixOwnDevices(result.remainingDevices);
+          }
+        },
+        errorPrefix: "Device cleanup failed",
+      });
+    });
 }

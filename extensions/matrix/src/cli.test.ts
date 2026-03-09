@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const bootstrapMatrixVerificationMock = vi.fn();
 const getMatrixRoomKeyBackupStatusMock = vi.fn();
 const getMatrixVerificationStatusMock = vi.fn();
+const listMatrixOwnDevicesMock = vi.fn();
+const pruneMatrixStaleGatewayDevicesMock = vi.fn();
 const resolveMatrixAccountConfigMock = vi.fn();
 const resolveMatrixAccountMock = vi.fn();
 const matrixSetupApplyAccountConfigMock = vi.fn();
@@ -23,6 +25,12 @@ vi.mock("./matrix/actions/verification.js", () => ({
   getMatrixVerificationStatus: (...args: unknown[]) => getMatrixVerificationStatusMock(...args),
   restoreMatrixRoomKeyBackup: (...args: unknown[]) => restoreMatrixRoomKeyBackupMock(...args),
   verifyMatrixRecoveryKey: (...args: unknown[]) => verifyMatrixRecoveryKeyMock(...args),
+}));
+
+vi.mock("./matrix/actions/devices.js", () => ({
+  listMatrixOwnDevices: (...args: unknown[]) => listMatrixOwnDevicesMock(...args),
+  pruneMatrixStaleGatewayDevices: (...args: unknown[]) =>
+    pruneMatrixStaleGatewayDevicesMock(...args),
 }));
 
 vi.mock("./matrix/client/logging.js", () => ({
@@ -104,6 +112,14 @@ describe("matrix CLI verification commands", () => {
       resolvedAvatarUrl: null,
       convertedAvatarFromHttp: false,
     });
+    listMatrixOwnDevicesMock.mockResolvedValue([]);
+    pruneMatrixStaleGatewayDevicesMock.mockResolvedValue({
+      before: [],
+      staleGatewayDeviceIds: [],
+      currentDeviceId: null,
+      deletedDeviceIds: [],
+      remainingDevices: [],
+    });
   });
 
   afterEach(() => {
@@ -164,6 +180,77 @@ describe("matrix CLI verification commands", () => {
     });
 
     expect(process.exitCode).toBe(1);
+  });
+
+  it("lists matrix devices", async () => {
+    listMatrixOwnDevicesMock.mockResolvedValue([
+      {
+        deviceId: "A7hWrQ70ea",
+        displayName: "OpenClaw Gateway",
+        lastSeenIp: "127.0.0.1",
+        lastSeenTs: 1_741_507_200_000,
+        current: true,
+      },
+      {
+        deviceId: "BritdXC6iL",
+        displayName: "OpenClaw Gateway",
+        lastSeenIp: null,
+        lastSeenTs: null,
+        current: false,
+      },
+    ]);
+    const program = buildProgram();
+
+    await program.parseAsync(["matrix", "devices", "list", "--account", "poe"], { from: "user" });
+
+    expect(listMatrixOwnDevicesMock).toHaveBeenCalledWith({ accountId: "poe" });
+    expect(console.log).toHaveBeenCalledWith("Account: poe");
+    expect(console.log).toHaveBeenCalledWith("- A7hWrQ70ea (current, OpenClaw Gateway)");
+    expect(console.log).toHaveBeenCalledWith("  Last IP: 127.0.0.1");
+    expect(console.log).toHaveBeenCalledWith("- BritdXC6iL (OpenClaw Gateway)");
+  });
+
+  it("prunes stale matrix gateway devices", async () => {
+    pruneMatrixStaleGatewayDevicesMock.mockResolvedValue({
+      before: [
+        {
+          deviceId: "A7hWrQ70ea",
+          displayName: "OpenClaw Gateway",
+          lastSeenIp: "127.0.0.1",
+          lastSeenTs: 1_741_507_200_000,
+          current: true,
+        },
+        {
+          deviceId: "BritdXC6iL",
+          displayName: "OpenClaw Gateway",
+          lastSeenIp: null,
+          lastSeenTs: null,
+          current: false,
+        },
+      ],
+      staleGatewayDeviceIds: ["BritdXC6iL"],
+      currentDeviceId: "A7hWrQ70ea",
+      deletedDeviceIds: ["BritdXC6iL"],
+      remainingDevices: [
+        {
+          deviceId: "A7hWrQ70ea",
+          displayName: "OpenClaw Gateway",
+          lastSeenIp: "127.0.0.1",
+          lastSeenTs: 1_741_507_200_000,
+          current: true,
+        },
+      ],
+    });
+    const program = buildProgram();
+
+    await program.parseAsync(["matrix", "devices", "prune-stale", "--account", "poe"], {
+      from: "user",
+    });
+
+    expect(pruneMatrixStaleGatewayDevicesMock).toHaveBeenCalledWith({ accountId: "poe" });
+    expect(console.log).toHaveBeenCalledWith("Deleted stale OpenClaw devices: BritdXC6iL");
+    expect(console.log).toHaveBeenCalledWith("Current device: A7hWrQ70ea");
+    expect(console.log).toHaveBeenCalledWith("Remaining devices: 1");
   });
 
   it("adds a matrix account and prints a binding hint", async () => {
@@ -235,6 +322,22 @@ describe("matrix CLI verification commands", () => {
     resolveMatrixAccountConfigMock.mockReturnValue({
       encryption: true,
     });
+    listMatrixOwnDevicesMock.mockResolvedValue([
+      {
+        deviceId: "BritdXC6iL",
+        displayName: "OpenClaw Gateway",
+        lastSeenIp: null,
+        lastSeenTs: null,
+        current: false,
+      },
+      {
+        deviceId: "du314Zpw3A",
+        displayName: "OpenClaw Gateway",
+        lastSeenIp: null,
+        lastSeenTs: null,
+        current: true,
+      },
+    ]);
     bootstrapMatrixVerificationMock.mockResolvedValue({
       success: true,
       verification: {
@@ -270,6 +373,9 @@ describe("matrix CLI verification commands", () => {
       `Recovery key created at: ${formatExpectedLocalTimestamp("2026-03-09T06:00:00.000Z")}`,
     );
     expect(console.log).toHaveBeenCalledWith("Backup version: 7");
+    expect(console.log).toHaveBeenCalledWith(
+      "Matrix device hygiene warning: stale OpenClaw devices detected (BritdXC6iL). Run 'openclaw matrix devices prune-stale --account ops'.",
+    );
   });
 
   it("does not bootstrap verification when updating an already configured account", async () => {

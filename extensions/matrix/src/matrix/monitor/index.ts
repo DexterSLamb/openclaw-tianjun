@@ -23,6 +23,7 @@ import {
   stopSharedClientForAccount,
 } from "../client.js";
 import { updateMatrixAccountConfig } from "../config-update.js";
+import { summarizeMatrixDeviceHealth } from "../device-health.js";
 import { syncMatrixOwnProfile } from "../profile.js";
 import { createMatrixThreadBindingManager } from "../thread-bindings.js";
 import { normalizeMatrixUserId } from "./allowlist.js";
@@ -400,6 +401,19 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
   // If E2EE is enabled, report device verification status and request self-verification
   // when configured and the device is still unverified.
   if (auth.encryption && client.crypto) {
+    try {
+      const deviceHealth = summarizeMatrixDeviceHealth(await client.listOwnDevices());
+      if (deviceHealth.staleOpenClawDevices.length > 0) {
+        logger.warn(
+          `matrix: stale OpenClaw devices detected for ${auth.userId}: ${deviceHealth.staleOpenClawDevices.map((device) => device.deviceId).join(", ")}. Run 'openclaw matrix devices prune-stale --account ${effectiveAccountId}' to keep encrypted-room trust healthy.`,
+        );
+      }
+    } catch (err) {
+      logger.debug?.("Failed to inspect matrix device hygiene (non-fatal)", {
+        error: String(err),
+      });
+    }
+
     try {
       const startupVerification = await ensureMatrixStartupVerification({
         client,

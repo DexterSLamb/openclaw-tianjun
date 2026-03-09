@@ -107,6 +107,20 @@ export type MatrixVerificationBootstrapResult = {
   cryptoBootstrap: MatrixCryptoBootstrapResult | null;
 };
 
+export type MatrixOwnDeviceInfo = {
+  deviceId: string;
+  displayName: string | null;
+  lastSeenIp: string | null;
+  lastSeenTs: number | null;
+  current: boolean;
+};
+
+export type MatrixOwnDeviceDeleteResult = {
+  currentDeviceId: string | null;
+  deletedDeviceIds: string[];
+  remainingDevices: MatrixOwnDeviceInfo[];
+};
+
 function normalizeOptionalString(value: string | null | undefined): string | null {
   const normalized = value?.trim();
   return normalized ? normalized : null;
@@ -980,6 +994,68 @@ export class MatrixClient {
       crossSigning,
       pendingVerifications: await pendingVerifications(),
       cryptoBootstrap: bootstrapSummary,
+    };
+  }
+
+  async listOwnDevices(): Promise<MatrixOwnDeviceInfo[]> {
+    const currentDeviceId = this.client.getDeviceId()?.trim() || null;
+    const devices = await this.client.getDevices();
+    const entries = Array.isArray(devices?.devices) ? devices.devices : [];
+    return entries.map((device) => ({
+      deviceId: device.device_id,
+      displayName: device.display_name?.trim() || null,
+      lastSeenIp: device.last_seen_ip?.trim() || null,
+      lastSeenTs:
+        typeof device.last_seen_ts === "number" && Number.isFinite(device.last_seen_ts)
+          ? device.last_seen_ts
+          : null,
+      current: currentDeviceId !== null && device.device_id === currentDeviceId,
+    }));
+  }
+
+  async deleteOwnDevices(deviceIds: string[]): Promise<MatrixOwnDeviceDeleteResult> {
+    const uniqueDeviceIds = [...new Set(deviceIds.map((value) => value.trim()).filter(Boolean))];
+    const currentDeviceId = this.client.getDeviceId()?.trim() || null;
+    const protectedDeviceIds = uniqueDeviceIds.filter((deviceId) => deviceId === currentDeviceId);
+    if (protectedDeviceIds.length > 0) {
+      throw new Error(`Refusing to delete the current Matrix device: ${protectedDeviceIds[0]}`);
+    }
+
+    const deleteWithAuth = async (authData?: Record<string, unknown>): Promise<void> => {
+      await this.client.deleteMultipleDevices(uniqueDeviceIds, authData as never);
+    };
+
+    if (uniqueDeviceIds.length > 0) {
+      try {
+        await deleteWithAuth();
+      } catch (err) {
+        const session =
+          err &&
+          typeof err === "object" &&
+          "data" in err &&
+          err.data &&
+          typeof err.data === "object" &&
+          "session" in err.data &&
+          typeof err.data.session === "string"
+            ? err.data.session
+            : null;
+        const userId = await this.getUserId().catch(() => this.selfUserId);
+        if (!session || !userId || !this.password?.trim()) {
+          throw err;
+        }
+        await deleteWithAuth({
+          type: "m.login.password",
+          session,
+          identifier: { type: "m.id.user", user: userId },
+          password: this.password,
+        });
+      }
+    }
+
+    return {
+      currentDeviceId,
+      deletedDeviceIds: uniqueDeviceIds,
+      remainingDevices: await this.listOwnDevices(),
     };
   }
 
