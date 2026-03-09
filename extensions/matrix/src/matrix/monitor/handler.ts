@@ -259,7 +259,6 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
             rooms: roomsConfig,
             roomId,
             aliases: roomAliases,
-            name: roomName,
           })
         : undefined;
       const roomConfig = roomConfigInfo?.config;

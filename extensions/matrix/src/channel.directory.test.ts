@@ -205,6 +205,34 @@ describe("matrix directory", () => {
         groupId: "!room:example.org",
       }),
     ).toBe(false);
+
+    expect(
+      matrixPlugin.groups!.resolveRequireMention!({
+        cfg,
+        accountId: "assistant",
+        groupId: "matrix:room:!room:example.org",
+      }),
+    ).toBe(false);
+  });
+
+  it("matches prefixed Matrix aliases in group context", () => {
+    const cfg = {
+      channels: {
+        matrix: {
+          groups: {
+            "#ops:example.org": { requireMention: false },
+          },
+        },
+      },
+    } as unknown as CoreConfig;
+
+    expect(
+      matrixPlugin.groups!.resolveRequireMention!({
+        cfg,
+        groupId: "matrix:room:!room:example.org",
+        groupChannel: "matrix:channel:#ops:example.org",
+      }),
+    ).toBe(false);
   });
 
   it("reports room access warnings against the active Matrix config path", () => {
