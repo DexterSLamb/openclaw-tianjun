@@ -332,24 +332,6 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
     getMemberDisplayName,
   });
 
-  registerMatrixMonitorEvents({
-    client,
-    auth,
-    logVerboseMessage,
-    warnedEncryptedRooms,
-    warnedCryptoMissingRooms,
-    logger,
-    formatNativeDependencyHint: core.system.formatNativeDependencyHint,
-    onRoomMessage: handleRoomMessage,
-  });
-
-  logVerboseMessage("matrix: starting client");
-  await resolveSharedMatrixClient({
-    cfg,
-    auth: authWithLimit,
-    accountId: auth.accountId,
-  });
-  logVerboseMessage("matrix: client started");
   const threadBindingManager = await createMatrixThreadBindingManager({
     accountId: account.accountId,
     auth,
@@ -362,6 +344,27 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
   logVerboseMessage(
     `matrix: thread bindings ready account=${threadBindingManager.accountId} idleMs=${threadBindingIdleTimeoutMs} maxAgeMs=${threadBindingMaxAgeMs}`,
   );
+
+  registerMatrixMonitorEvents({
+    client,
+    auth,
+    logVerboseMessage,
+    warnedEncryptedRooms,
+    warnedCryptoMissingRooms,
+    logger,
+    formatNativeDependencyHint: core.system.formatNativeDependencyHint,
+    onRoomMessage: handleRoomMessage,
+  });
+
+  // Register Matrix thread bindings before the client starts syncing so threaded
+  // commands during startup never observe Matrix as "unavailable".
+  logVerboseMessage("matrix: starting client");
+  await resolveSharedMatrixClient({
+    cfg,
+    auth: authWithLimit,
+    accountId: auth.accountId,
+  });
+  logVerboseMessage("matrix: client started");
 
   // Shared client is already started via resolveSharedMatrixClient.
   logger.info(`matrix: logged in as ${auth.userId}`);
