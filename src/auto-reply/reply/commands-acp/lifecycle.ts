@@ -131,9 +131,13 @@ async function bindSpawnedAcpSessionToThread(params: {
     ((requiresThreadIdForHere && !currentThreadId) ||
       (!requiresThreadIdForHere && !currentConversationId))
   ) {
+    const hereError =
+      channel === "matrix"
+        ? "--thread here requires running /acp spawn inside an existing Matrix thread. In a top-level Matrix room or DM, use --thread auto to create and bind a new thread."
+        : `--thread here requires running /acp spawn inside an active ${channel} thread/conversation.`;
     return {
       ok: false,
-      error: `--thread here requires running /acp spawn inside an active ${channel} thread/conversation.`,
+      error: hereError,
     };
   }
 

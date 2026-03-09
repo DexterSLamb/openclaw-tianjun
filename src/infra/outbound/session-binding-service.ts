@@ -165,7 +165,32 @@ function resolveAdapterCapabilities(
   };
 }
 
-const ADAPTERS_BY_CHANNEL_ACCOUNT = new Map<string, SessionBindingAdapter>();
+type SessionBindingServiceGlobalState = {
+  adaptersByChannelAccount: Map<string, SessionBindingAdapter>;
+};
+
+const SESSION_BINDING_SERVICE_STATE_KEY = Symbol.for("openclaw.sessionBindingServiceState");
+
+function createSessionBindingServiceGlobalState(): SessionBindingServiceGlobalState {
+  return {
+    adaptersByChannelAccount: new Map<string, SessionBindingAdapter>(),
+  };
+}
+
+function resolveSessionBindingServiceGlobalState(): SessionBindingServiceGlobalState {
+  const runtimeGlobal = globalThis as typeof globalThis & {
+    [SESSION_BINDING_SERVICE_STATE_KEY]?: SessionBindingServiceGlobalState;
+  };
+  if (!runtimeGlobal[SESSION_BINDING_SERVICE_STATE_KEY]) {
+    runtimeGlobal[SESSION_BINDING_SERVICE_STATE_KEY] = createSessionBindingServiceGlobalState();
+  }
+  return runtimeGlobal[SESSION_BINDING_SERVICE_STATE_KEY];
+}
+
+// Plugins are loaded via Jiti while core code imports this module via native ESM.
+// Keep adapter state on globalThis so both loader paths observe the same registry.
+const ADAPTERS_BY_CHANNEL_ACCOUNT =
+  resolveSessionBindingServiceGlobalState().adaptersByChannelAccount;
 
 export function registerSessionBindingAdapter(adapter: SessionBindingAdapter): void {
   const key = toAdapterKey({

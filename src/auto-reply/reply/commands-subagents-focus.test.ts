@@ -9,6 +9,7 @@ import { installSubagentsCommandCoreMocks } from "./commands-subagents.test-mock
 
 const hoisted = vi.hoisted(() => {
   const callGatewayMock = vi.fn();
+  const listAcpSessionEntriesMock = vi.fn();
   const readAcpSessionEntryMock = vi.fn();
   const sessionBindingCapabilitiesMock = vi.fn();
   const sessionBindingBindMock = vi.fn();
@@ -17,6 +18,7 @@ const hoisted = vi.hoisted(() => {
   const sessionBindingUnbindMock = vi.fn();
   return {
     callGatewayMock,
+    listAcpSessionEntriesMock,
     readAcpSessionEntryMock,
     sessionBindingCapabilitiesMock,
     sessionBindingBindMock,
@@ -57,6 +59,7 @@ vi.mock("../../acp/runtime/session-meta.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../acp/runtime/session-meta.js")>();
   return {
     ...actual,
+    listAcpSessionEntries: (params: unknown) => hoisted.listAcpSessionEntriesMock(params),
     readAcpSessionEntry: (params: unknown) => hoisted.readAcpSessionEntryMock(params),
   };
 });
@@ -188,6 +191,7 @@ describe("/focus, /unfocus, /agents", () => {
   beforeEach(() => {
     resetSubagentRegistryForTests();
     hoisted.callGatewayMock.mockReset();
+    hoisted.listAcpSessionEntriesMock.mockReset().mockResolvedValue([]);
     hoisted.readAcpSessionEntryMock.mockReset().mockReturnValue(null);
     hoisted.sessionBindingCapabilitiesMock
       .mockReset()
@@ -257,6 +261,71 @@ describe("/focus, /unfocus, /agents", () => {
           conversationId: "!room:example",
           parentConversationId: "!room:example",
         }),
+      }),
+    );
+  });
+
+  it("/focus resolves ACP session key shorthand from the ACP key suffix", async () => {
+    hoisted.callGatewayMock.mockRejectedValue(new Error("not found"));
+    hoisted.sessionBindingCapabilitiesMock.mockReturnValue(createSessionBindingCapabilities());
+    hoisted.sessionBindingResolveByConversationMock.mockReturnValue(null);
+    hoisted.sessionBindingBindMock.mockImplementation(
+      async (input: {
+        targetSessionKey: string;
+        conversation: { channel: string; accountId: string; conversationId: string };
+        metadata?: Record<string, unknown>;
+      }) =>
+        createSessionBindingRecord({
+          targetSessionKey: input.targetSessionKey,
+          conversation: {
+            channel: input.conversation.channel,
+            accountId: input.conversation.accountId,
+            conversationId: input.conversation.conversationId,
+          },
+          metadata: {
+            boundBy:
+              typeof input.metadata?.boundBy === "string" ? input.metadata.boundBy : "user-1",
+          },
+        }),
+    );
+    hoisted.listAcpSessionEntriesMock.mockResolvedValue([
+      {
+        cfg: baseCfg,
+        storePath: "/tmp/agents/codex/sessions.json",
+        sessionKey: "agent:codex:acp:982649c1-143b-40e4-9bb8-d90ae83f174f",
+        storeSessionKey: "agent:codex:acp:982649c1-143b-40e4-9bb8-d90ae83f174f",
+        entry: {
+          sessionId: "session-random-id",
+          updatedAt: Date.now(),
+          acp: {
+            backend: "acpx",
+            agent: "codex",
+            runtimeSessionName: "runtime-1",
+            mode: "persistent",
+            state: "idle",
+            lastActivityAt: Date.now(),
+          },
+        },
+        acp: {
+          backend: "acpx",
+          agent: "codex",
+          runtimeSessionName: "runtime-1",
+          mode: "persistent",
+          state: "idle",
+          lastActivityAt: Date.now(),
+        },
+      },
+    ]);
+
+    const result = await handleSubagentsCommand(
+      createDiscordCommandParams("/focus acp:982649c1-143b-40e4-9bb8-d90ae83f174f"),
+      true,
+    );
+
+    expect(result?.reply?.text).toContain("bound this thread");
+    expect(hoisted.sessionBindingBindMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetSessionKey: "agent:codex:acp:982649c1-143b-40e4-9bb8-d90ae83f174f",
       }),
     );
   });

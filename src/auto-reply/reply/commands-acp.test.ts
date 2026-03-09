@@ -817,15 +817,29 @@ describe("/acp command", () => {
     expect(result?.reply?.text).toContain("Removed 1 binding");
   });
 
-  it("lists ACP sessions from the session store", async () => {
+  it("lists ACP sessions across ACP agent stores", async () => {
     hoisted.sessionBindingListBySessionMock.mockImplementation((key: string) =>
       key === defaultAcpSessionKey ? [createBoundThreadSession(key) as SessionBindingRecord] : [],
     );
-    hoisted.loadSessionStoreMock.mockReturnValue({
-      [defaultAcpSessionKey]: {
-        sessionId: "sess-1",
-        updatedAt: Date.now(),
-        label: "codex-main",
+    hoisted.listAcpSessionEntriesMock.mockResolvedValue([
+      {
+        cfg: baseCfg,
+        storePath: "/tmp/agents/codex/sessions.json",
+        sessionKey: defaultAcpSessionKey,
+        storeSessionKey: defaultAcpSessionKey,
+        entry: {
+          sessionId: "sess-1",
+          updatedAt: Date.now(),
+          label: "codex-main",
+          acp: {
+            backend: "acpx",
+            agent: "codex",
+            runtimeSessionName: "runtime-1",
+            mode: "persistent",
+            state: "idle",
+            lastActivityAt: Date.now(),
+          },
+        },
         acp: {
           backend: "acpx",
           agent: "codex",
@@ -835,9 +849,12 @@ describe("/acp command", () => {
           lastActivityAt: Date.now(),
         },
       },
+    ]);
+    hoisted.loadSessionStoreMock.mockReturnValue({
       "agent:main:main": {
-        sessionId: "sess-main",
+        sessionId: "sess-1",
         updatedAt: Date.now(),
+        label: "main-session",
       },
     });
 
@@ -846,6 +863,27 @@ describe("/acp command", () => {
     expect(result?.reply?.text).toContain("ACP sessions:");
     expect(result?.reply?.text).toContain("codex-main");
     expect(result?.reply?.text).toContain(`thread:${defaultThreadId}`);
+  });
+
+  it("explains that Matrix --thread here requires an existing thread", async () => {
+    const cfg = {
+      ...baseCfg,
+      channels: {
+        ...baseCfg.channels,
+        matrix: {
+          threadBindings: {
+            enabled: true,
+            spawnAcpSessions: true,
+          },
+        },
+      },
+    } satisfies OpenClawConfig;
+
+    const result = await runMatrixRoomAcpCommand("/acp spawn codex --thread here", cfg);
+
+    expect(result?.reply?.text).toContain("existing Matrix thread");
+    expect(result?.reply?.text).toContain("use --thread auto");
+    expect(hoisted.sessionBindingBindMock).not.toHaveBeenCalled();
   });
 
   it("shows ACP status for the thread-bound ACP session", async () => {
@@ -866,6 +904,66 @@ describe("/acp command", () => {
     expect(result?.reply?.text).toContain("acpx session id: acpx-sid-1");
     expect(result?.reply?.text).toContain("capabilities:");
     expect(hoisted.getStatusMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves ACP key-tail shorthand for explicit ACP session targets", async () => {
+    hoisted.callGatewayMock.mockRejectedValue(new Error("not found"));
+    hoisted.listAcpSessionEntriesMock.mockResolvedValue([
+      {
+        cfg: baseCfg,
+        storePath: "/tmp/agents/codex/sessions.json",
+        sessionKey: "agent:codex:acp:982649c1-143b-40e4-9bb8-d90ae83f174f",
+        storeSessionKey: "agent:codex:acp:982649c1-143b-40e4-9bb8-d90ae83f174f",
+        entry: {
+          sessionId: "session-random-id",
+          updatedAt: Date.now(),
+          acp: {
+            backend: "acpx",
+            agent: "codex",
+            runtimeSessionName: "runtime-1",
+            mode: "persistent",
+            state: "idle",
+            lastActivityAt: Date.now(),
+          },
+        },
+        acp: {
+          backend: "acpx",
+          agent: "codex",
+          runtimeSessionName: "runtime-1",
+          mode: "persistent",
+          state: "idle",
+          lastActivityAt: Date.now(),
+        },
+      },
+    ]);
+    hoisted.readAcpSessionEntryMock.mockReturnValue({
+      sessionKey: "agent:codex:acp:982649c1-143b-40e4-9bb8-d90ae83f174f",
+      storeSessionKey: "agent:codex:acp:982649c1-143b-40e4-9bb8-d90ae83f174f",
+      acp: {
+        backend: "acpx",
+        agent: "codex",
+        runtimeSessionName: "runtime-1",
+        mode: "persistent",
+        state: "idle",
+        lastActivityAt: Date.now(),
+      },
+    });
+
+    const result = await runDiscordAcpCommand(
+      "/acp status acp:982649c1-143b-40e4-9bb8-d90ae83f174f",
+      baseCfg,
+    );
+
+    expect(result?.reply?.text).toContain(
+      "session: agent:codex:acp:982649c1-143b-40e4-9bb8-d90ae83f174f",
+    );
+    expect(hoisted.getStatusMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        handle: expect.objectContaining({
+          sessionKey: "agent:codex:acp:982649c1-143b-40e4-9bb8-d90ae83f174f",
+        }),
+      }),
+    );
   });
 
   it("updates ACP runtime mode via /acp set-mode", async () => {
