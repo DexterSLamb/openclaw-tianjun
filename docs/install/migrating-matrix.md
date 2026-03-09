@@ -259,6 +259,18 @@ openclaw matrix verify backup restore --recovery-key "<your-recovery-key>" --ver
 
 If the backup restores successfully but some old rooms are still missing history, those missing keys were probably never backed up by the previous plugin.
 
+## If you want to start fresh for future messages
+
+If you accept losing unrecoverable old encrypted history and only want a clean backup baseline going forward, run these commands in order:
+
+```bash
+openclaw matrix verify backup reset --yes
+openclaw matrix verify backup status --verbose
+openclaw matrix verify status
+```
+
+If the device is still unverified after that, finish verification from your Matrix client by comparing the SAS emoji or decimal codes and confirming that they match.
+
 ## Related pages
 
 - [Matrix](/channels/matrix)

@@ -300,6 +300,18 @@ Use `--force-reset-cross-signing` only when you intentionally want to discard th
 If you intentionally want to discard the current room-key backup and start a new backup baseline for future messages, use `openclaw matrix verify backup reset --yes`.
 Do this only when you accept that unrecoverable old encrypted history will stay unavailable.
 
+### Fresh backup baseline
+
+If you want to keep future encrypted messages working and accept losing unrecoverable old history, run these commands in order:
+
+```bash
+openclaw matrix verify backup reset --yes
+openclaw matrix verify backup status --verbose
+openclaw matrix verify status
+```
+
+Add `--account <id>` to each command when you want to target a named Matrix account explicitly.
+
 ### Startup behavior
 
 When `encryption: true`, Matrix defaults `startupVerification` to `"if-unverified"`.
@@ -342,7 +354,7 @@ That includes:
 
 Incoming verification requests from another Matrix client are tracked and auto-accepted by OpenClaw.
 When SAS emoji verification becomes available, OpenClaw starts that SAS flow automatically for inbound requests and confirms its own side.
-You still need to confirm "They match" in your Matrix client to complete the verification.
+You still need to compare the emoji or decimal SAS in your Matrix client and confirm "They match" there to complete the verification.
 
 OpenClaw does not auto-accept self-initiated duplicate flows blindly. Startup skips creating a new request when a self-verification request is already pending.
 
