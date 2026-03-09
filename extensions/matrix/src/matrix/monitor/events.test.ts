@@ -14,12 +14,12 @@ function getSentNoticeBody(sendMessage: ReturnType<typeof vi.fn>, index = 0): st
 }
 
 function createHarness(params?: {
+  authEncryption?: boolean;
+  cryptoAvailable?: boolean;
   verifications?: Array<{
     id: string;
     transactionId?: string;
-    roomId?: string;
     otherUserId: string;
-    phaseName: string;
     updatedAt?: string;
     completed?: boolean;
     sas?: {
@@ -32,25 +32,34 @@ function createHarness(params?: {
   const onRoomMessage = vi.fn(async () => {});
   const listVerifications = vi.fn(async () => params?.verifications ?? []);
   const sendMessage = vi.fn(async () => "$notice");
+  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const formatNativeDependencyHint = vi.fn(() => "install hint");
   const client = {
     on: vi.fn((eventName: string, listener: (...args: unknown[]) => void) => {
       listeners.set(eventName, listener);
       return client;
     }),
     sendMessage,
-    crypto: {
-      listVerifications,
-    },
+    ...(params?.cryptoAvailable === false
+      ? {}
+      : {
+          crypto: {
+            listVerifications,
+          },
+        }),
   } as unknown as MatrixClient;
 
   registerMatrixMonitorEvents({
     client,
-    auth: { accountId: "default", encryption: true } as MatrixAuth,
+    auth: {
+      accountId: "default",
+      encryption: params?.authEncryption ?? true,
+    } as MatrixAuth,
     logVerboseMessage: vi.fn(),
     warnedEncryptedRooms: new Set<string>(),
     warnedCryptoMissingRooms: new Set<string>(),
-    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-    formatNativeDependencyHint: vi.fn(() => "install hint"),
+    logger,
+    formatNativeDependencyHint,
     onRoomMessage,
   });
 
@@ -64,6 +73,8 @@ function createHarness(params?: {
     sendMessage,
     roomEventListener,
     listVerifications,
+    logger,
+    formatNativeDependencyHint,
     roomMessageListener: listeners.get("room.message") as RoomEventListener | undefined,
   };
 }
@@ -148,7 +159,6 @@ describe("registerMatrixMonitorEvents verification routing", () => {
           transactionId: "$different-flow-id",
           updatedAt: new Date("2026-02-25T21:42:54.000Z").toISOString(),
           otherUserId: "@alice:example.org",
-          phaseName: "started",
           sas: {
             decimal: [6158, 1986, 3513],
             emoji: [
@@ -187,7 +197,6 @@ describe("registerMatrixMonitorEvents verification routing", () => {
           id: "verification-3",
           transactionId: "$req3",
           otherUserId: "@alice:example.org",
-          phaseName: "started",
           sas: {
             decimal: [1111, 2222, 3333],
             emoji: [
@@ -230,5 +239,61 @@ describe("registerMatrixMonitorEvents verification routing", () => {
       .map((call) => String(((call as unknown[])[1] as { body?: string } | undefined)?.body ?? ""))
       .filter((body) => body.includes("SAS emoji:"));
     expect(sasBodies).toHaveLength(1);
+  });
+
+  it("warns once when encrypted events arrive without Matrix encryption enabled", () => {
+    const { logger, roomEventListener } = createHarness({
+      authEncryption: false,
+    });
+
+    roomEventListener("!room:example.org", {
+      event_id: "$enc1",
+      sender: "@alice:example.org",
+      type: EventType.RoomMessageEncrypted,
+      origin_server_ts: Date.now(),
+      content: {},
+    });
+    roomEventListener("!room:example.org", {
+      event_id: "$enc2",
+      sender: "@alice:example.org",
+      type: EventType.RoomMessageEncrypted,
+      origin_server_ts: Date.now(),
+      content: {},
+    });
+
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "matrix: encrypted event received without encryption enabled; set channels.matrix.encryption=true and verify the device to decrypt",
+      { roomId: "!room:example.org" },
+    );
+  });
+
+  it("warns once when crypto bindings are unavailable for encrypted rooms", () => {
+    const { formatNativeDependencyHint, logger, roomEventListener } = createHarness({
+      authEncryption: true,
+      cryptoAvailable: false,
+    });
+
+    roomEventListener("!room:example.org", {
+      event_id: "$enc1",
+      sender: "@alice:example.org",
+      type: EventType.RoomMessageEncrypted,
+      origin_server_ts: Date.now(),
+      content: {},
+    });
+    roomEventListener("!room:example.org", {
+      event_id: "$enc2",
+      sender: "@alice:example.org",
+      type: EventType.RoomMessageEncrypted,
+      origin_server_ts: Date.now(),
+      content: {},
+    });
+
+    expect(formatNativeDependencyHint).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "matrix: encryption enabled but crypto is unavailable; install hint",
+      { roomId: "!room:example.org" },
+    );
   });
 });
