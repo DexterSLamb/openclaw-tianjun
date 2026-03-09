@@ -35,6 +35,7 @@ const runtimeStub = {
 } as unknown as PluginRuntime;
 
 let sendMessageMatrix: typeof import("./send.js").sendMessageMatrix;
+let sendTypingMatrix: typeof import("./send.js").sendTypingMatrix;
 let voteMatrixPoll: typeof import("./actions/polls.js").voteMatrixPoll;
 
 const makeClient = () => {
@@ -56,6 +57,7 @@ describe("sendMessageMatrix media", () => {
   beforeAll(async () => {
     setMatrixRuntime(runtimeStub);
     ({ sendMessageMatrix } = await import("./send.js"));
+    ({ sendTypingMatrix } = await import("./send.js"));
     ({ voteMatrixPoll } = await import("./actions/polls.js"));
   });
 
@@ -202,6 +204,7 @@ describe("sendMessageMatrix threads", () => {
   beforeAll(async () => {
     setMatrixRuntime(runtimeStub);
     ({ sendMessageMatrix } = await import("./send.js"));
+    ({ sendTypingMatrix } = await import("./send.js"));
     ({ voteMatrixPoll } = await import("./actions/polls.js"));
   });
 
@@ -374,5 +377,28 @@ describe("voteMatrixPoll", () => {
         event_id: "$poll",
       },
     });
+  });
+});
+
+describe("sendTypingMatrix", () => {
+  beforeAll(async () => {
+    setMatrixRuntime(runtimeStub);
+    ({ sendTypingMatrix } = await import("./send.js"));
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setMatrixRuntime(runtimeStub);
+  });
+
+  it("normalizes room-prefixed targets before sending typing state", async () => {
+    const setTyping = vi.fn().mockResolvedValue(undefined);
+    const client = {
+      setTyping,
+    } as unknown as import("./sdk.js").MatrixClient;
+
+    await sendTypingMatrix("room:!room:example", true, undefined, client);
+
+    expect(setTyping).toHaveBeenCalledWith("!room:example", true, 30_000);
   });
 });
