@@ -24,7 +24,7 @@ import {
   hasReadyMatrixEnvAuth,
   resolveScopedMatrixEnvConfig,
 } from "./matrix/client.js";
-import { updateMatrixAccountConfig } from "./matrix/config-update.js";
+import { resolveMatrixConfigPath, updateMatrixAccountConfig } from "./matrix/config-update.js";
 import { ensureMatrixSdkInstalled, isMatrixSdkAvailable } from "./matrix/deps.js";
 import { resolveMatrixTargets } from "./resolve-targets.js";
 import type { CoreConfig } from "./types.js";
@@ -175,6 +175,16 @@ const dmPolicy: ChannelOnboardingDmPolicy = {
   channel,
   policyKey: "channels.matrix.dm.policy",
   allowFromKey: "channels.matrix.dm.allowFrom",
+  resolveConfigKeys: (cfg, accountId) => {
+    const basePath = resolveMatrixConfigPath(
+      cfg as CoreConfig,
+      resolveMatrixOnboardingAccountId(cfg as CoreConfig, accountId),
+    );
+    return {
+      policyKey: `${basePath}.dm.policy`,
+      allowFromKey: `${basePath}.dm.allowFrom`,
+    };
+  },
   getCurrent: (cfg, accountId) =>
     resolveMatrixAccountConfig({
       cfg: cfg as CoreConfig,

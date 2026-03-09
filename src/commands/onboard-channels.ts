@@ -247,12 +247,16 @@ async function maybeConfigureDmPolicies(params: {
   let cfg = params.cfg;
   const selectPolicy = async (policy: ChannelOnboardingDmPolicy) => {
     const accountId = accountIdsByChannel?.get(policy.channel);
+    const { policyKey, allowFromKey } = policy.resolveConfigKeys?.(cfg, accountId) ?? {
+      policyKey: policy.policyKey,
+      allowFromKey: policy.allowFromKey,
+    };
     await prompter.note(
       [
         "Default: pairing (unknown DMs get a pairing code).",
         `Approve: ${formatCliCommand(`openclaw pairing approve ${policy.channel} <code>`)}`,
-        `Allowlist DMs: ${policy.policyKey}="allowlist" + ${policy.allowFromKey} entries.`,
-        `Public DMs: ${policy.policyKey}="open" + ${policy.allowFromKey} includes "*".`,
+        `Allowlist DMs: ${policyKey}="allowlist" + ${allowFromKey} entries.`,
+        `Public DMs: ${policyKey}="open" + ${allowFromKey} includes "*".`,
         "Multi-user DMs: run: " +
           formatCliCommand('openclaw config set session.dmScope "per-channel-peer"') +
           ' (or "per-account-channel-peer" for multi-account channels) to isolate sessions.',

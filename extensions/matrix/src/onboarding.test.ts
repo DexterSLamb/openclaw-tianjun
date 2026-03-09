@@ -263,4 +263,35 @@ describe("matrix onboarding", () => {
     expect(result.cfg.channels?.["matrix"]?.dm).toBeUndefined();
     expect(result.cfg.channels?.["matrix"]?.groups).toBeUndefined();
   });
+
+  it("reports account-scoped DM config keys for named accounts", () => {
+    const resolveConfigKeys = matrixOnboardingAdapter.dmPolicy?.resolveConfigKeys;
+    expect(resolveConfigKeys).toBeDefined();
+    if (!resolveConfigKeys) {
+      return;
+    }
+
+    expect(
+      resolveConfigKeys(
+        {
+          channels: {
+            matrix: {
+              accounts: {
+                default: {
+                  homeserver: "https://matrix.main.example.org",
+                },
+                ops: {
+                  homeserver: "https://matrix.ops.example.org",
+                },
+              },
+            },
+          },
+        } as CoreConfig,
+        "ops",
+      ),
+    ).toEqual({
+      policyKey: "channels.matrix.accounts.ops.dm.policy",
+      allowFromKey: "channels.matrix.accounts.ops.dm.allowFrom",
+    });
+  });
 });

@@ -75,6 +75,10 @@ export type ChannelOnboardingDmPolicy = {
   channel: ChannelId;
   policyKey: string;
   allowFromKey: string;
+  resolveConfigKeys?: (
+    cfg: OpenClawConfig,
+    accountId?: string,
+  ) => { policyKey: string; allowFromKey: string };
   getCurrent: (cfg: OpenClawConfig, accountId?: string) => DmPolicy;
   setPolicy: (cfg: OpenClawConfig, policy: DmPolicy, accountId?: string) => OpenClawConfig;
   promptAllowFrom?: (params: {
