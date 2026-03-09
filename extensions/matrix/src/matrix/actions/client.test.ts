@@ -1,19 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MatrixClient } from "../sdk.js";
+import {
+  createMockMatrixClient,
+  matrixClientResolverMocks,
+  primeMatrixClientResolverMocks,
+} from "../client-resolver.test-helpers.js";
 
-const loadConfigMock = vi.fn(() => ({}));
-const getActiveMatrixClientMock = vi.fn();
-const createMatrixClientMock = vi.fn();
-const isBunRuntimeMock = vi.fn(() => false);
-const resolveMatrixAuthMock = vi.fn();
-const resolveMatrixAuthContextMock = vi.fn();
+const {
+  loadConfigMock,
+  getMatrixRuntimeMock,
+  getActiveMatrixClientMock,
+  createMatrixClientMock,
+  isBunRuntimeMock,
+  resolveMatrixAuthMock,
+  resolveMatrixAuthContextMock,
+} = matrixClientResolverMocks;
 
 vi.mock("../../runtime.js", () => ({
-  getMatrixRuntime: () => ({
-    config: {
-      loadConfig: loadConfigMock,
-    },
-  }),
+  getMatrixRuntime: () => getMatrixRuntimeMock(),
 }));
 
 vi.mock("../active-client.js", () => ({
@@ -29,44 +32,10 @@ vi.mock("../client.js", () => ({
 
 let resolveActionClient: typeof import("./client.js").resolveActionClient;
 
-function createMockMatrixClient(): MatrixClient {
-  return {
-    prepareForOneOff: vi.fn(async () => undefined),
-    start: vi.fn(async () => undefined),
-  } as unknown as MatrixClient;
-}
-
 describe("resolveActionClient", () => {
   beforeEach(async () => {
     vi.resetModules();
-    vi.clearAllMocks();
-    getActiveMatrixClientMock.mockReturnValue(null);
-    isBunRuntimeMock.mockReturnValue(false);
-    resolveMatrixAuthMock.mockResolvedValue({
-      accountId: "default",
-      homeserver: "https://matrix.example.org",
-      userId: "@bot:example.org",
-      accessToken: "token",
-      password: undefined,
-      deviceId: "DEVICE123",
-      encryption: false,
-    });
-    resolveMatrixAuthContextMock.mockImplementation(
-      ({ cfg, accountId }: { cfg: unknown; accountId?: string | null }) => ({
-        cfg,
-        env: process.env,
-        accountId: accountId ?? "default",
-        resolved: {
-          homeserver: "https://matrix.example.org",
-          userId: "@bot:example.org",
-          accessToken: "token",
-          password: undefined,
-          deviceId: "DEVICE123",
-          encryption: false,
-        },
-      }),
-    );
-    createMatrixClientMock.mockResolvedValue(createMockMatrixClient());
+    primeMatrixClientResolverMocks();
 
     ({ resolveActionClient } = await import("./client.js"));
   });

@@ -1,12 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MatrixClient } from "../sdk.js";
+import {
+  createMockMatrixClient,
+  matrixClientResolverMocks,
+  primeMatrixClientResolverMocks,
+} from "../client-resolver.test-helpers.js";
 
-const getActiveMatrixClientMock = vi.fn();
-const createMatrixClientMock = vi.fn();
-const isBunRuntimeMock = vi.fn(() => false);
-const resolveMatrixAuthMock = vi.fn();
-const resolveMatrixAuthContextMock = vi.fn();
-const getMatrixRuntimeMock = vi.fn();
+const {
+  getMatrixRuntimeMock,
+  getActiveMatrixClientMock,
+  createMatrixClientMock,
+  isBunRuntimeMock,
+  resolveMatrixAuthMock,
+  resolveMatrixAuthContextMock,
+} = matrixClientResolverMocks;
 
 vi.mock("../active-client.js", () => ({
   getActiveMatrixClient: (...args: unknown[]) => getActiveMatrixClientMock(...args),
@@ -25,39 +31,12 @@ vi.mock("../../runtime.js", () => ({
 
 let resolveMatrixClient: typeof import("./client.js").resolveMatrixClient;
 
-function createMockMatrixClient(): MatrixClient {
-  return {
-    prepareForOneOff: vi.fn(async () => undefined),
-  } as unknown as MatrixClient;
-}
-
 describe("resolveMatrixClient", () => {
   beforeEach(async () => {
     vi.resetModules();
-    vi.clearAllMocks();
-    getActiveMatrixClientMock.mockReturnValue(null);
-    isBunRuntimeMock.mockReturnValue(false);
-    getMatrixRuntimeMock.mockReturnValue({
-      config: {
-        loadConfig: () => ({}),
-      },
-    });
-    resolveMatrixAuthContextMock.mockReturnValue({
-      cfg: {},
-      env: process.env,
-      accountId: "default",
+    primeMatrixClientResolverMocks({
       resolved: {},
     });
-    resolveMatrixAuthMock.mockResolvedValue({
-      accountId: "default",
-      homeserver: "https://matrix.example.org",
-      userId: "@bot:example.org",
-      accessToken: "token",
-      password: undefined,
-      deviceId: "DEVICE123",
-      encryption: false,
-    });
-    createMatrixClientMock.mockResolvedValue(createMockMatrixClient());
 
     ({ resolveMatrixClient } = await import("./client.js"));
   });
