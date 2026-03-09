@@ -99,6 +99,7 @@ async function readCachedMatches(
 
 export async function resolveMatrixTargets(params: {
   cfg: unknown;
+  accountId?: string | null;
   inputs: string[];
   kind: ChannelResolveKind;
   runtime?: RuntimeEnv;
@@ -123,6 +124,7 @@ export async function resolveMatrixTargets(params: {
         const matches = await readCachedMatches(userLookupCache, trimmed, (query) =>
           listMatrixDirectoryPeersLive({
             cfg: params.cfg,
+            accountId: params.accountId,
             query,
             limit: 5,
           }),
@@ -150,6 +152,7 @@ export async function resolveMatrixTargets(params: {
       const matches = await readCachedMatches(groupLookupCache, trimmed, (query) =>
         listMatrixDirectoryGroupsLive({
           cfg: params.cfg,
+          accountId: params.accountId,
           query,
           limit: 5,
         }),

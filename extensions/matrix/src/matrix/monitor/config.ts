@@ -61,6 +61,7 @@ function sanitizeMatrixRoomUserAllowlists(entries: MatrixRoomsConfig): MatrixRoo
 
 async function resolveMatrixMonitorUserEntries(params: {
   cfg: CoreConfig;
+  accountId?: string | null;
   entries: Array<string | number>;
   runtime: RuntimeEnv;
   resolveTargets: ResolveMatrixTargetsFn;
@@ -93,6 +94,7 @@ async function resolveMatrixMonitorUserEntries(params: {
       ? []
       : await params.resolveTargets({
           cfg: params.cfg,
+          accountId: params.accountId,
           inputs: pending.map((entry) => entry.query),
           kind: "user",
           runtime: params.runtime,
@@ -115,6 +117,7 @@ async function resolveMatrixMonitorUserEntries(params: {
 
 async function resolveMatrixMonitorUserAllowlist(params: {
   cfg: CoreConfig;
+  accountId?: string | null;
   label: string;
   list?: Array<string | number>;
   runtime: RuntimeEnv;
@@ -127,6 +130,7 @@ async function resolveMatrixMonitorUserAllowlist(params: {
 
   const resolution = await resolveMatrixMonitorUserEntries({
     cfg: params.cfg,
+    accountId: params.accountId,
     entries: allowList,
     runtime: params.runtime,
     resolveTargets: params.resolveTargets,
@@ -148,6 +152,7 @@ async function resolveMatrixMonitorUserAllowlist(params: {
 
 async function resolveMatrixMonitorRoomsConfig(params: {
   cfg: CoreConfig;
+  accountId?: string | null;
   roomsConfig?: MatrixRoomsConfig;
   runtime: RuntimeEnv;
   resolveTargets: ResolveMatrixTargetsFn;
@@ -193,6 +198,7 @@ async function resolveMatrixMonitorRoomsConfig(params: {
   if (pending.length > 0) {
     const resolved = await params.resolveTargets({
       cfg: params.cfg,
+      accountId: params.accountId,
       inputs: pending.map((entry) => entry.query),
       kind: "group",
       runtime: params.runtime,
@@ -231,6 +237,7 @@ async function resolveMatrixMonitorRoomsConfig(params: {
 
   const resolution = await resolveMatrixMonitorUserEntries({
     cfg: params.cfg,
+    accountId: params.accountId,
     entries: Array.from(roomUsers),
     runtime: params.runtime,
     resolveTargets: params.resolveTargets,
@@ -252,6 +259,7 @@ async function resolveMatrixMonitorRoomsConfig(params: {
 
 export async function resolveMatrixMonitorConfig(params: {
   cfg: CoreConfig;
+  accountId?: string | null;
   allowFrom?: Array<string | number>;
   groupAllowFrom?: Array<string | number>;
   roomsConfig?: MatrixRoomsConfig;
@@ -267,6 +275,7 @@ export async function resolveMatrixMonitorConfig(params: {
   const [allowFrom, groupAllowFrom, roomsConfig] = await Promise.all([
     resolveMatrixMonitorUserAllowlist({
       cfg: params.cfg,
+      accountId: params.accountId,
       label: "matrix dm allowlist",
       list: params.allowFrom,
       runtime: params.runtime,
@@ -274,6 +283,7 @@ export async function resolveMatrixMonitorConfig(params: {
     }),
     resolveMatrixMonitorUserAllowlist({
       cfg: params.cfg,
+      accountId: params.accountId,
       label: "matrix group allowlist",
       list: params.groupAllowFrom,
       runtime: params.runtime,
@@ -281,6 +291,7 @@ export async function resolveMatrixMonitorConfig(params: {
     }),
     resolveMatrixMonitorRoomsConfig({
       cfg: params.cfg,
+      accountId: params.accountId,
       roomsConfig: params.roomsConfig,
       runtime: params.runtime,
       resolveTargets,

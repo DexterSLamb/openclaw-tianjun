@@ -266,8 +266,8 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
       listMatrixDirectoryGroupsLive({ cfg, accountId, query, limit }),
   },
   resolver: {
-    resolveTargets: async ({ cfg, inputs, kind, runtime }) =>
-      resolveMatrixTargets({ cfg, inputs, kind, runtime }),
+    resolveTargets: async ({ cfg, accountId, inputs, kind, runtime }) =>
+      resolveMatrixTargets({ cfg, accountId, inputs, kind, runtime }),
   },
   actions: matrixMessageActions,
   setup: {

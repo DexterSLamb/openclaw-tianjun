@@ -86,6 +86,7 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
 
   ({ allowFrom, groupAllowFrom, roomsConfig } = await resolveMatrixMonitorConfig({
     cfg,
+    accountId: effectiveAccountId,
     allowFrom,
     groupAllowFrom,
     roomsConfig,

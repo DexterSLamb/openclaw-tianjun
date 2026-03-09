@@ -51,6 +51,7 @@ describe("resolveMatrixMonitorConfig", () => {
 
     const result = await resolveMatrixMonitorConfig({
       cfg: {} as CoreConfig,
+      accountId: "ops",
       allowFrom: ["matrix:@Alice:Example.org", "Bob"],
       groupAllowFrom: ["user:@Carol:Example.org"],
       roomsConfig,
@@ -74,6 +75,7 @@ describe("resolveMatrixMonitorConfig", () => {
     expect(resolveTargets).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
+        accountId: "ops",
         kind: "user",
         inputs: ["Bob"],
       }),
@@ -81,6 +83,7 @@ describe("resolveMatrixMonitorConfig", () => {
     expect(resolveTargets).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
+        accountId: "ops",
         kind: "group",
         inputs: ["General"],
       }),
@@ -88,6 +91,7 @@ describe("resolveMatrixMonitorConfig", () => {
     expect(resolveTargets).toHaveBeenNthCalledWith(
       3,
       expect.objectContaining({
+        accountId: "ops",
         kind: "user",
         inputs: ["Dana"],
       }),
@@ -107,6 +111,7 @@ describe("resolveMatrixMonitorConfig", () => {
 
     const result = await resolveMatrixMonitorConfig({
       cfg: {} as CoreConfig,
+      accountId: "ops",
       allowFrom: ["user:Ghost"],
       groupAllowFrom: ["matrix:@known:example.org"],
       roomsConfig: {
@@ -125,6 +130,7 @@ describe("resolveMatrixMonitorConfig", () => {
     expect(resolveTargets).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
+        accountId: "ops",
         kind: "user",
         inputs: ["Ghost"],
       }),
@@ -132,6 +138,7 @@ describe("resolveMatrixMonitorConfig", () => {
     expect(resolveTargets).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
+        accountId: "ops",
         kind: "group",
         inputs: ["Project X"],
       }),

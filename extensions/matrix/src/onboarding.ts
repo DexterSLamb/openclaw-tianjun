@@ -119,6 +119,7 @@ async function promptMatrixAllowFrom(params: {
     if (pending.length > 0) {
       const results = await resolveMatrixTargets({
         cfg,
+        accountId,
         inputs: pending,
         kind: "user",
       }).catch(() => []);

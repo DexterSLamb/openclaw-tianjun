@@ -28,6 +28,12 @@ describe("resolveMatrixTargets (users)", () => {
 
     expect(result?.resolved).toBe(true);
     expect(result?.id).toBe("@alice:example.org");
+    expect(listMatrixDirectoryPeersLive).toHaveBeenCalledWith({
+      cfg: {},
+      accountId: undefined,
+      query: "Alice",
+      limit: 5,
+    });
   });
 
   it("does not resolve ambiguous or non-exact matches", async () => {
@@ -63,6 +69,47 @@ describe("resolveMatrixTargets (users)", () => {
     expect(result?.resolved).toBe(true);
     expect(result?.id).toBe("!two:example.org");
     expect(result?.note).toBeUndefined();
+    expect(listMatrixDirectoryGroupsLive).toHaveBeenCalledWith({
+      cfg: {},
+      accountId: undefined,
+      query: "#team",
+      limit: 5,
+    });
+  });
+
+  it("threads accountId into live Matrix target lookups", async () => {
+    vi.mocked(listMatrixDirectoryPeersLive).mockResolvedValue([
+      { kind: "user", id: "@alice:example.org", name: "Alice" },
+    ]);
+    vi.mocked(listMatrixDirectoryGroupsLive).mockResolvedValue([
+      { kind: "group", id: "!team:example.org", name: "Team", handle: "#team" },
+    ]);
+
+    await resolveMatrixTargets({
+      cfg: {},
+      accountId: "ops",
+      inputs: ["Alice"],
+      kind: "user",
+    });
+    await resolveMatrixTargets({
+      cfg: {},
+      accountId: "ops",
+      inputs: ["#team"],
+      kind: "group",
+    });
+
+    expect(listMatrixDirectoryPeersLive).toHaveBeenCalledWith({
+      cfg: {},
+      accountId: "ops",
+      query: "Alice",
+      limit: 5,
+    });
+    expect(listMatrixDirectoryGroupsLive).toHaveBeenCalledWith({
+      cfg: {},
+      accountId: "ops",
+      query: "#team",
+      limit: 5,
+    });
   });
 
   it("reuses directory lookups for normalized duplicate inputs", async () => {

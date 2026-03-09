@@ -30,6 +30,14 @@ export function resolveMatrixInboundRoute(params: {
       kind: params.isDirectMessage ? "direct" : "channel",
       id: params.isDirectMessage ? params.senderId : params.roomId,
     },
+    // Matrix DMs are still sender-addressed first, but the room ID remains a
+    // useful fallback binding key for generic route matching.
+    parentPeer: params.isDirectMessage
+      ? {
+          kind: "channel",
+          id: params.roomId,
+        }
+      : undefined,
   });
   const bindingConversationId =
     params.threadRootId && params.threadRootId !== params.messageId
