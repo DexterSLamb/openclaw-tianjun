@@ -34,6 +34,8 @@ import { createExecApprovalForwarder } from "../infra/exec-approval-forwarder.js
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
 import { startHeartbeatRunner, type HeartbeatRunner } from "../infra/heartbeat-runner.js";
 import { getMachineDisplayName } from "../infra/machine-name.js";
+import { autoPrepareLegacyMatrixCrypto } from "../infra/matrix-legacy-crypto.js";
+import { autoMigrateLegacyMatrixState } from "../infra/matrix-legacy-state.js";
 import { ensureOpenClawCliOnPath } from "../infra/path-env.js";
 import { setGatewaySigusr1RestartPolicy, setPreRestartDeferralCheck } from "../infra/restart.js";
 import {
@@ -331,6 +333,16 @@ export async function startGatewayServer(
   }
 
   let secretsDegraded = false;
+  await autoMigrateLegacyMatrixState({
+    cfg: autoEnable.changes.length > 0 ? autoEnable.config : configSnapshot.config,
+    env: process.env,
+    log,
+  });
+  await autoPrepareLegacyMatrixCrypto({
+    cfg: autoEnable.changes.length > 0 ? autoEnable.config : configSnapshot.config,
+    env: process.env,
+    log,
+  });
   const emitSecretsStateEvent = (
     code: "SECRETS_RELOADER_DEGRADED" | "SECRETS_RELOADER_RECOVERED",
     message: string,

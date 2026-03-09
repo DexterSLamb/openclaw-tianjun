@@ -21,7 +21,7 @@ import {
 
 function normalizeBindingChannel(value: string | undefined): ConfiguredAcpBindingChannel | null {
   const normalized = (value ?? "").trim().toLowerCase();
-  if (normalized === "discord" || normalized === "matrix-js" || normalized === "telegram") {
+  if (normalized === "discord" || normalized === "matrix" || normalized === "telegram") {
     return normalized;
   }
   return null;
@@ -146,7 +146,7 @@ export function resolveConfiguredAcpBindingSpecBySessionKey(params: {
     if (!targetConversationId) {
       continue;
     }
-    if (channel === "discord" || channel === "matrix-js") {
+    if (channel === "discord" || channel === "matrix") {
       const spec = toConfiguredBindingSpec({
         cfg: params.cfg,
         channel,
@@ -205,7 +205,7 @@ export function resolveConfiguredAcpBindingRecord(params: {
     return null;
   }
 
-  if (channel === "discord" || channel === "matrix-js") {
+  if (channel === "discord" || channel === "matrix") {
     const bindings = listAcpBindings(params.cfg);
     const resolveChannelBindingForConversation = (
       targetConversationId: string,

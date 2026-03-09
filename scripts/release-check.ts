@@ -69,8 +69,6 @@ const requiredPathGroups = [
   "dist/plugin-sdk/lobster.d.ts",
   "dist/plugin-sdk/matrix.js",
   "dist/plugin-sdk/matrix.d.ts",
-  "dist/plugin-sdk/matrix-js.js",
-  "dist/plugin-sdk/matrix-js.d.ts",
   "dist/plugin-sdk/mattermost.js",
   "dist/plugin-sdk/mattermost.d.ts",
   "dist/plugin-sdk/memory-core.js",

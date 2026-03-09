@@ -2,7 +2,7 @@ import type { OpenClawConfig } from "../config/config.js";
 import { normalizeAccountId } from "../routing/session-key.js";
 
 export const DISCORD_THREAD_BINDING_CHANNEL = "discord";
-export const MATRIX_JS_THREAD_BINDING_CHANNEL = "matrix-js";
+export const MATRIX_THREAD_BINDING_CHANNEL = "matrix";
 export const TELEGRAM_THREAD_BINDING_CHANNEL = "telegram";
 const DEFAULT_THREAD_BINDING_IDLE_HOURS = 24;
 const DEFAULT_THREAD_BINDING_MAX_AGE_HOURS = 0;
@@ -116,7 +116,7 @@ function resolveSpawnConfigPath(params: {
     params.kind === "subagent" ? "spawnSubagentSessions=true" : "spawnAcpSessions=true";
   if (
     params.channel === DISCORD_THREAD_BINDING_CHANNEL ||
-    params.channel === MATRIX_JS_THREAD_BINDING_CHANNEL ||
+    params.channel === MATRIX_THREAD_BINDING_CHANNEL ||
     params.channel === TELEGRAM_THREAD_BINDING_CHANNEL
   ) {
     return `channels.${params.channel}.threadBindings.${suffix}`;
@@ -215,8 +215,8 @@ export function formatThreadBindingSpawnDisabledError(params: {
   const label =
     params.channel === DISCORD_THREAD_BINDING_CHANNEL
       ? "Discord"
-      : params.channel === MATRIX_JS_THREAD_BINDING_CHANNEL
-        ? "Matrix-js"
+      : params.channel === MATRIX_THREAD_BINDING_CHANNEL
+        ? "Matrix"
         : params.channel === TELEGRAM_THREAD_BINDING_CHANNEL
           ? "Telegram"
           : params.channel;

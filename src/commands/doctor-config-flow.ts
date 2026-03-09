@@ -26,6 +26,14 @@ import {
   isTrustedSafeBinPath,
   normalizeTrustedSafeBinDirs,
 } from "../infra/exec-safe-bin-trust.js";
+import {
+  autoPrepareLegacyMatrixCrypto,
+  detectLegacyMatrixCrypto,
+} from "../infra/matrix-legacy-crypto.js";
+import {
+  autoMigrateLegacyMatrixState,
+  detectLegacyMatrixState,
+} from "../infra/matrix-legacy-state.js";
 import { readChannelAllowFromStore } from "../pairing/pairing-store.js";
 import {
   formatChannelAccountsDefaultPath,
@@ -283,6 +291,68 @@ function collectTelegramAllowFromLists(
     }
   }
   return refs;
+}
+
+function formatMatrixLegacyStatePreview(
+  detection: Exclude<ReturnType<typeof detectLegacyMatrixState>, null | { warning: string }>,
+): string {
+  return [
+    "- Matrix plugin upgraded in place.",
+    `- Legacy sync store: ${detection.legacyStoragePath} -> ${detection.targetStoragePath}`,
+    `- Legacy crypto store: ${detection.legacyCryptoPath} -> ${detection.targetCryptoPath}`,
+    '- Run "openclaw doctor --fix" to migrate this Matrix state now.',
+  ].join("\n");
+}
+
+function formatMatrixLegacyCryptoPreview(
+  detection: ReturnType<typeof detectLegacyMatrixCrypto>,
+): string[] {
+  const notes: string[] = [];
+  for (const warning of detection.warnings) {
+    notes.push(`- ${warning}`);
+  }
+  for (const plan of detection.plans) {
+    notes.push(
+      [
+        `- Matrix encrypted-state migration is pending for account "${plan.accountId}".`,
+        `- Legacy crypto store: ${plan.legacyCryptoPath}`,
+        `- New recovery key file: ${plan.recoveryKeyPath}`,
+        `- Migration state file: ${plan.statePath}`,
+        '- Run "openclaw doctor --fix" to extract any saved backup key now. Backed-up room keys will restore automatically on next gateway start.',
+      ].join("\n"),
+    );
+  }
+  return notes;
+}
+
+async function collectMatrixInstallPathWarnings(cfg: OpenClawConfig): Promise<string[]> {
+  const install = cfg.plugins?.installs?.matrix;
+  if (!install || install.source !== "path") {
+    return [];
+  }
+
+  const candidatePaths = [install.sourcePath, install.installPath]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean);
+  if (candidatePaths.length === 0) {
+    return [];
+  }
+
+  for (const candidatePath of candidatePaths) {
+    try {
+      await fs.access(path.resolve(candidatePath));
+      return [];
+    } catch {
+      // keep checking remaining candidates
+    }
+  }
+
+  const missingPath = candidatePaths[0] ?? "(unknown)";
+  return [
+    `- Matrix is installed from a custom path that no longer exists: ${missingPath}`,
+    `- Reinstall with "${formatCliCommand("openclaw plugins install @openclaw/matrix")}".`,
+    `- If you are running from a repo checkout, you can also use "${formatCliCommand("openclaw plugins install ./extensions/matrix")}".`,
+  ];
 }
 
 function scanTelegramAllowFromUsernameEntries(cfg: OpenClawConfig): TelegramAllowFromUsernameHit[] {
@@ -1731,6 +1801,69 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     } else {
       fixHints.push(`Run "${formatCliCommand("openclaw doctor --fix")}" to apply these changes.`);
     }
+  }
+
+  const matrixLegacyState = detectLegacyMatrixState({
+    cfg: candidate,
+    env: process.env,
+  });
+  const matrixLegacyCrypto = detectLegacyMatrixCrypto({
+    cfg: candidate,
+    env: process.env,
+  });
+  if (shouldRepair) {
+    const matrixStateRepair = await autoMigrateLegacyMatrixState({
+      cfg: candidate,
+      env: process.env,
+    });
+    if (matrixStateRepair.changes.length > 0) {
+      note(
+        [
+          "Matrix plugin upgraded in place.",
+          ...matrixStateRepair.changes.map((entry) => `- ${entry}`),
+          "- No user action required.",
+        ].join("\n"),
+        "Doctor changes",
+      );
+    }
+    if (matrixStateRepair.warnings.length > 0) {
+      note(matrixStateRepair.warnings.map((entry) => `- ${entry}`).join("\n"), "Doctor warnings");
+    }
+    const matrixCryptoRepair = await autoPrepareLegacyMatrixCrypto({
+      cfg: candidate,
+      env: process.env,
+    });
+    if (matrixCryptoRepair.changes.length > 0) {
+      note(
+        [
+          "Matrix encrypted-state migration prepared.",
+          ...matrixCryptoRepair.changes.map((entry) => `- ${entry}`),
+        ].join("\n"),
+        "Doctor changes",
+      );
+    }
+    if (matrixCryptoRepair.warnings.length > 0) {
+      note(matrixCryptoRepair.warnings.map((entry) => `- ${entry}`).join("\n"), "Doctor warnings");
+    }
+  } else if (matrixLegacyState) {
+    if ("warning" in matrixLegacyState) {
+      note(`- ${matrixLegacyState.warning}`, "Doctor warnings");
+    } else {
+      note(formatMatrixLegacyStatePreview(matrixLegacyState), "Doctor warnings");
+    }
+  }
+  if (
+    !shouldRepair &&
+    (matrixLegacyCrypto.warnings.length > 0 || matrixLegacyCrypto.plans.length > 0)
+  ) {
+    for (const preview of formatMatrixLegacyCryptoPreview(matrixLegacyCrypto)) {
+      note(preview, "Doctor warnings");
+    }
+  }
+
+  const matrixInstallWarnings = await collectMatrixInstallPathWarnings(candidate);
+  if (matrixInstallWarnings.length > 0) {
+    note(matrixInstallWarnings.join("\n"), "Doctor warnings");
   }
 
   const missingDefaultAccountBindingWarnings =

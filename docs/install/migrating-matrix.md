@@ -1,0 +1,243 @@
+---
+summary: "How OpenClaw upgrades the previous Matrix plugin in place, including encrypted-state recovery limits and manual recovery steps."
+read_when:
+  - Upgrading an existing Matrix installation
+  - Migrating encrypted Matrix history and device state
+title: "Matrix migration"
+---
+
+# Matrix migration
+
+This page covers upgrades from the previous public `matrix` plugin to the current implementation.
+
+For most users, the upgrade is in place:
+
+- the plugin stays `@openclaw/matrix`
+- the channel stays `matrix`
+- your config stays under `channels.matrix`
+- cached credentials stay under `~/.openclaw/credentials/matrix/`
+- runtime state stays under `~/.openclaw/matrix/`
+
+You do not need to rename config keys or reinstall the plugin under a new name.
+
+## What the migration does automatically
+
+When the gateway starts, and when you run [`openclaw doctor --fix`](/gateway/doctor), OpenClaw tries to repair old Matrix state automatically.
+
+Automatic migration covers:
+
+- reusing your cached Matrix credentials
+- keeping the same account selection and `channels.matrix` config
+- moving the oldest flat Matrix sync store into the current account-scoped location
+- moving the oldest flat Matrix crypto store into the current account-scoped location when the target account can be resolved safely
+- extracting a previously saved Matrix room-key backup decryption key from the old rust crypto store, when that key exists locally
+- restoring backed-up room keys into the new crypto store on the next Matrix startup
+
+## What the migration cannot do automatically
+
+The previous public Matrix plugin did **not** automatically create Matrix room-key backups. It persisted local crypto state and requested device verification, but it did not guarantee that your room keys were backed up to the homeserver.
+
+That means some encrypted installs can only be migrated partially.
+
+OpenClaw cannot automatically recover:
+
+- local-only room keys that were never backed up
+- encrypted state when the target Matrix account cannot be resolved yet because `homeserver`, `userId`, or `accessToken` are still unavailable
+- custom plugin path installs that now point at a missing directory
+- a missing recovery key when the old store had backed-up keys but did not keep the decryption key locally
+
+If your old installation had local-only encrypted history that was never backed up, some older encrypted messages may remain unreadable after the upgrade.
+
+## Recommended upgrade flow
+
+1. Update OpenClaw and the Matrix plugin normally.
+2. Run:
+
+   ```bash
+   openclaw doctor --fix
+   ```
+
+3. Start or restart the gateway.
+4. Check current verification and backup state:
+
+   ```bash
+   openclaw matrix verify status
+   openclaw matrix verify backup status
+   ```
+
+5. If OpenClaw tells you a recovery key is needed, run:
+
+   ```bash
+   openclaw matrix verify backup restore --recovery-key "<your-recovery-key>"
+   ```
+
+6. If this device is still unverified, run:
+
+   ```bash
+   openclaw matrix verify device "<your-recovery-key>"
+   ```
+
+7. If no server-side key backup exists yet, create one for future recoveries:
+
+   ```bash
+   openclaw matrix verify bootstrap
+   ```
+
+## How encrypted migration works
+
+Encrypted migration is a two-stage process:
+
+1. Startup or `openclaw doctor --fix` inspects the old Matrix crypto store.
+2. If a backup decryption key is found, OpenClaw writes it into the new recovery-key flow and marks room-key restore as pending.
+3. On the next Matrix startup, OpenClaw restores backed-up room keys into the new crypto store automatically.
+
+If the old store reports room keys that were never backed up, OpenClaw warns instead of pretending recovery succeeded.
+
+## Common messages and what they mean
+
+### Upgrade and detection messages
+
+`Matrix plugin upgraded in place.`
+
+- Meaning: the old on-disk Matrix state was detected and migrated into the current layout.
+- What to do: nothing unless the same output also includes warnings.
+
+`Legacy Matrix state detected at ... but channels.matrix is not configured yet.`
+
+- Meaning: old Matrix state exists, but OpenClaw cannot map it to a current Matrix account because Matrix is not configured.
+- What to do: configure `channels.matrix`, then rerun `openclaw doctor --fix` or restart the gateway.
+
+`Legacy Matrix state detected at ... but the new account-scoped target could not be resolved yet (need homeserver, userId, and access token for channels.matrix...).`
+
+- Meaning: OpenClaw found old state, but it still cannot determine the exact current account/device root.
+- What to do: start the gateway once with a working Matrix login, or rerun `openclaw doctor --fix` after cached credentials exist.
+
+`Matrix legacy sync store not migrated because the target already exists (...)`
+
+- Meaning: the new account-scoped location already has a sync or crypto store, so OpenClaw did not overwrite it automatically.
+- What to do: verify that the current account is the correct one before manually removing or moving the conflicting target.
+
+`Failed migrating Matrix legacy sync store (...)` or `Failed migrating Matrix legacy crypto store (...)`
+
+- Meaning: OpenClaw tried to move old Matrix state but the filesystem operation failed.
+- What to do: inspect filesystem permissions and disk state, then rerun `openclaw doctor --fix`.
+
+`Legacy Matrix encrypted state detected at ... but channels.matrix is not configured yet.`
+
+- Meaning: OpenClaw found an old encrypted Matrix store, but there is no current Matrix config to attach it to.
+- What to do: configure `channels.matrix`, then rerun `openclaw doctor --fix` or restart the gateway.
+
+`Legacy Matrix encrypted state detected at ... but the account-scoped target could not be resolved yet (need homeserver, userId, and access token for channels.matrix...).`
+
+- Meaning: the encrypted store exists, but OpenClaw cannot safely decide which current account/device it belongs to.
+- What to do: start the gateway once with a working Matrix login, or rerun `openclaw doctor --fix` after cached credentials are available.
+
+### Encrypted-state recovery messages
+
+`matrix: restored X/Y room key(s) from legacy encrypted-state backup`
+
+- Meaning: backed-up room keys were restored successfully into the new crypto store.
+- What to do: usually nothing.
+
+`matrix: N legacy local-only room key(s) were never backed up and could not be restored automatically`
+
+- Meaning: some old room keys existed only in the old local store and had never been uploaded to Matrix backup.
+- What to do: expect some old encrypted history to remain unavailable unless you can recover those keys manually from another verified client.
+
+`Legacy Matrix encrypted state for account "..." has backed-up room keys, but no local backup decryption key was found. Ask the operator to run "openclaw matrix verify backup restore --recovery-key <key>" after upgrade if they have the recovery key.`
+
+- Meaning: backup exists, but OpenClaw could not recover the recovery key automatically.
+- What to do: run `openclaw matrix verify backup restore --recovery-key "<your-recovery-key>"`.
+
+`Failed inspecting legacy Matrix encrypted state for account "...": ...`
+
+- Meaning: OpenClaw found the old encrypted store, but it could not inspect it safely enough to prepare recovery.
+- What to do: rerun `openclaw doctor --fix`. If it repeats, keep the old state directory intact and recover using another verified Matrix client plus `openclaw matrix verify backup restore --recovery-key "<your-recovery-key>"`.
+
+`Legacy Matrix backup key was found for account "...", but .../recovery-key.json already contains a different recovery key. Leaving the existing file unchanged.`
+
+- Meaning: OpenClaw detected a backup key conflict and refused to overwrite the current recovery-key file automatically.
+- What to do: verify which recovery key is correct before retrying any restore command.
+
+`Legacy Matrix encrypted state for account "..." cannot be fully converted automatically because the old rust crypto store does not expose all local room keys for export.`
+
+- Meaning: this is the hard limit of the old storage format.
+- What to do: backed-up keys can still be restored, but local-only encrypted history may remain unavailable.
+
+`matrix: failed restoring room keys from legacy encrypted-state backup: ...`
+
+- Meaning: the new plugin attempted restore but Matrix returned an error.
+- What to do: run `openclaw matrix verify backup status`, then retry with `openclaw matrix verify backup restore --recovery-key "<your-recovery-key>"` if needed.
+
+### Manual recovery messages
+
+`Backup key is not loaded on this device. Run 'openclaw matrix verify backup restore' to load it and restore old room keys.`
+
+- Meaning: OpenClaw knows you should have a backup key, but it is not active on this device.
+- What to do: run `openclaw matrix verify backup restore`, or pass `--recovery-key` if needed.
+
+`Store a recovery key with 'openclaw matrix verify device <key>', then run 'openclaw matrix verify backup restore'.`
+
+- Meaning: this device does not currently have the recovery key stored.
+- What to do: verify the device with your recovery key first, then restore the backup.
+
+`Backup key mismatch on this device. Re-run 'openclaw matrix verify device <key>' with the matching recovery key.`
+
+- Meaning: the stored key does not match the active Matrix backup.
+- What to do: rerun `openclaw matrix verify device "<your-recovery-key>"` with the correct key.
+
+`Backup trust chain is not verified on this device. Re-run 'openclaw matrix verify device <key>'.`
+
+- Meaning: the backup exists, but this device does not trust the cross-signing chain strongly enough yet.
+- What to do: rerun `openclaw matrix verify device "<your-recovery-key>"`.
+
+`Matrix recovery key is required`
+
+- Meaning: you tried a recovery step without supplying a recovery key when one was required.
+- What to do: rerun the command with your recovery key.
+
+`Invalid Matrix recovery key: ...`
+
+- Meaning: the provided key could not be parsed or did not match the expected format.
+- What to do: retry with the exact recovery key from your Matrix client or recovery-key file.
+
+`Matrix device is still unverified after applying recovery key. Verify your recovery key and ensure cross-signing is available.`
+
+- Meaning: the key was applied, but the device still could not complete verification.
+- What to do: confirm you used the correct key and that cross-signing is available on the account, then retry.
+
+`Matrix key backup is not active on this device after loading from secret storage.`
+
+- Meaning: secret storage did not produce an active backup session on this device.
+- What to do: verify the device first, then recheck with `openclaw matrix verify backup status`.
+
+`Matrix crypto backend cannot load backup keys from secret storage. Verify this device with 'openclaw matrix verify device <key>' first.`
+
+- Meaning: this device cannot restore from secret storage until device verification is complete.
+- What to do: run `openclaw matrix verify device "<your-recovery-key>"` first.
+
+### Custom plugin install messages
+
+`Matrix is installed from a custom path that no longer exists: ...`
+
+- Meaning: your plugin install record points at a local path that is gone.
+- What to do: reinstall with `openclaw plugins install @openclaw/matrix`, or if you are running from a repo checkout, `openclaw plugins install ./extensions/matrix`.
+
+## If encrypted history still does not come back
+
+Run these checks in order:
+
+```bash
+openclaw matrix verify status --verbose
+openclaw matrix verify backup status --verbose
+openclaw matrix verify backup restore --recovery-key "<your-recovery-key>" --verbose
+```
+
+If the backup restores successfully but some old rooms are still missing history, those missing keys were probably never backed up by the previous plugin.
+
+## Related pages
+
+- [Matrix](/channels/matrix)
+- [Doctor](/gateway/doctor)
+- [Migrating](/install/migrating)
+- [Plugins](/tools/plugin)

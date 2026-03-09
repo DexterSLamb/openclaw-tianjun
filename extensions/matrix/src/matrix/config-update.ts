@@ -1,0 +1,137 @@
+import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/account-id";
+import { normalizeAccountId } from "openclaw/plugin-sdk/matrix";
+import type { CoreConfig, MatrixConfig } from "../types.js";
+
+export type MatrixAccountPatch = {
+  name?: string | null;
+  enabled?: boolean;
+  homeserver?: string | null;
+  userId?: string | null;
+  accessToken?: string | null;
+  password?: string | null;
+  deviceName?: string | null;
+  avatarUrl?: string | null;
+  encryption?: boolean | null;
+  initialSyncLimit?: number | null;
+};
+
+function applyNullableStringField(
+  target: Record<string, unknown>,
+  key: keyof MatrixAccountPatch,
+  value: string | null | undefined,
+): void {
+  if (value === undefined) {
+    return;
+  }
+  if (value === null) {
+    delete target[key];
+    return;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    delete target[key];
+    return;
+  }
+  target[key] = trimmed;
+}
+
+export function shouldStoreMatrixAccountAtTopLevel(cfg: CoreConfig, accountId: string): boolean {
+  const normalizedAccountId = normalizeAccountId(accountId);
+  if (normalizedAccountId !== DEFAULT_ACCOUNT_ID) {
+    return false;
+  }
+  const accounts = cfg.channels?.matrix?.accounts;
+  return !accounts || Object.keys(accounts).length === 0;
+}
+
+export function resolveMatrixConfigPath(cfg: CoreConfig, accountId: string): string {
+  const normalizedAccountId = normalizeAccountId(accountId);
+  if (shouldStoreMatrixAccountAtTopLevel(cfg, normalizedAccountId)) {
+    return "channels.matrix";
+  }
+  return `channels.matrix.accounts.${normalizedAccountId}`;
+}
+
+export function updateMatrixAccountConfig(
+  cfg: CoreConfig,
+  accountId: string,
+  patch: MatrixAccountPatch,
+): CoreConfig {
+  const matrix = cfg.channels?.matrix ?? {};
+  const normalizedAccountId = normalizeAccountId(accountId);
+  const existingAccount = (matrix.accounts?.[normalizedAccountId] ??
+    (normalizedAccountId === DEFAULT_ACCOUNT_ID ? matrix : {})) as MatrixConfig;
+  const nextAccount: Record<string, unknown> = { ...existingAccount };
+
+  if (patch.name !== undefined) {
+    if (patch.name === null) {
+      delete nextAccount.name;
+    } else {
+      const trimmed = patch.name.trim();
+      if (trimmed) {
+        nextAccount.name = trimmed;
+      } else {
+        delete nextAccount.name;
+      }
+    }
+  }
+  if (typeof patch.enabled === "boolean") {
+    nextAccount.enabled = patch.enabled;
+  } else if (typeof nextAccount.enabled !== "boolean") {
+    nextAccount.enabled = true;
+  }
+
+  applyNullableStringField(nextAccount, "homeserver", patch.homeserver);
+  applyNullableStringField(nextAccount, "userId", patch.userId);
+  applyNullableStringField(nextAccount, "accessToken", patch.accessToken);
+  applyNullableStringField(nextAccount, "password", patch.password);
+  applyNullableStringField(nextAccount, "deviceName", patch.deviceName);
+  applyNullableStringField(nextAccount, "avatarUrl", patch.avatarUrl);
+
+  if (patch.initialSyncLimit !== undefined) {
+    if (patch.initialSyncLimit === null) {
+      delete nextAccount.initialSyncLimit;
+    } else {
+      nextAccount.initialSyncLimit = Math.max(0, Math.floor(patch.initialSyncLimit));
+    }
+  }
+
+  if (patch.encryption !== undefined) {
+    if (patch.encryption === null) {
+      delete nextAccount.encryption;
+    } else {
+      nextAccount.encryption = patch.encryption;
+    }
+  }
+
+  if (shouldStoreMatrixAccountAtTopLevel(cfg, normalizedAccountId)) {
+    const { accounts: _ignoredAccounts, defaultAccount, ...baseMatrix } = matrix;
+    return {
+      ...cfg,
+      channels: {
+        ...cfg.channels,
+        matrix: {
+          ...baseMatrix,
+          ...(defaultAccount ? { defaultAccount } : {}),
+          enabled: true,
+          ...nextAccount,
+        },
+      },
+    };
+  }
+
+  return {
+    ...cfg,
+    channels: {
+      ...cfg.channels,
+      matrix: {
+        ...matrix,
+        enabled: true,
+        accounts: {
+          ...matrix.accounts,
+          [normalizedAccountId]: nextAccount as MatrixConfig,
+        },
+      },
+    },
+  };
+}

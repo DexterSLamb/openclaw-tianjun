@@ -80,7 +80,7 @@ function resolveAndApplyOutboundThreadId(
       ? resolveTelegramAutoThreadId({ to: ctx.to, toolContext: ctx.toolContext })
       : undefined;
   const matrixAutoThreadId =
-    ctx.channel === "matrix-js" && !threadId
+    ctx.channel === "matrix" && !threadId
       ? resolveMatrixAutoThreadId({ to: ctx.to, toolContext: ctx.toolContext })
       : undefined;
   const resolved = threadId ?? slackAutoThreadId ?? telegramAutoThreadId ?? matrixAutoThreadId;

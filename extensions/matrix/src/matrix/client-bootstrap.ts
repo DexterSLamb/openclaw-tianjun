@@ -1,6 +1,4 @@
-import { createMatrixClient } from "./client/create-client.js";
-import { startMatrixClientWithGrace } from "./client/startup.js";
-import { getMatrixLogService } from "./sdk-runtime.js";
+import { createMatrixClient } from "./client.js";
 
 type MatrixClientBootstrapAuth = {
   homeserver: string;
@@ -36,12 +34,6 @@ export async function createPreparedMatrixClient(opts: {
       // Ignore crypto prep failures for one-off requests.
     }
   }
-  await startMatrixClientWithGrace({
-    client,
-    onError: (err: unknown) => {
-      const LogService = getMatrixLogService();
-      LogService.error("MatrixClientBootstrap", "client.start() error:", err);
-    },
-  });
+  await client.start();
   return client;
 }

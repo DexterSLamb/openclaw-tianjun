@@ -1,12 +1,9 @@
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk/account-id";
-import { fetchWithSsrFGuard } from "openclaw/plugin-sdk/matrix";
 import { getMatrixRuntime } from "../../runtime.js";
-import {
-  normalizeResolvedSecretInputString,
-  normalizeSecretInputString,
-} from "../../secret-input.js";
+import { normalizeResolvedSecretInputString } from "../../secret-input.js";
 import type { CoreConfig } from "../../types.js";
-import { loadMatrixSdk } from "../sdk-runtime.js";
+import { findMatrixAccountConfig, resolveMatrixBaseConfig } from "../account-config.js";
+import { MatrixClient } from "../sdk.js";
 import { ensureMatrixSdkLoggingConfigured } from "./logging.js";
 import type { MatrixAuth, MatrixResolvedConfig } from "./types.js";
 
@@ -14,65 +11,112 @@ function clean(value: unknown, path: string): string {
   return normalizeResolvedSecretInputString({ value, path }) ?? "";
 }
 
-/** Shallow-merge known nested config sub-objects so partial overrides inherit base values. */
-function deepMergeConfig<T extends Record<string, unknown>>(base: T, override: Partial<T>): T {
-  const merged = { ...base, ...override } as Record<string, unknown>;
-  // Merge known nested objects (dm, actions) so partial overrides keep base fields
-  for (const key of ["dm", "actions"] as const) {
-    const b = base[key];
-    const o = override[key];
-    if (typeof b === "object" && b !== null && typeof o === "object" && o !== null) {
-      merged[key] = { ...(b as Record<string, unknown>), ...(o as Record<string, unknown>) };
-    }
-  }
-  return merged as T;
+type MatrixEnvConfig = {
+  homeserver: string;
+  userId: string;
+  accessToken?: string;
+  password?: string;
+  deviceId?: string;
+  deviceName?: string;
+};
+
+function resolveGlobalMatrixEnvConfig(env: NodeJS.ProcessEnv): MatrixEnvConfig {
+  return {
+    homeserver: clean(env.MATRIX_HOMESERVER, "MATRIX_HOMESERVER"),
+    userId: clean(env.MATRIX_USER_ID, "MATRIX_USER_ID"),
+    accessToken: clean(env.MATRIX_ACCESS_TOKEN, "MATRIX_ACCESS_TOKEN") || undefined,
+    password: clean(env.MATRIX_PASSWORD, "MATRIX_PASSWORD") || undefined,
+    deviceId: clean(env.MATRIX_DEVICE_ID, "MATRIX_DEVICE_ID") || undefined,
+    deviceName: clean(env.MATRIX_DEVICE_NAME, "MATRIX_DEVICE_NAME") || undefined,
+  };
 }
 
-/**
- * Resolve Matrix config for a specific account, with fallback to top-level config.
- * This supports both multi-account (channels.matrix.accounts.*) and
- * single-account (channels.matrix.*) configurations.
- */
-export function resolveMatrixConfigForAccount(
+function resolveMatrixEnvAccountToken(accountId: string): string {
+  return normalizeAccountId(accountId)
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+}
+
+export function getMatrixScopedEnvVarNames(accountId: string): {
+  homeserver: string;
+  userId: string;
+  accessToken: string;
+  password: string;
+  deviceId: string;
+  deviceName: string;
+} {
+  const token = resolveMatrixEnvAccountToken(accountId);
+  return {
+    homeserver: `MATRIX_${token}_HOMESERVER`,
+    userId: `MATRIX_${token}_USER_ID`,
+    accessToken: `MATRIX_${token}_ACCESS_TOKEN`,
+    password: `MATRIX_${token}_PASSWORD`,
+    deviceId: `MATRIX_${token}_DEVICE_ID`,
+    deviceName: `MATRIX_${token}_DEVICE_NAME`,
+  };
+}
+
+export function resolveScopedMatrixEnvConfig(
+  accountId: string,
+  env: NodeJS.ProcessEnv = process.env,
+): MatrixEnvConfig {
+  const keys = getMatrixScopedEnvVarNames(accountId);
+  return {
+    homeserver: clean(env[keys.homeserver], keys.homeserver),
+    userId: clean(env[keys.userId], keys.userId),
+    accessToken: clean(env[keys.accessToken], keys.accessToken) || undefined,
+    password: clean(env[keys.password], keys.password) || undefined,
+    deviceId: clean(env[keys.deviceId], keys.deviceId) || undefined,
+    deviceName: clean(env[keys.deviceName], keys.deviceName) || undefined,
+  };
+}
+
+export function hasReadyMatrixEnvAuth(config: {
+  homeserver?: string;
+  userId?: string;
+  accessToken?: string;
+  password?: string;
+}): boolean {
+  const homeserver = clean(config.homeserver, "matrix.env.homeserver");
+  const userId = clean(config.userId, "matrix.env.userId");
+  const accessToken = clean(config.accessToken, "matrix.env.accessToken");
+  const password = clean(config.password, "matrix.env.password");
+  return Boolean(homeserver && (accessToken || (userId && password)));
+}
+
+export function resolveMatrixConfig(
   cfg: CoreConfig = getMatrixRuntime().config.loadConfig() as CoreConfig,
-  accountId?: string | null,
   env: NodeJS.ProcessEnv = process.env,
 ): MatrixResolvedConfig {
-  const normalizedAccountId = normalizeAccountId(accountId);
-  const matrixBase = cfg.channels?.matrix ?? {};
-  const accounts = cfg.channels?.matrix?.accounts;
-
-  // Try to get account-specific config first (direct lookup, then case-insensitive fallback)
-  let accountConfig = accounts?.[normalizedAccountId];
-  if (!accountConfig && accounts) {
-    for (const key of Object.keys(accounts)) {
-      if (normalizeAccountId(key) === normalizedAccountId) {
-        accountConfig = accounts[key];
-        break;
-      }
-    }
-  }
-
-  // Deep merge: account-specific values override top-level values, preserving
-  // nested object inheritance (dm, actions, groups) so partial overrides work.
-  const matrix = accountConfig ? deepMergeConfig(matrixBase, accountConfig) : matrixBase;
-
+  const matrix = resolveMatrixBaseConfig(cfg);
+  const defaultScopedEnv = resolveScopedMatrixEnvConfig(DEFAULT_ACCOUNT_ID, env);
+  const globalEnv = resolveGlobalMatrixEnvConfig(env);
   const homeserver =
     clean(matrix.homeserver, "channels.matrix.homeserver") ||
-    clean(env.MATRIX_HOMESERVER, "MATRIX_HOMESERVER");
+    defaultScopedEnv.homeserver ||
+    globalEnv.homeserver;
   const userId =
-    clean(matrix.userId, "channels.matrix.userId") || clean(env.MATRIX_USER_ID, "MATRIX_USER_ID");
+    clean(matrix.userId, "channels.matrix.userId") || defaultScopedEnv.userId || globalEnv.userId;
   const accessToken =
     clean(matrix.accessToken, "channels.matrix.accessToken") ||
-    clean(env.MATRIX_ACCESS_TOKEN, "MATRIX_ACCESS_TOKEN") ||
+    defaultScopedEnv.accessToken ||
+    globalEnv.accessToken ||
     undefined;
   const password =
     clean(matrix.password, "channels.matrix.password") ||
-    clean(env.MATRIX_PASSWORD, "MATRIX_PASSWORD") ||
+    defaultScopedEnv.password ||
+    globalEnv.password ||
+    undefined;
+  const deviceId =
+    clean(matrix.deviceId, "channels.matrix.deviceId") ||
+    defaultScopedEnv.deviceId ||
+    globalEnv.deviceId ||
     undefined;
   const deviceName =
     clean(matrix.deviceName, "channels.matrix.deviceName") ||
-    clean(env.MATRIX_DEVICE_NAME, "MATRIX_DEVICE_NAME") ||
+    defaultScopedEnv.deviceName ||
+    globalEnv.deviceName ||
     undefined;
   const initialSyncLimit =
     typeof matrix.initialSyncLimit === "number"
@@ -84,20 +128,106 @@ export function resolveMatrixConfigForAccount(
     userId,
     accessToken,
     password,
+    deviceId,
     deviceName,
     initialSyncLimit,
     encryption,
   };
 }
 
-/**
- * Single-account function for backward compatibility - resolves default account config.
- */
-export function resolveMatrixConfig(
-  cfg: CoreConfig = getMatrixRuntime().config.loadConfig() as CoreConfig,
+export function resolveMatrixConfigForAccount(
+  cfg: CoreConfig,
+  accountId: string,
   env: NodeJS.ProcessEnv = process.env,
 ): MatrixResolvedConfig {
-  return resolveMatrixConfigForAccount(cfg, DEFAULT_ACCOUNT_ID, env);
+  const matrix = resolveMatrixBaseConfig(cfg);
+  const account = findMatrixAccountConfig(cfg, accountId) ?? {};
+  const normalizedAccountId = normalizeAccountId(accountId);
+  const scopedEnv = resolveScopedMatrixEnvConfig(normalizedAccountId, env);
+  const globalEnv = resolveGlobalMatrixEnvConfig(env);
+
+  const accountHomeserver = clean(
+    account.homeserver,
+    `channels.matrix.accounts.${normalizedAccountId}.homeserver`,
+  );
+  const accountUserId = clean(
+    account.userId,
+    `channels.matrix.accounts.${normalizedAccountId}.userId`,
+  );
+  const accountAccessToken = clean(
+    account.accessToken,
+    `channels.matrix.accounts.${normalizedAccountId}.accessToken`,
+  );
+  const accountPassword = clean(
+    account.password,
+    `channels.matrix.accounts.${normalizedAccountId}.password`,
+  );
+  const accountDeviceId = clean(
+    account.deviceId,
+    `channels.matrix.accounts.${normalizedAccountId}.deviceId`,
+  );
+  const accountDeviceName = clean(
+    account.deviceName,
+    `channels.matrix.accounts.${normalizedAccountId}.deviceName`,
+  );
+
+  const homeserver =
+    accountHomeserver ||
+    scopedEnv.homeserver ||
+    clean(matrix.homeserver, "channels.matrix.homeserver") ||
+    globalEnv.homeserver;
+  const userId =
+    accountUserId ||
+    scopedEnv.userId ||
+    clean(matrix.userId, "channels.matrix.userId") ||
+    globalEnv.userId;
+  const accessToken =
+    accountAccessToken ||
+    scopedEnv.accessToken ||
+    clean(matrix.accessToken, "channels.matrix.accessToken") ||
+    globalEnv.accessToken ||
+    undefined;
+  const password =
+    accountPassword ||
+    scopedEnv.password ||
+    clean(matrix.password, "channels.matrix.password") ||
+    globalEnv.password ||
+    undefined;
+  const deviceId =
+    accountDeviceId ||
+    scopedEnv.deviceId ||
+    clean(matrix.deviceId, "channels.matrix.deviceId") ||
+    globalEnv.deviceId ||
+    undefined;
+  const deviceName =
+    accountDeviceName ||
+    scopedEnv.deviceName ||
+    clean(matrix.deviceName, "channels.matrix.deviceName") ||
+    globalEnv.deviceName ||
+    undefined;
+
+  const accountInitialSyncLimit =
+    typeof account.initialSyncLimit === "number"
+      ? Math.max(0, Math.floor(account.initialSyncLimit))
+      : undefined;
+  const initialSyncLimit =
+    accountInitialSyncLimit ??
+    (typeof matrix.initialSyncLimit === "number"
+      ? Math.max(0, Math.floor(matrix.initialSyncLimit))
+      : undefined);
+  const encryption =
+    typeof account.encryption === "boolean" ? account.encryption : (matrix.encryption ?? false);
+
+  return {
+    homeserver,
+    userId,
+    accessToken,
+    password,
+    deviceId,
+    deviceName,
+    initialSyncLimit,
+    encryption,
+  };
 }
 
 export async function resolveMatrixAuth(params?: {
@@ -107,7 +237,10 @@ export async function resolveMatrixAuth(params?: {
 }): Promise<MatrixAuth> {
   const cfg = params?.cfg ?? (getMatrixRuntime().config.loadConfig() as CoreConfig);
   const env = params?.env ?? process.env;
-  const resolved = resolveMatrixConfigForAccount(cfg, params?.accountId, env);
+  const accountId = params?.accountId;
+  const resolved = accountId
+    ? resolveMatrixConfigForAccount(cfg, accountId, env)
+    : resolveMatrixConfig(cfg, env);
   if (!resolved.homeserver) {
     throw new Error("Matrix homeserver is required (matrix.homeserver)");
   }
@@ -119,7 +252,6 @@ export async function resolveMatrixAuth(params?: {
     touchMatrixCredentials,
   } = await import("../credentials.js");
 
-  const accountId = params?.accountId;
   const cached = loadMatrixCredentials(env, accountId);
   const cachedCredentials =
     cached &&
@@ -133,30 +265,56 @@ export async function resolveMatrixAuth(params?: {
   // If we have an access token, we can fetch userId via whoami if not provided
   if (resolved.accessToken) {
     let userId = resolved.userId;
-    if (!userId) {
-      // Fetch userId from access token via whoami
+    const hasMatchingCachedToken = cachedCredentials?.accessToken === resolved.accessToken;
+    let knownDeviceId = hasMatchingCachedToken
+      ? cachedCredentials?.deviceId || resolved.deviceId
+      : resolved.deviceId;
+
+    if (!userId || !knownDeviceId) {
+      // Fetch whoami when we need to resolve userId and/or deviceId from token auth.
       ensureMatrixSdkLoggingConfigured();
-      const { MatrixClient } = loadMatrixSdk();
       const tempClient = new MatrixClient(resolved.homeserver, resolved.accessToken);
-      const whoami = await tempClient.getUserId();
-      userId = whoami;
-      // Save the credentials with the fetched userId
-      saveMatrixCredentials(
+      const whoami = (await tempClient.doRequest("GET", "/_matrix/client/v3/account/whoami")) as {
+        user_id?: string;
+        device_id?: string;
+      };
+      if (!userId) {
+        const fetchedUserId = whoami.user_id?.trim();
+        if (!fetchedUserId) {
+          throw new Error("Matrix whoami did not return user_id");
+        }
+        userId = fetchedUserId;
+      }
+      if (!knownDeviceId) {
+        knownDeviceId = whoami.device_id?.trim() || resolved.deviceId;
+      }
+    }
+
+    const shouldRefreshCachedCredentials =
+      !cachedCredentials ||
+      !hasMatchingCachedToken ||
+      cachedCredentials.userId !== userId ||
+      (cachedCredentials.deviceId || undefined) !== knownDeviceId;
+    if (shouldRefreshCachedCredentials) {
+      await saveMatrixCredentials(
         {
           homeserver: resolved.homeserver,
           userId,
           accessToken: resolved.accessToken,
+          deviceId: knownDeviceId,
         },
         env,
         accountId,
       );
-    } else if (cachedCredentials && cachedCredentials.accessToken === resolved.accessToken) {
-      touchMatrixCredentials(env, accountId);
+    } else if (hasMatchingCachedToken) {
+      await touchMatrixCredentials(env, accountId);
     }
     return {
       homeserver: resolved.homeserver,
       userId,
       accessToken: resolved.accessToken,
+      password: resolved.password,
+      deviceId: knownDeviceId,
       deviceName: resolved.deviceName,
       initialSyncLimit: resolved.initialSyncLimit,
       encryption: resolved.encryption,
@@ -164,11 +322,13 @@ export async function resolveMatrixAuth(params?: {
   }
 
   if (cachedCredentials) {
-    touchMatrixCredentials(env, accountId);
+    await touchMatrixCredentials(env, accountId);
     return {
       homeserver: cachedCredentials.homeserver,
       userId: cachedCredentials.userId,
       accessToken: cachedCredentials.accessToken,
+      password: resolved.password,
+      deviceId: cachedCredentials.deviceId || resolved.deviceId,
       deviceName: resolved.deviceName,
       initialSyncLimit: resolved.initialSyncLimit,
       encryption: resolved.encryption,
@@ -185,36 +345,20 @@ export async function resolveMatrixAuth(params?: {
     );
   }
 
-  // Login with password using HTTP API.
-  const { response: loginResponse, release: releaseLoginResponse } = await fetchWithSsrFGuard({
-    url: `${resolved.homeserver}/_matrix/client/v3/login`,
-    init: {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "m.login.password",
-        identifier: { type: "m.id.user", user: resolved.userId },
-        password: resolved.password,
-        initial_device_display_name: resolved.deviceName ?? "OpenClaw Gateway",
-      }),
-    },
-    auditContext: "matrix.login",
-  });
-  const login = await (async () => {
-    try {
-      if (!loginResponse.ok) {
-        const errorText = await loginResponse.text();
-        throw new Error(`Matrix login failed: ${errorText}`);
-      }
-      return (await loginResponse.json()) as {
-        access_token?: string;
-        user_id?: string;
-        device_id?: string;
-      };
-    } finally {
-      await releaseLoginResponse();
-    }
-  })();
+  // Login with password using the same hardened request path as other Matrix HTTP calls.
+  ensureMatrixSdkLoggingConfigured();
+  const loginClient = new MatrixClient(resolved.homeserver, "");
+  const login = (await loginClient.doRequest("POST", "/_matrix/client/v3/login", undefined, {
+    type: "m.login.password",
+    identifier: { type: "m.id.user", user: resolved.userId },
+    password: resolved.password,
+    device_id: resolved.deviceId,
+    initial_device_display_name: resolved.deviceName ?? "OpenClaw Gateway",
+  })) as {
+    access_token?: string;
+    user_id?: string;
+    device_id?: string;
+  };
 
   const accessToken = login.access_token?.trim();
   if (!accessToken) {
@@ -225,17 +369,19 @@ export async function resolveMatrixAuth(params?: {
     homeserver: resolved.homeserver,
     userId: login.user_id ?? resolved.userId,
     accessToken,
+    password: resolved.password,
+    deviceId: login.device_id ?? resolved.deviceId,
     deviceName: resolved.deviceName,
     initialSyncLimit: resolved.initialSyncLimit,
     encryption: resolved.encryption,
   };
 
-  saveMatrixCredentials(
+  await saveMatrixCredentials(
     {
       homeserver: auth.homeserver,
       userId: auth.userId,
       accessToken: auth.accessToken,
-      deviceId: login.device_id,
+      deviceId: auth.deviceId,
     },
     env,
     accountId,

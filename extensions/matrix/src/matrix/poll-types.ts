@@ -7,7 +7,7 @@
  * - m.poll.end - Closes a poll
  */
 
-import type { PollInput } from "openclaw/plugin-sdk/matrix";
+import { normalizePollInput, type PollInput } from "openclaw/plugin-sdk/matrix";
 
 export const M_POLL_START = "m.poll.start" as const;
 export const M_POLL_RESPONSE = "m.poll.response" as const;
@@ -42,6 +42,11 @@ export type PollAnswer = {
   id: string;
 } & TextContent;
 
+export type PollParsedAnswer = {
+  id: string;
+  text: string;
+};
+
 export type PollStartSubtype = {
   question: TextContent;
   kind?: PollKind;
@@ -72,6 +77,26 @@ export type PollSummary = {
   maxSelections: number;
 };
 
+export type ParsedPollStart = {
+  question: string;
+  answers: PollParsedAnswer[];
+  kind: PollKind;
+  maxSelections: number;
+};
+
+export type PollResponseSubtype = {
+  answers: string[];
+};
+
+export type PollResponseContent = {
+  [M_POLL_RESPONSE]?: PollResponseSubtype;
+  [ORG_POLL_RESPONSE]?: PollResponseSubtype;
+  "m.relates_to": {
+    rel_type: "m.reference";
+    event_id: string;
+  };
+};
+
 export function isPollStartType(eventType: string): boolean {
   return (POLL_START_TYPES as readonly string[]).includes(eventType);
 }
@@ -83,7 +108,7 @@ export function getTextContent(text?: TextContent): string {
   return text["m.text"] ?? text["org.matrix.msc1767.text"] ?? text.body ?? "";
 }
 
-export function parsePollStartContent(content: PollStartContent): PollSummary | null {
+export function parsePollStart(content: PollStartContent): ParsedPollStart | null {
   const poll =
     (content as Record<string, PollStartSubtype | undefined>)[M_POLL_START] ??
     (content as Record<string, PollStartSubtype | undefined>)[ORG_POLL_START] ??
@@ -92,24 +117,50 @@ export function parsePollStartContent(content: PollStartContent): PollSummary | 
     return null;
   }
 
-  const question = getTextContent(poll.question);
+  const question = getTextContent(poll.question).trim();
   if (!question) {
     return null;
   }
 
   const answers = poll.answers
-    .map((answer) => getTextContent(answer))
-    .filter((a) => a.trim().length > 0);
+    .map((answer) => ({
+      id: answer.id,
+      text: getTextContent(answer).trim(),
+    }))
+    .filter((answer) => answer.id.trim().length > 0 && answer.text.length > 0);
+  if (answers.length === 0) {
+    return null;
+  }
+
+  const maxSelectionsRaw = poll.max_selections;
+  const maxSelections =
+    typeof maxSelectionsRaw === "number" && Number.isFinite(maxSelectionsRaw)
+      ? Math.floor(maxSelectionsRaw)
+      : 1;
+
+  return {
+    question,
+    answers,
+    kind: poll.kind ?? "m.poll.disclosed",
+    maxSelections: Math.min(Math.max(maxSelections, 1), answers.length),
+  };
+}
+
+export function parsePollStartContent(content: PollStartContent): PollSummary | null {
+  const parsed = parsePollStart(content);
+  if (!parsed) {
+    return null;
+  }
 
   return {
     eventId: "",
     roomId: "",
     sender: "",
     senderName: "",
-    question,
-    answers,
-    kind: poll.kind ?? "m.poll.disclosed",
-    maxSelections: poll.max_selections ?? 1,
+    question: parsed.question,
+    answers: parsed.answers.map((answer) => answer.text),
+    kind: parsed.kind,
+    maxSelections: parsed.maxSelections,
   };
 }
 
@@ -138,30 +189,44 @@ function buildPollFallbackText(question: string, answers: string[]): string {
 }
 
 export function buildPollStartContent(poll: PollInput): PollStartContent {
-  const question = poll.question.trim();
-  const answers = poll.options
-    .map((option) => option.trim())
-    .filter((option) => option.length > 0)
-    .map((option, idx) => ({
-      id: `answer${idx + 1}`,
-      ...buildTextContent(option),
-    }));
+  const normalized = normalizePollInput(poll);
+  const answers = normalized.options.map((option, idx) => ({
+    id: `answer${idx + 1}`,
+    ...buildTextContent(option),
+  }));
 
-  const isMultiple = (poll.maxSelections ?? 1) > 1;
-  const maxSelections = isMultiple ? Math.max(1, answers.length) : 1;
+  const isMultiple = normalized.maxSelections > 1;
   const fallbackText = buildPollFallbackText(
-    question,
+    normalized.question,
     answers.map((answer) => getTextContent(answer)),
   );
 
   return {
     [M_POLL_START]: {
-      question: buildTextContent(question),
+      question: buildTextContent(normalized.question),
       kind: isMultiple ? "m.poll.undisclosed" : "m.poll.disclosed",
-      max_selections: maxSelections,
+      max_selections: normalized.maxSelections,
       answers,
     },
     "m.text": fallbackText,
     "org.matrix.msc1767.text": fallbackText,
+  };
+}
+
+export function buildPollResponseContent(
+  pollEventId: string,
+  answerIds: string[],
+): PollResponseContent {
+  return {
+    [M_POLL_RESPONSE]: {
+      answers: answerIds,
+    },
+    [ORG_POLL_RESPONSE]: {
+      answers: answerIds,
+    },
+    "m.relates_to": {
+      rel_type: "m.reference",
+      event_id: pollEventId,
+    },
   };
 }

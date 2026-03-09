@@ -1,5 +1,5 @@
 import { resolveMatrixRoomId, sendMessageMatrix } from "../send.js";
-import { resolveActionClient } from "./client.js";
+import { withResolvedActionClient } from "./client.js";
 import { resolveMatrixActionLimit } from "./limits.js";
 import { summarizeMatrixRawEvent } from "./summary.js";
 import {
@@ -25,6 +25,7 @@ export async function sendMatrixMessage(
     mediaUrl: opts.mediaUrl,
     replyToId: opts.replyToId,
     threadId: opts.threadId,
+    accountId: opts.accountId ?? undefined,
     client: opts.client,
     timeoutMs: opts.timeoutMs,
   });
@@ -40,8 +41,7 @@ export async function editMatrixMessage(
   if (!trimmed) {
     throw new Error("Matrix edit requires content");
   }
-  const { client, stopOnDone } = await resolveActionClient(opts);
-  try {
+  return await withResolvedActionClient(opts, async (client) => {
     const resolvedRoom = await resolveMatrixRoomId(client, roomId);
     const newContent = {
       msgtype: MsgType.Text,
@@ -58,11 +58,7 @@ export async function editMatrixMessage(
     };
     const eventId = await client.sendMessage(resolvedRoom, payload);
     return { eventId: eventId ?? null };
-  } finally {
-    if (stopOnDone) {
-      client.stop();
-    }
-  }
+  });
 }
 
 export async function deleteMatrixMessage(
@@ -70,15 +66,10 @@ export async function deleteMatrixMessage(
   messageId: string,
   opts: MatrixActionClientOpts & { reason?: string } = {},
 ) {
-  const { client, stopOnDone } = await resolveActionClient(opts);
-  try {
+  await withResolvedActionClient(opts, async (client) => {
     const resolvedRoom = await resolveMatrixRoomId(client, roomId);
     await client.redactEvent(resolvedRoom, messageId, opts.reason);
-  } finally {
-    if (stopOnDone) {
-      client.stop();
-    }
-  }
+  });
 }
 
 export async function readMatrixMessages(
@@ -93,13 +84,12 @@ export async function readMatrixMessages(
   nextBatch?: string | null;
   prevBatch?: string | null;
 }> {
-  const { client, stopOnDone } = await resolveActionClient(opts);
-  try {
+  return await withResolvedActionClient(opts, async (client) => {
     const resolvedRoom = await resolveMatrixRoomId(client, roomId);
     const limit = resolveMatrixActionLimit(opts.limit, 20);
     const token = opts.before?.trim() || opts.after?.trim() || undefined;
     const dir = opts.after ? "f" : "b";
-    // @vector-im/matrix-bot-sdk uses doRequest for room messages
+    // Room history is queried via the low-level endpoint for compatibility.
     const res = (await client.doRequest(
       "GET",
       `/_matrix/client/v3/rooms/${encodeURIComponent(resolvedRoom)}/messages`,
@@ -118,9 +108,5 @@ export async function readMatrixMessages(
       nextBatch: res.end ?? null,
       prevBatch: res.start ?? null,
     };
-  } finally {
-    if (stopOnDone) {
-      client.stop();
-    }
-  }
+  });
 }

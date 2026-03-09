@@ -15,7 +15,7 @@ function formatConversationBindingText(params: {
   if (params.channel === "discord") {
     return `thread:${params.conversationId}`;
   }
-  if (params.channel === "matrix-js") {
+  if (params.channel === "matrix") {
     return `thread:${params.conversationId}`;
   }
   if (params.channel === "telegram") {
@@ -67,9 +67,9 @@ export function handleSubagentsAgentsAction(ctx: SubagentsCommandContext): Comma
             channel,
             conversationId: binding.conversation.conversationId,
           })
-        : channel === "discord" || channel === "telegram" || channel === "matrix-js"
+        : channel === "discord" || channel === "telegram" || channel === "matrix"
           ? "unbound"
-          : "bindings available on discord/matrix-js/telegram";
+          : "bindings available on discord/matrix/telegram";
       lines.push(`${index}. ${formatRunLabel(entry)} (${bindingText})`);
       index += 1;
     }

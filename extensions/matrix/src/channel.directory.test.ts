@@ -4,25 +4,6 @@ import { matrixPlugin } from "./channel.js";
 import { setMatrixRuntime } from "./runtime.js";
 import type { CoreConfig } from "./types.js";
 
-vi.mock("@vector-im/matrix-bot-sdk", () => ({
-  ConsoleLogger: class {
-    trace = vi.fn();
-    debug = vi.fn();
-    info = vi.fn();
-    warn = vi.fn();
-    error = vi.fn();
-  },
-  MatrixClient: class {},
-  LogService: {
-    setLogger: vi.fn(),
-    warn: vi.fn(),
-    info: vi.fn(),
-    debug: vi.fn(),
-  },
-  SimpleFsStorageProvider: class {},
-  RustSdkCryptoStorageProvider: class {},
-}));
-
 describe("matrix directory", () => {
   const runtimeEnv: RuntimeEnv = {
     log: vi.fn(),
@@ -122,6 +103,59 @@ describe("matrix directory", () => {
     ).toBe("off");
   });
 
+  it("only exposes real Matrix thread ids in tool context", () => {
+    expect(
+      matrixPlugin.threading?.buildToolContext?.({
+        cfg: {} as CoreConfig,
+        context: {
+          To: "room:!room:example.org",
+          ReplyToId: "$reply",
+        },
+        hasRepliedRef: { value: false },
+      }),
+    ).toEqual({
+      currentChannelId: "room:!room:example.org",
+      currentThreadTs: undefined,
+      hasRepliedRef: { value: false },
+    });
+
+    expect(
+      matrixPlugin.threading?.buildToolContext?.({
+        cfg: {} as CoreConfig,
+        context: {
+          To: "room:!room:example.org",
+          ReplyToId: "$reply",
+          MessageThreadId: "$thread",
+        },
+        hasRepliedRef: { value: true },
+      }),
+    ).toEqual({
+      currentChannelId: "room:!room:example.org",
+      currentThreadTs: "$thread",
+      hasRepliedRef: { value: true },
+    });
+  });
+
+  it("exposes Matrix direct user id in dm tool context", () => {
+    expect(
+      matrixPlugin.threading?.buildToolContext?.({
+        cfg: {} as CoreConfig,
+        context: {
+          From: "matrix:@alice:example.org",
+          To: "room:!dm:example.org",
+          ChatType: "direct",
+          MessageThreadId: "$thread",
+        },
+        hasRepliedRef: { value: false },
+      }),
+    ).toEqual({
+      currentChannelId: "room:!dm:example.org",
+      currentThreadTs: "$thread",
+      currentDirectUserId: "@alice:example.org",
+      hasRepliedRef: { value: false },
+    });
+  });
+
   it("resolves group mention policy from account config", () => {
     const cfg = {
       channels: {
@@ -150,5 +184,210 @@ describe("matrix directory", () => {
         groupId: "!room:example.org",
       }),
     ).toBe(false);
+  });
+
+  it("writes matrix non-default account credentials under channels.matrix.accounts", () => {
+    const cfg = {
+      channels: {
+        matrix: {
+          homeserver: "https://default.example.org",
+          accessToken: "default-token",
+          encryption: true,
+          threadReplies: "inbound",
+          groups: {
+            "!room:example.org": { requireMention: true },
+          },
+        },
+      },
+    } as unknown as CoreConfig;
+
+    const updated = matrixPlugin.setup!.applyAccountConfig({
+      cfg,
+      accountId: "ops",
+      input: {
+        homeserver: "https://matrix.example.org",
+        userId: "@ops:example.org",
+        accessToken: "ops-token",
+      },
+    }) as CoreConfig;
+
+    expect(updated.channels?.["matrix"]?.accessToken).toBeUndefined();
+    expect(updated.channels?.["matrix"]?.accounts?.default).toMatchObject({
+      accessToken: "default-token",
+      homeserver: "https://default.example.org",
+      encryption: true,
+      threadReplies: "inbound",
+      groups: {
+        "!room:example.org": { requireMention: true },
+      },
+    });
+    expect(updated.channels?.["matrix"]?.accounts?.ops).toMatchObject({
+      enabled: true,
+      homeserver: "https://matrix.example.org",
+      userId: "@ops:example.org",
+      accessToken: "ops-token",
+    });
+  });
+
+  it("writes default matrix account credentials under channels.matrix.accounts.default", () => {
+    const cfg = {
+      channels: {
+        matrix: {
+          homeserver: "https://legacy.example.org",
+          accessToken: "legacy-token",
+        },
+      },
+    } as unknown as CoreConfig;
+
+    const updated = matrixPlugin.setup!.applyAccountConfig({
+      cfg,
+      accountId: "default",
+      input: {
+        homeserver: "https://matrix.example.org",
+        userId: "@bot:example.org",
+        accessToken: "bot-token",
+      },
+    }) as CoreConfig;
+
+    expect(updated.channels?.["matrix"]).toMatchObject({
+      enabled: true,
+      homeserver: "https://matrix.example.org",
+      userId: "@bot:example.org",
+      accessToken: "bot-token",
+    });
+    expect(updated.channels?.["matrix"]?.accounts).toBeUndefined();
+  });
+
+  it("requires account-scoped env vars when --use-env is set for non-default accounts", () => {
+    const envKeys = [
+      "MATRIX_OPS_HOMESERVER",
+      "MATRIX_OPS_USER_ID",
+      "MATRIX_OPS_ACCESS_TOKEN",
+      "MATRIX_OPS_PASSWORD",
+    ] as const;
+    const previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]])) as Record<
+      (typeof envKeys)[number],
+      string | undefined
+    >;
+    for (const key of envKeys) {
+      delete process.env[key];
+    }
+    try {
+      const error = matrixPlugin.setup!.validateInput?.({
+        cfg: {} as CoreConfig,
+        accountId: "ops",
+        input: { useEnv: true },
+      });
+      expect(error).toBe(
+        'Set per-account env vars for "ops" (for example MATRIX_OPS_HOMESERVER + MATRIX_OPS_ACCESS_TOKEN or MATRIX_OPS_USER_ID + MATRIX_OPS_PASSWORD).',
+      );
+    } finally {
+      for (const key of envKeys) {
+        if (previousEnv[key] === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = previousEnv[key];
+        }
+      }
+    }
+  });
+
+  it("accepts --use-env for non-default account when scoped env vars are present", () => {
+    const envKeys = {
+      MATRIX_OPS_HOMESERVER: process.env.MATRIX_OPS_HOMESERVER,
+      MATRIX_OPS_ACCESS_TOKEN: process.env.MATRIX_OPS_ACCESS_TOKEN,
+    };
+    process.env.MATRIX_OPS_HOMESERVER = "https://ops.example.org";
+    process.env.MATRIX_OPS_ACCESS_TOKEN = "ops-token";
+    try {
+      const error = matrixPlugin.setup!.validateInput?.({
+        cfg: {} as CoreConfig,
+        accountId: "ops",
+        input: { useEnv: true },
+      });
+      expect(error).toBeNull();
+    } finally {
+      for (const [key, value] of Object.entries(envKeys)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  });
+
+  it("resolves account id from input name when explicit account id is missing", () => {
+    const accountId = matrixPlugin.setup!.resolveAccountId?.({
+      cfg: {} as CoreConfig,
+      accountId: undefined,
+      input: { name: "Main Bot" },
+    });
+    expect(accountId).toBe("main-bot");
+  });
+
+  it("resolves binding account id from agent id when omitted", () => {
+    const accountId = matrixPlugin.setup!.resolveBindingAccountId?.({
+      cfg: {} as CoreConfig,
+      agentId: "Ops",
+      accountId: undefined,
+    });
+    expect(accountId).toBe("ops");
+  });
+
+  it("clears stale access token when switching an account to password auth", () => {
+    const cfg = {
+      channels: {
+        matrix: {
+          accounts: {
+            default: {
+              homeserver: "https://matrix.example.org",
+              accessToken: "old-token",
+            },
+          },
+        },
+      },
+    } as unknown as CoreConfig;
+
+    const updated = matrixPlugin.setup!.applyAccountConfig({
+      cfg,
+      accountId: "default",
+      input: {
+        homeserver: "https://matrix.example.org",
+        userId: "@bot:example.org",
+        password: "new-password",
+      },
+    }) as CoreConfig;
+
+    expect(updated.channels?.["matrix"]?.accounts?.default?.password).toBe("new-password");
+    expect(updated.channels?.["matrix"]?.accounts?.default?.accessToken).toBeUndefined();
+  });
+
+  it("clears stale password when switching an account to token auth", () => {
+    const cfg = {
+      channels: {
+        matrix: {
+          accounts: {
+            default: {
+              homeserver: "https://matrix.example.org",
+              userId: "@bot:example.org",
+              password: "old-password",
+            },
+          },
+        },
+      },
+    } as unknown as CoreConfig;
+
+    const updated = matrixPlugin.setup!.applyAccountConfig({
+      cfg,
+      accountId: "default",
+      input: {
+        homeserver: "https://matrix.example.org",
+        accessToken: "new-token",
+      },
+    }) as CoreConfig;
+
+    expect(updated.channels?.["matrix"]?.accounts?.default?.accessToken).toBe("new-token");
+    expect(updated.channels?.["matrix"]?.accounts?.default?.password).toBeUndefined();
   });
 });

@@ -129,16 +129,16 @@ describe("commands-acp context", () => {
 
   it("resolves Matrix thread conversation ids from room targets", () => {
     const params = buildCommandTestParams("/acp status", baseCfg, {
-      Provider: "matrix-js",
-      Surface: "matrix-js",
-      OriginatingChannel: "matrix-js",
+      Provider: "matrix",
+      Surface: "matrix",
+      OriginatingChannel: "matrix",
       OriginatingTo: "room:!room:example",
       MessageThreadId: "$thread-42",
       AccountId: "work",
     });
 
     expect(resolveAcpCommandBindingContext(params)).toEqual({
-      channel: "matrix-js",
+      channel: "matrix",
       accountId: "work",
       threadId: "$thread-42",
       conversationId: "$thread-42",

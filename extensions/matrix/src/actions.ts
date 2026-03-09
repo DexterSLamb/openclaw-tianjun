@@ -11,14 +11,34 @@ import { resolveMatrixAccount } from "./matrix/accounts.js";
 import { handleMatrixAction } from "./tool-actions.js";
 import type { CoreConfig } from "./types.js";
 
+const MATRIX_PLUGIN_HANDLED_ACTIONS = new Set<ChannelMessageActionName>([
+  "send",
+  "poll-vote",
+  "react",
+  "reactions",
+  "read",
+  "edit",
+  "delete",
+  "pin",
+  "unpin",
+  "list-pins",
+  "member-info",
+  "channel-info",
+  "permissions",
+]);
+
+function createMatrixExposedActions() {
+  return new Set<ChannelMessageActionName>(["poll", ...MATRIX_PLUGIN_HANDLED_ACTIONS]);
+}
+
 export const matrixMessageActions: ChannelMessageActionAdapter = {
   listActions: ({ cfg }) => {
     const account = resolveMatrixAccount({ cfg: cfg as CoreConfig });
     if (!account.enabled || !account.configured) {
       return [];
     }
-    const gate = createActionGate((cfg as CoreConfig).channels?.matrix?.actions);
-    const actions = new Set<ChannelMessageActionName>(["send", "poll"]);
+    const gate = createActionGate((cfg as CoreConfig).channels?.["matrix"]?.actions);
+    const actions = createMatrixExposedActions();
     if (gate("reactions")) {
       actions.add("react");
       actions.add("reactions");
@@ -39,9 +59,12 @@ export const matrixMessageActions: ChannelMessageActionAdapter = {
     if (gate("channelInfo")) {
       actions.add("channel-info");
     }
+    if (account.config.encryption === true && gate("verification")) {
+      actions.add("permissions");
+    }
     return Array.from(actions);
   },
-  supportsAction: ({ action }) => action !== "poll",
+  supportsAction: ({ action }) => MATRIX_PLUGIN_HANDLED_ACTIONS.has(action),
   extractToolSend: ({ args }): ChannelToolSend | null => {
     const action = typeof args.action === "string" ? args.action.trim() : "";
     if (action !== "sendMessage") {
@@ -54,7 +77,15 @@ export const matrixMessageActions: ChannelMessageActionAdapter = {
     return { to };
   },
   handleAction: async (ctx: ChannelMessageActionContext) => {
-    const { action, params, cfg } = ctx;
+    const { action, params, cfg, accountId } = ctx;
+    const dispatch = async (actionParams: Record<string, unknown>) =>
+      await handleMatrixAction(
+        {
+          ...actionParams,
+          ...(accountId ? { accountId } : {}),
+        },
+        cfg as CoreConfig,
+      );
     const resolveRoomId = () =>
       readStringParam(params, "roomId") ??
       readStringParam(params, "channelId") ??
@@ -69,87 +100,76 @@ export const matrixMessageActions: ChannelMessageActionAdapter = {
       const mediaUrl = readStringParam(params, "media", { trim: false });
       const replyTo = readStringParam(params, "replyTo");
       const threadId = readStringParam(params, "threadId");
-      return await handleMatrixAction(
-        {
-          action: "sendMessage",
-          to,
-          content,
-          mediaUrl: mediaUrl ?? undefined,
-          replyToId: replyTo ?? undefined,
-          threadId: threadId ?? undefined,
-        },
-        cfg as CoreConfig,
-      );
+      return await dispatch({
+        action: "sendMessage",
+        to,
+        content,
+        mediaUrl: mediaUrl ?? undefined,
+        replyToId: replyTo ?? undefined,
+        threadId: threadId ?? undefined,
+      });
+    }
+
+    if (action === "poll-vote") {
+      return await dispatch({
+        ...params,
+        action: "pollVote",
+      });
     }
 
     if (action === "react") {
       const messageId = readStringParam(params, "messageId", { required: true });
       const emoji = readStringParam(params, "emoji", { allowEmpty: true });
       const remove = typeof params.remove === "boolean" ? params.remove : undefined;
-      return await handleMatrixAction(
-        {
-          action: "react",
-          roomId: resolveRoomId(),
-          messageId,
-          emoji,
-          remove,
-        },
-        cfg as CoreConfig,
-      );
+      return await dispatch({
+        action: "react",
+        roomId: resolveRoomId(),
+        messageId,
+        emoji,
+        remove,
+      });
     }
 
     if (action === "reactions") {
       const messageId = readStringParam(params, "messageId", { required: true });
       const limit = readNumberParam(params, "limit", { integer: true });
-      return await handleMatrixAction(
-        {
-          action: "reactions",
-          roomId: resolveRoomId(),
-          messageId,
-          limit,
-        },
-        cfg as CoreConfig,
-      );
+      return await dispatch({
+        action: "reactions",
+        roomId: resolveRoomId(),
+        messageId,
+        limit,
+      });
     }
 
     if (action === "read") {
       const limit = readNumberParam(params, "limit", { integer: true });
-      return await handleMatrixAction(
-        {
-          action: "readMessages",
-          roomId: resolveRoomId(),
-          limit,
-          before: readStringParam(params, "before"),
-          after: readStringParam(params, "after"),
-        },
-        cfg as CoreConfig,
-      );
+      return await dispatch({
+        action: "readMessages",
+        roomId: resolveRoomId(),
+        limit,
+        before: readStringParam(params, "before"),
+        after: readStringParam(params, "after"),
+      });
     }
 
     if (action === "edit") {
       const messageId = readStringParam(params, "messageId", { required: true });
       const content = readStringParam(params, "message", { required: true });
-      return await handleMatrixAction(
-        {
-          action: "editMessage",
-          roomId: resolveRoomId(),
-          messageId,
-          content,
-        },
-        cfg as CoreConfig,
-      );
+      return await dispatch({
+        action: "editMessage",
+        roomId: resolveRoomId(),
+        messageId,
+        content,
+      });
     }
 
     if (action === "delete") {
       const messageId = readStringParam(params, "messageId", { required: true });
-      return await handleMatrixAction(
-        {
-          action: "deleteMessage",
-          roomId: resolveRoomId(),
-          messageId,
-        },
-        cfg as CoreConfig,
-      );
+      return await dispatch({
+        action: "deleteMessage",
+        roomId: resolveRoomId(),
+        messageId,
+      });
     }
 
     if (action === "pin" || action === "unpin" || action === "list-pins") {
@@ -157,37 +177,68 @@ export const matrixMessageActions: ChannelMessageActionAdapter = {
         action === "list-pins"
           ? undefined
           : readStringParam(params, "messageId", { required: true });
-      return await handleMatrixAction(
-        {
-          action:
-            action === "pin" ? "pinMessage" : action === "unpin" ? "unpinMessage" : "listPins",
-          roomId: resolveRoomId(),
-          messageId,
-        },
-        cfg as CoreConfig,
-      );
+      return await dispatch({
+        action: action === "pin" ? "pinMessage" : action === "unpin" ? "unpinMessage" : "listPins",
+        roomId: resolveRoomId(),
+        messageId,
+      });
     }
 
     if (action === "member-info") {
       const userId = readStringParam(params, "userId", { required: true });
-      return await handleMatrixAction(
-        {
-          action: "memberInfo",
-          userId,
-          roomId: readStringParam(params, "roomId") ?? readStringParam(params, "channelId"),
-        },
-        cfg as CoreConfig,
-      );
+      return await dispatch({
+        action: "memberInfo",
+        userId,
+        roomId: readStringParam(params, "roomId") ?? readStringParam(params, "channelId"),
+      });
     }
 
     if (action === "channel-info") {
-      return await handleMatrixAction(
-        {
-          action: "channelInfo",
-          roomId: resolveRoomId(),
-        },
-        cfg as CoreConfig,
-      );
+      return await dispatch({
+        action: "channelInfo",
+        roomId: resolveRoomId(),
+      });
+    }
+
+    if (action === "permissions") {
+      const operation = (
+        readStringParam(params, "operation") ??
+        readStringParam(params, "mode") ??
+        "verification-list"
+      )
+        .trim()
+        .toLowerCase();
+      const operationToAction: Record<string, string> = {
+        "encryption-status": "encryptionStatus",
+        "verification-status": "verificationStatus",
+        "verification-bootstrap": "verificationBootstrap",
+        "verification-recovery-key": "verificationRecoveryKey",
+        "verification-backup-status": "verificationBackupStatus",
+        "verification-backup-restore": "verificationBackupRestore",
+        "verification-list": "verificationList",
+        "verification-request": "verificationRequest",
+        "verification-accept": "verificationAccept",
+        "verification-cancel": "verificationCancel",
+        "verification-start": "verificationStart",
+        "verification-generate-qr": "verificationGenerateQr",
+        "verification-scan-qr": "verificationScanQr",
+        "verification-sas": "verificationSas",
+        "verification-confirm": "verificationConfirm",
+        "verification-mismatch": "verificationMismatch",
+        "verification-confirm-qr": "verificationConfirmQr",
+      };
+      const resolvedAction = operationToAction[operation];
+      if (!resolvedAction) {
+        throw new Error(
+          `Unsupported Matrix permissions operation: ${operation}. Supported values: ${Object.keys(
+            operationToAction,
+          ).join(", ")}`,
+        );
+      }
+      return await dispatch({
+        ...params,
+        action: resolvedAction,
+      });
     }
 
     throw new Error(`Action ${action} is not supported for provider matrix.`);

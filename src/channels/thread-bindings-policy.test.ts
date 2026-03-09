@@ -18,7 +18,7 @@ describe("resolveThreadBindingSpawnPolicy", () => {
     expect(
       resolveThreadBindingSpawnPolicy({
         cfg: baseCfg,
-        channel: "matrix-js",
+        channel: "matrix",
         kind: "subagent",
       }).spawnEnabled,
     ).toBe(false);
@@ -35,7 +35,7 @@ describe("resolveThreadBindingSpawnPolicy", () => {
     const cfg = {
       ...baseCfg,
       channels: {
-        "matrix-js": {
+        matrix: {
           threadBindings: {
             spawnSubagentSessions: true,
             spawnAcpSessions: true,
@@ -47,14 +47,14 @@ describe("resolveThreadBindingSpawnPolicy", () => {
     expect(
       resolveThreadBindingSpawnPolicy({
         cfg,
-        channel: "matrix-js",
+        channel: "matrix",
         kind: "subagent",
       }).spawnEnabled,
     ).toBe(true);
     expect(
       resolveThreadBindingSpawnPolicy({
         cfg,
-        channel: "matrix-js",
+        channel: "matrix",
         kind: "acp",
       }).spawnEnabled,
     ).toBe(true);

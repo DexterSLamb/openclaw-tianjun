@@ -1,3 +1,8 @@
+import {
+  MATRIX_ANNOTATION_RELATION_TYPE,
+  MATRIX_REACTION_EVENT_TYPE,
+  type MatrixReactionEventContent,
+} from "../reaction-common.js";
 import type {
   DimensionalFileInfo,
   EncryptedFile,
@@ -6,7 +11,7 @@ import type {
   TextualMessageEventContent,
   TimedFileInfo,
   VideoFileInfo,
-} from "@vector-im/matrix-bot-sdk";
+} from "../sdk.js";
 
 // Message types
 export const MsgType = {
@@ -20,7 +25,7 @@ export const MsgType = {
 
 // Relation types
 export const RelationType = {
-  Annotation: "m.annotation",
+  Annotation: MATRIX_ANNOTATION_RELATION_TYPE,
   Replace: "m.replace",
   Thread: "m.thread",
 } as const;
@@ -28,7 +33,7 @@ export const RelationType = {
 // Event types
 export const EventType = {
   Direct: "m.direct",
-  Reaction: "m.reaction",
+  Reaction: MATRIX_REACTION_EVENT_TYPE,
   RoomMessage: "m.room.message",
 } as const;
 
@@ -71,13 +76,7 @@ export type MatrixMediaContent = MessageEventContent &
 
 export type MatrixOutboundContent = MatrixTextContent | MatrixMediaContent;
 
-export type ReactionEventContent = {
-  "m.relates_to": {
-    rel_type: typeof RelationType.Annotation;
-    event_id: string;
-    key: string;
-  };
-};
+export type ReactionEventContent = MatrixReactionEventContent;
 
 export type MatrixSendResult = {
   messageId: string;
@@ -85,8 +84,7 @@ export type MatrixSendResult = {
 };
 
 export type MatrixSendOpts = {
-  cfg?: import("../../types.js").CoreConfig;
-  client?: import("@vector-im/matrix-bot-sdk").MatrixClient;
+  client?: import("../sdk.js").MatrixClient;
   mediaUrl?: string;
   accountId?: string;
   replyToId?: string;

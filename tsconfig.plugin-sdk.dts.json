@@ -37,7 +37,6 @@
     "src/plugin-sdk/llm-task.ts",
     "src/plugin-sdk/lobster.ts",
     "src/plugin-sdk/matrix.ts",
-    "src/plugin-sdk/matrix-js.ts",
     "src/plugin-sdk/mattermost.ts",
     "src/plugin-sdk/memory-core.ts",
     "src/plugin-sdk/memory-lancedb.ts",

@@ -25,7 +25,7 @@ export function isTelegramSurface(params: DiscordSurfaceParams): boolean {
 }
 
 export function isMatrixSurface(params: DiscordSurfaceParams): boolean {
-  return resolveCommandSurfaceChannel(params) === "matrix-js";
+  return resolveCommandSurfaceChannel(params) === "matrix";
 }
 
 export function resolveCommandSurfaceChannel(params: DiscordSurfaceParams): string {

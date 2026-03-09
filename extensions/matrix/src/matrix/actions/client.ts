@@ -1,9 +1,7 @@
-import { normalizeAccountId } from "openclaw/plugin-sdk/account-id";
 import { getMatrixRuntime } from "../../runtime.js";
 import type { CoreConfig } from "../../types.js";
 import { getActiveMatrixClient } from "../active-client.js";
-import { createPreparedMatrixClient } from "../client-bootstrap.js";
-import { isBunRuntime, resolveMatrixAuth, resolveSharedMatrixClient } from "../client.js";
+import { createMatrixClient, isBunRuntime, resolveMatrixAuth } from "../client.js";
 import type { MatrixActionClient, MatrixActionClientOpts } from "./types.js";
 
 export function ensureNodeRuntime() {
@@ -19,29 +17,54 @@ export async function resolveActionClient(
   if (opts.client) {
     return { client: opts.client, stopOnDone: false };
   }
-  // Normalize accountId early to ensure consistent keying across all lookups
-  const accountId = normalizeAccountId(opts.accountId);
-  const active = getActiveMatrixClient(accountId);
+  const active = getActiveMatrixClient(opts.accountId);
   if (active) {
     return { client: active, stopOnDone: false };
   }
-  const shouldShareClient = Boolean(process.env.OPENCLAW_GATEWAY_PORT);
-  if (shouldShareClient) {
-    const client = await resolveSharedMatrixClient({
-      cfg: getMatrixRuntime().config.loadConfig() as CoreConfig,
-      timeoutMs: opts.timeoutMs,
-      accountId,
-    });
-    return { client, stopOnDone: false };
-  }
   const auth = await resolveMatrixAuth({
     cfg: getMatrixRuntime().config.loadConfig() as CoreConfig,
-    accountId,
+    accountId: opts.accountId,
   });
-  const client = await createPreparedMatrixClient({
-    auth,
-    timeoutMs: opts.timeoutMs,
-    accountId,
+  const client = await createMatrixClient({
+    homeserver: auth.homeserver,
+    userId: auth.userId,
+    accessToken: auth.accessToken,
+    password: auth.password,
+    deviceId: auth.deviceId,
+    encryption: auth.encryption,
+    localTimeoutMs: opts.timeoutMs,
+    accountId: opts.accountId,
+    autoBootstrapCrypto: false,
   });
+  await client.prepareForOneOff();
   return { client, stopOnDone: true };
+}
+
+export type MatrixActionClientStopMode = "stop" | "persist";
+
+export async function stopActionClient(
+  resolved: MatrixActionClient,
+  mode: MatrixActionClientStopMode = "stop",
+): Promise<void> {
+  if (!resolved.stopOnDone) {
+    return;
+  }
+  if (mode === "persist") {
+    await resolved.client.stopAndPersist();
+    return;
+  }
+  resolved.client.stop();
+}
+
+export async function withResolvedActionClient<T>(
+  opts: MatrixActionClientOpts,
+  run: (client: MatrixActionClient["client"]) => Promise<T>,
+  mode: MatrixActionClientStopMode = "stop",
+): Promise<T> {
+  const resolved = await resolveActionClient(opts);
+  try {
+    return await run(resolved.client);
+  } finally {
+    await stopActionClient(resolved, mode);
+  }
 }

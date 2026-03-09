@@ -1,172 +1,234 @@
-import type { MatrixClient } from "@vector-im/matrix-bot-sdk";
-import type { PluginRuntime, RuntimeLogger } from "openclaw/plugin-sdk/matrix";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { MatrixAuth } from "../client.js";
+import type { MatrixClient } from "../sdk.js";
 import { registerMatrixMonitorEvents } from "./events.js";
 import type { MatrixRawEvent } from "./types.js";
+import { EventType } from "./types.js";
 
-const sendReadReceiptMatrixMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+type RoomEventListener = (roomId: string, event: MatrixRawEvent) => void;
 
-vi.mock("../send.js", () => ({
-  sendReadReceiptMatrix: (...args: unknown[]) => sendReadReceiptMatrixMock(...args),
-}));
+function getSentNoticeBody(sendMessage: ReturnType<typeof vi.fn>, index = 0): string {
+  const calls = sendMessage.mock.calls as unknown[][];
+  const payload = (calls[index]?.[1] ?? {}) as { body?: string };
+  return payload.body ?? "";
+}
 
-describe("registerMatrixMonitorEvents", () => {
-  beforeEach(() => {
-    sendReadReceiptMatrixMock.mockClear();
+function createHarness(params?: {
+  verifications?: Array<{
+    id: string;
+    transactionId?: string;
+    roomId?: string;
+    otherUserId: string;
+    phaseName: string;
+    updatedAt?: string;
+    completed?: boolean;
+    sas?: {
+      decimal?: [number, number, number];
+      emoji?: Array<[string, string]>;
+    };
+  }>;
+}) {
+  const listeners = new Map<string, (...args: unknown[]) => void>();
+  const onRoomMessage = vi.fn(async () => {});
+  const listVerifications = vi.fn(async () => params?.verifications ?? []);
+  const sendMessage = vi.fn(async () => "$notice");
+  const client = {
+    on: vi.fn((eventName: string, listener: (...args: unknown[]) => void) => {
+      listeners.set(eventName, listener);
+      return client;
+    }),
+    sendMessage,
+    crypto: {
+      listVerifications,
+    },
+  } as unknown as MatrixClient;
+
+  registerMatrixMonitorEvents({
+    client,
+    auth: { encryption: true } as MatrixAuth,
+    logVerboseMessage: vi.fn(),
+    warnedEncryptedRooms: new Set<string>(),
+    warnedCryptoMissingRooms: new Set<string>(),
+    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    formatNativeDependencyHint: vi.fn(() => "install hint"),
+    onRoomMessage,
   });
 
-  function createHarness(options?: { getUserId?: ReturnType<typeof vi.fn> }) {
-    const handlers = new Map<string, (...args: unknown[]) => void>();
-    const getUserId = options?.getUserId ?? vi.fn().mockResolvedValue("@bot:example.org");
-    const client = {
-      on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
-        handlers.set(event, handler);
-      }),
-      getUserId,
-      crypto: undefined,
-    } as unknown as MatrixClient;
-
-    const onRoomMessage = vi.fn();
-    const logVerboseMessage = vi.fn();
-    const logger = {
-      warn: vi.fn(),
-    } as unknown as RuntimeLogger;
-
-    registerMatrixMonitorEvents({
-      client,
-      auth: { encryption: false } as MatrixAuth,
-      logVerboseMessage,
-      warnedEncryptedRooms: new Set<string>(),
-      warnedCryptoMissingRooms: new Set<string>(),
-      logger,
-      formatNativeDependencyHint: (() =>
-        "") as PluginRuntime["system"]["formatNativeDependencyHint"],
-      onRoomMessage,
-    });
-
-    const roomMessageHandler = handlers.get("room.message");
-    if (!roomMessageHandler) {
-      throw new Error("missing room.message handler");
-    }
-
-    return { client, getUserId, onRoomMessage, roomMessageHandler, logVerboseMessage };
+  const roomEventListener = listeners.get("room.event") as RoomEventListener | undefined;
+  if (!roomEventListener) {
+    throw new Error("room.event listener was not registered");
   }
 
-  it("sends read receipt immediately for non-self messages", async () => {
-    const { client, onRoomMessage, roomMessageHandler } = createHarness();
-    const event = {
-      event_id: "$e1",
+  return {
+    onRoomMessage,
+    sendMessage,
+    roomEventListener,
+    listVerifications,
+    roomMessageListener: listeners.get("room.message") as RoomEventListener | undefined,
+  };
+}
+
+describe("registerMatrixMonitorEvents verification routing", () => {
+  it("forwards reaction room events into the shared room handler", async () => {
+    const { onRoomMessage, sendMessage, roomEventListener } = createHarness();
+
+    roomEventListener("!room:example.org", {
+      event_id: "$reaction1",
       sender: "@alice:example.org",
-    } as MatrixRawEvent;
-
-    roomMessageHandler("!room:example.org", event);
-
-    expect(onRoomMessage).toHaveBeenCalledWith("!room:example.org", event);
-    await vi.waitFor(() => {
-      expect(sendReadReceiptMatrixMock).toHaveBeenCalledWith("!room:example.org", "$e1", client);
+      type: EventType.Reaction,
+      origin_server_ts: Date.now(),
+      content: {
+        "m.relates_to": {
+          rel_type: "m.annotation",
+          event_id: "$msg1",
+          key: "👍",
+        },
+      },
     });
-  });
-
-  it("does not send read receipts for self messages", async () => {
-    const { onRoomMessage, roomMessageHandler } = createHarness();
-    const event = {
-      event_id: "$e2",
-      sender: "@bot:example.org",
-    } as MatrixRawEvent;
-
-    roomMessageHandler("!room:example.org", event);
-    await vi.waitFor(() => {
-      expect(onRoomMessage).toHaveBeenCalledWith("!room:example.org", event);
-    });
-    expect(sendReadReceiptMatrixMock).not.toHaveBeenCalled();
-  });
-
-  it("skips receipt when message lacks sender or event id", async () => {
-    const { onRoomMessage, roomMessageHandler } = createHarness();
-    const event = {
-      sender: "@alice:example.org",
-    } as MatrixRawEvent;
-
-    roomMessageHandler("!room:example.org", event);
-    await vi.waitFor(() => {
-      expect(onRoomMessage).toHaveBeenCalledWith("!room:example.org", event);
-    });
-    expect(sendReadReceiptMatrixMock).not.toHaveBeenCalled();
-  });
-
-  it("caches self user id across messages", async () => {
-    const { getUserId, roomMessageHandler } = createHarness();
-    const first = { event_id: "$e3", sender: "@alice:example.org" } as MatrixRawEvent;
-    const second = { event_id: "$e4", sender: "@bob:example.org" } as MatrixRawEvent;
-
-    roomMessageHandler("!room:example.org", first);
-    roomMessageHandler("!room:example.org", second);
 
     await vi.waitFor(() => {
-      expect(sendReadReceiptMatrixMock).toHaveBeenCalledTimes(2);
-    });
-    expect(getUserId).toHaveBeenCalledTimes(1);
-  });
-
-  it("logs and continues when sending read receipt fails", async () => {
-    sendReadReceiptMatrixMock.mockRejectedValueOnce(new Error("network boom"));
-    const { roomMessageHandler, onRoomMessage, logVerboseMessage } = createHarness();
-    const event = { event_id: "$e5", sender: "@alice:example.org" } as MatrixRawEvent;
-
-    roomMessageHandler("!room:example.org", event);
-
-    await vi.waitFor(() => {
-      expect(onRoomMessage).toHaveBeenCalledWith("!room:example.org", event);
-      expect(logVerboseMessage).toHaveBeenCalledWith(
-        expect.stringContaining("matrix: early read receipt failed"),
+      expect(onRoomMessage).toHaveBeenCalledWith(
+        "!room:example.org",
+        expect.objectContaining({ event_id: "$reaction1", type: EventType.Reaction }),
       );
     });
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("skips read receipts if self-user lookup fails", async () => {
-    const { roomMessageHandler, onRoomMessage, getUserId } = createHarness({
-      getUserId: vi.fn().mockRejectedValue(new Error("cannot resolve self")),
+  it("posts verification request notices directly into the room", async () => {
+    const { onRoomMessage, sendMessage, roomMessageListener } = createHarness();
+    if (!roomMessageListener) {
+      throw new Error("room.message listener was not registered");
+    }
+    roomMessageListener("!room:example.org", {
+      event_id: "$req1",
+      sender: "@alice:example.org",
+      type: EventType.RoomMessage,
+      origin_server_ts: Date.now(),
+      content: {
+        msgtype: "m.key.verification.request",
+        body: "verification request",
+      },
     });
-    const event = { event_id: "$e6", sender: "@alice:example.org" } as MatrixRawEvent;
-
-    roomMessageHandler("!room:example.org", event);
 
     await vi.waitFor(() => {
-      expect(onRoomMessage).toHaveBeenCalledWith("!room:example.org", event);
+      expect(sendMessage).toHaveBeenCalledTimes(1);
     });
-    expect(getUserId).toHaveBeenCalledTimes(1);
-    expect(sendReadReceiptMatrixMock).not.toHaveBeenCalled();
+    expect(onRoomMessage).not.toHaveBeenCalled();
+    const body = getSentNoticeBody(sendMessage, 0);
+    expect(body).toContain("Matrix verification request received from @alice:example.org.");
+    expect(body).toContain('Open "Verify by emoji"');
   });
 
-  it("skips duplicate listener registration for the same client", () => {
-    const handlers = new Map<string, (...args: unknown[]) => void>();
-    const onMock = vi.fn((event: string, handler: (...args: unknown[]) => void) => {
-      handlers.set(event, handler);
+  it("posts ready-stage guidance for emoji verification", async () => {
+    const { sendMessage, roomEventListener } = createHarness();
+    roomEventListener("!room:example.org", {
+      event_id: "$ready-1",
+      sender: "@alice:example.org",
+      type: "m.key.verification.ready",
+      origin_server_ts: Date.now(),
+      content: {
+        "m.relates_to": { event_id: "$req-ready-1" },
+      },
     });
-    const client = {
-      on: onMock,
-      getUserId: vi.fn().mockResolvedValue("@bot:example.org"),
-      crypto: undefined,
-    } as unknown as MatrixClient;
-    const params = {
-      client,
-      auth: { encryption: false } as MatrixAuth,
-      logVerboseMessage: vi.fn(),
-      warnedEncryptedRooms: new Set<string>(),
-      warnedCryptoMissingRooms: new Set<string>(),
-      logger: { warn: vi.fn() } as unknown as RuntimeLogger,
-      formatNativeDependencyHint: (() =>
-        "") as PluginRuntime["system"]["formatNativeDependencyHint"],
-      onRoomMessage: vi.fn(),
-    };
-    registerMatrixMonitorEvents(params);
-    const initialCallCount = onMock.mock.calls.length;
-    registerMatrixMonitorEvents(params);
 
-    expect(onMock).toHaveBeenCalledTimes(initialCallCount);
-    expect(params.logVerboseMessage).toHaveBeenCalledWith(
-      "matrix: skipping duplicate listener registration for client",
-    );
+    await vi.waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledTimes(1);
+    });
+    const body = getSentNoticeBody(sendMessage, 0);
+    expect(body).toContain("Matrix verification is ready with @alice:example.org.");
+    expect(body).toContain('Choose "Verify by emoji"');
+  });
+
+  it("posts SAS emoji/decimal details when verification summaries expose them", async () => {
+    const { sendMessage, roomEventListener, listVerifications } = createHarness({
+      verifications: [
+        {
+          id: "verification-1",
+          transactionId: "$different-flow-id",
+          updatedAt: new Date("2026-02-25T21:42:54.000Z").toISOString(),
+          otherUserId: "@alice:example.org",
+          phaseName: "started",
+          sas: {
+            decimal: [6158, 1986, 3513],
+            emoji: [
+              ["🎁", "Gift"],
+              ["🌍", "Globe"],
+              ["🐴", "Horse"],
+            ],
+          },
+        },
+      ],
+    });
+
+    roomEventListener("!room:example.org", {
+      event_id: "$start2",
+      sender: "@alice:example.org",
+      type: "m.key.verification.start",
+      origin_server_ts: Date.now(),
+      content: {
+        "m.relates_to": { event_id: "$req2" },
+      },
+    });
+
+    await vi.waitFor(() => {
+      const bodies = (sendMessage.mock.calls as unknown[][]).map((call) =>
+        String((call[1] as { body?: string } | undefined)?.body ?? ""),
+      );
+      expect(bodies.some((body) => body.includes("SAS emoji:"))).toBe(true);
+      expect(bodies.some((body) => body.includes("SAS decimal: 6158 1986 3513"))).toBe(true);
+    });
+  });
+
+  it("does not emit duplicate SAS notices for the same verification payload", async () => {
+    const { sendMessage, roomEventListener, listVerifications } = createHarness({
+      verifications: [
+        {
+          id: "verification-3",
+          transactionId: "$req3",
+          otherUserId: "@alice:example.org",
+          phaseName: "started",
+          sas: {
+            decimal: [1111, 2222, 3333],
+            emoji: [
+              ["🚀", "Rocket"],
+              ["🦋", "Butterfly"],
+              ["📕", "Book"],
+            ],
+          },
+        },
+      ],
+    });
+
+    roomEventListener("!room:example.org", {
+      event_id: "$start3",
+      sender: "@alice:example.org",
+      type: "m.key.verification.start",
+      origin_server_ts: Date.now(),
+      content: {
+        "m.relates_to": { event_id: "$req3" },
+      },
+    });
+    await vi.waitFor(() => {
+      expect(sendMessage.mock.calls.length).toBeGreaterThan(0);
+    });
+
+    roomEventListener("!room:example.org", {
+      event_id: "$key3",
+      sender: "@alice:example.org",
+      type: "m.key.verification.key",
+      origin_server_ts: Date.now(),
+      content: {
+        "m.relates_to": { event_id: "$req3" },
+      },
+    });
+    await vi.waitFor(() => {
+      expect(listVerifications).toHaveBeenCalledTimes(2);
+    });
+
+    const sasBodies = sendMessage.mock.calls
+      .map((call) => String(((call as unknown[])[1] as { body?: string } | undefined)?.body ?? ""))
+      .filter((body) => body.includes("SAS emoji:"));
+    expect(sasBodies).toHaveLength(1);
   });
 });

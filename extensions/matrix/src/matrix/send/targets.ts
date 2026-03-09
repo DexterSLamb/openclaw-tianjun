@@ -1,4 +1,4 @@
-import type { MatrixClient } from "@vector-im/matrix-bot-sdk";
+import type { MatrixClient } from "../sdk.js";
 import { EventType, type MatrixDirectAccountData } from "./types.js";
 
 function normalizeTarget(raw: string): string {
@@ -35,9 +35,11 @@ async function persistDirectRoom(
   userId: string,
   roomId: string,
 ): Promise<void> {
-  let directContent: MatrixDirectAccountData | null = null;
+  let directContent: MatrixDirectAccountData | undefined;
   try {
-    directContent = await client.getAccountData(EventType.Direct);
+    directContent = (await client.getAccountData(EventType.Direct)) as
+      | MatrixDirectAccountData
+      | undefined;
   } catch {
     // Ignore fetch errors and fall back to an empty map.
   }

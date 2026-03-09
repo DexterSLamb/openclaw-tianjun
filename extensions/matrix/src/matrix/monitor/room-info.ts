@@ -1,4 +1,4 @@
-import type { MatrixClient } from "@vector-im/matrix-bot-sdk";
+import type { MatrixClient } from "../sdk.js";
 
 export type MatrixRoomInfo = {
   name?: string;
@@ -19,7 +19,9 @@ export function createMatrixRoomInfoResolver(client: MatrixClient) {
     let altAliases: string[] = [];
     try {
       const nameState = await client.getRoomStateEvent(roomId, "m.room.name", "").catch(() => null);
-      name = nameState?.name;
+      if (nameState && typeof nameState.name === "string") {
+        name = nameState.name;
+      }
     } catch {
       // ignore
     }
@@ -27,8 +29,13 @@ export function createMatrixRoomInfoResolver(client: MatrixClient) {
       const aliasState = await client
         .getRoomStateEvent(roomId, "m.room.canonical_alias", "")
         .catch(() => null);
-      canonicalAlias = aliasState?.alias;
-      altAliases = aliasState?.alt_aliases ?? [];
+      if (aliasState && typeof aliasState.alias === "string") {
+        canonicalAlias = aliasState.alias;
+      }
+      const rawAliases = aliasState?.alt_aliases;
+      if (Array.isArray(rawAliases)) {
+        altAliases = rawAliases.filter((entry): entry is string => typeof entry === "string");
+      }
     } catch {
       // ignore
     }
@@ -42,7 +49,10 @@ export function createMatrixRoomInfoResolver(client: MatrixClient) {
       const memberState = await client
         .getRoomStateEvent(roomId, "m.room.member", userId)
         .catch(() => null);
-      return memberState?.displayname ?? userId;
+      if (memberState && typeof memberState.displayname === "string") {
+        return memberState.displayname;
+      }
+      return userId;
     } catch {
       return userId;
     }

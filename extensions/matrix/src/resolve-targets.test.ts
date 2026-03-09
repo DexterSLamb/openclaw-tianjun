@@ -64,4 +64,29 @@ describe("resolveMatrixTargets (users)", () => {
     expect(result?.id).toBe("!two:example.org");
     expect(result?.note).toBe("multiple matches; chose first");
   });
+
+  it("reuses directory lookups for duplicate inputs", async () => {
+    vi.mocked(listMatrixDirectoryPeersLive).mockResolvedValue([
+      { kind: "user", id: "@alice:example.org", name: "Alice" },
+    ]);
+    vi.mocked(listMatrixDirectoryGroupsLive).mockResolvedValue([
+      { kind: "group", id: "!team:example.org", name: "Team", handle: "#team" },
+    ]);
+
+    const userResults = await resolveMatrixTargets({
+      cfg: {},
+      inputs: ["Alice", "Alice"],
+      kind: "user",
+    });
+    const groupResults = await resolveMatrixTargets({
+      cfg: {},
+      inputs: ["#team", "#team"],
+      kind: "group",
+    });
+
+    expect(userResults.every((entry) => entry.resolved)).toBe(true);
+    expect(groupResults.every((entry) => entry.resolved)).toBe(true);
+    expect(listMatrixDirectoryPeersLive).toHaveBeenCalledTimes(1);
+    expect(listMatrixDirectoryGroupsLive).toHaveBeenCalledTimes(1);
+  });
 });

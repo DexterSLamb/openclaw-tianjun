@@ -1,85 +1,112 @@
-import type { MatrixClient } from "@vector-im/matrix-bot-sdk";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { resolveSharedMatrixClient, stopSharedClient } from "./shared.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MatrixAuth } from "./types.js";
 
+const resolveMatrixAuthMock = vi.hoisted(() => vi.fn());
 const createMatrixClientMock = vi.hoisted(() => vi.fn());
 
-vi.mock("./create-client.js", () => ({
-  createMatrixClient: (...args: unknown[]) => createMatrixClientMock(...args),
+vi.mock("./config.js", () => ({
+  resolveMatrixAuth: resolveMatrixAuthMock,
 }));
 
-function makeAuth(suffix: string): MatrixAuth {
+vi.mock("./create-client.js", () => ({
+  createMatrixClient: createMatrixClientMock,
+}));
+
+import {
+  resolveSharedMatrixClient,
+  stopSharedClient,
+  stopSharedClientForAccount,
+} from "./shared.js";
+
+function authFor(accountId: string): MatrixAuth {
   return {
     homeserver: "https://matrix.example.org",
-    userId: `@bot-${suffix}:example.org`,
-    accessToken: `token-${suffix}`,
+    userId: `@${accountId}:example.org`,
+    accessToken: `token-${accountId}`,
+    password: "secret",
+    deviceId: `${accountId.toUpperCase()}-DEVICE`,
+    deviceName: `${accountId} device`,
+    initialSyncLimit: undefined,
     encryption: false,
   };
 }
 
-function createMockClient(startImpl: () => Promise<void>): MatrixClient {
-  return {
-    start: vi.fn(startImpl),
-    stop: vi.fn(),
-    getJoinedRooms: vi.fn().mockResolvedValue([]),
+function createMockClient(name: string) {
+  const client = {
+    name,
+    start: vi.fn(async () => undefined),
+    stop: vi.fn(() => undefined),
+    getJoinedRooms: vi.fn(async () => [] as string[]),
     crypto: undefined,
-  } as unknown as MatrixClient;
+  };
+  return client;
 }
 
-describe("resolveSharedMatrixClient startup behavior", () => {
+describe("resolveSharedMatrixClient", () => {
+  beforeEach(() => {
+    resolveMatrixAuthMock.mockReset();
+    createMatrixClientMock.mockReset();
+  });
+
   afterEach(() => {
     stopSharedClient();
-    createMatrixClientMock.mockReset();
-    vi.useRealTimers();
+    vi.clearAllMocks();
   });
 
-  it("propagates the original start error during initialization", async () => {
-    vi.useFakeTimers();
-    const startError = new Error("bad token");
-    const client = createMockClient(
-      () =>
-        new Promise<void>((_resolve, reject) => {
-          setTimeout(() => reject(startError), 1);
-        }),
+  it("keeps account clients isolated when resolves are interleaved", async () => {
+    const mainAuth = authFor("main");
+    const poeAuth = authFor("ops");
+    const mainClient = createMockClient("main");
+    const poeClient = createMockClient("ops");
+
+    resolveMatrixAuthMock.mockImplementation(async ({ accountId }: { accountId?: string }) =>
+      accountId === "ops" ? poeAuth : mainAuth,
     );
-    createMatrixClientMock.mockResolvedValue(client);
-
-    const startPromise = resolveSharedMatrixClient({
-      auth: makeAuth("start-error"),
+    createMatrixClientMock.mockImplementation(async ({ accountId }: { accountId?: string }) => {
+      if (accountId === "ops") {
+        return poeClient;
+      }
+      return mainClient;
     });
-    const startExpectation = expect(startPromise).rejects.toBe(startError);
 
-    await vi.advanceTimersByTimeAsync(2001);
-    await startExpectation;
+    const firstMain = await resolveSharedMatrixClient({ accountId: "main", startClient: false });
+    const firstPoe = await resolveSharedMatrixClient({ accountId: "ops", startClient: false });
+    const secondMain = await resolveSharedMatrixClient({ accountId: "main" });
+
+    expect(firstMain).toBe(mainClient);
+    expect(firstPoe).toBe(poeClient);
+    expect(secondMain).toBe(mainClient);
+    expect(createMatrixClientMock).toHaveBeenCalledTimes(2);
+    expect(mainClient.start).toHaveBeenCalledTimes(1);
+    expect(poeClient.start).toHaveBeenCalledTimes(0);
   });
 
-  it("retries start after a late start-loop failure", async () => {
-    vi.useFakeTimers();
-    let rejectFirstStart: ((err: unknown) => void) | undefined;
-    const firstStart = new Promise<void>((_resolve, reject) => {
-      rejectFirstStart = reject;
-    });
-    const secondStart = new Promise<void>(() => {});
-    const startMock = vi.fn().mockReturnValueOnce(firstStart).mockReturnValueOnce(secondStart);
-    const client = createMockClient(startMock);
-    createMatrixClientMock.mockResolvedValue(client);
+  it("stops only the targeted account client", async () => {
+    const mainAuth = authFor("main");
+    const poeAuth = authFor("ops");
+    const mainClient = createMockClient("main");
+    const poeClient = createMockClient("ops");
 
-    const firstResolve = resolveSharedMatrixClient({
-      auth: makeAuth("late-failure"),
+    resolveMatrixAuthMock.mockImplementation(async ({ accountId }: { accountId?: string }) =>
+      accountId === "ops" ? poeAuth : mainAuth,
+    );
+    createMatrixClientMock.mockImplementation(async ({ accountId }: { accountId?: string }) => {
+      if (accountId === "ops") {
+        return poeClient;
+      }
+      return mainClient;
     });
-    await vi.advanceTimersByTimeAsync(2000);
-    await expect(firstResolve).resolves.toBe(client);
-    expect(startMock).toHaveBeenCalledTimes(1);
 
-    rejectFirstStart?.(new Error("late failure"));
-    await Promise.resolve();
+    await resolveSharedMatrixClient({ accountId: "main", startClient: false });
+    await resolveSharedMatrixClient({ accountId: "ops", startClient: false });
 
-    const secondResolve = resolveSharedMatrixClient({
-      auth: makeAuth("late-failure"),
-    });
-    await vi.advanceTimersByTimeAsync(2000);
-    await expect(secondResolve).resolves.toBe(client);
-    expect(startMock).toHaveBeenCalledTimes(2);
+    stopSharedClientForAccount(mainAuth, "main");
+
+    expect(mainClient.stop).toHaveBeenCalledTimes(1);
+    expect(poeClient.stop).toHaveBeenCalledTimes(0);
+
+    stopSharedClient();
+
+    expect(poeClient.stop).toHaveBeenCalledTimes(1);
   });
 });

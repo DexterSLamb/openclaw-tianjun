@@ -31,7 +31,6 @@ const entrypoints = [
   "llm-task",
   "lobster",
   "matrix",
-  "matrix-js",
   "mattermost",
   "memory-core",
   "memory-lancedb",

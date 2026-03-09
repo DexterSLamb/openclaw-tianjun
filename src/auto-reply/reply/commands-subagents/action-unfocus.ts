@@ -18,7 +18,7 @@ export async function handleSubagentsUnfocusAction(
 ): Promise<CommandHandlerResult> {
   const { params } = ctx;
   const channel = resolveCommandSurfaceChannel(params);
-  if (channel !== "discord" && channel !== "telegram" && channel !== "matrix-js") {
+  if (channel !== "discord" && channel !== "telegram" && channel !== "matrix") {
     return stopWithText("⚠️ /unfocus is only available on Discord, Matrix, and Telegram.");
   }
 
@@ -64,7 +64,7 @@ export async function handleSubagentsUnfocusAction(
     if (channel === "discord") {
       return stopWithText("⚠️ /unfocus must be run inside a Discord thread.");
     }
-    if (channel === "matrix-js") {
+    if (channel === "matrix") {
       return stopWithText("⚠️ /unfocus must be run inside a focused Matrix thread.");
     }
     return stopWithText(
@@ -82,7 +82,7 @@ export async function handleSubagentsUnfocusAction(
     return stopWithText(
       channel === "discord"
         ? "ℹ️ This thread is not currently focused."
-        : channel === "matrix-js"
+        : channel === "matrix"
           ? "ℹ️ This thread is not currently focused."
           : "ℹ️ This conversation is not currently focused.",
     );
@@ -95,7 +95,7 @@ export async function handleSubagentsUnfocusAction(
     return stopWithText(
       channel === "discord"
         ? `⚠️ Only ${boundBy} can unfocus this thread.`
-        : channel === "matrix-js"
+        : channel === "matrix"
           ? `⚠️ Only ${boundBy} can unfocus this thread.`
           : `⚠️ Only ${boundBy} can unfocus this conversation.`,
     );
@@ -106,7 +106,7 @@ export async function handleSubagentsUnfocusAction(
     reason: "manual",
   });
   return stopWithText(
-    channel === "discord" || channel === "matrix-js"
+    channel === "discord" || channel === "matrix"
       ? "✅ Thread unfocused."
       : "✅ Conversation unfocused.",
   );

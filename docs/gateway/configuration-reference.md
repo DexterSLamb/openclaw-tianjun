@@ -650,7 +650,7 @@ Run multiple accounts per channel (each with its own `accountId`):
 ### Other extension channels
 
 Many extension channels are configured as `channels.<id>` and documented in their dedicated channel pages (for example Feishu, Matrix, LINE, Nostr, Zalo, Nextcloud Talk, Synology Chat, and Twitch).
-Matrix-js also supports top-level `bindings[]` entries with `type: "acp"` for persistent ACP bindings. Use the Matrix room id or Matrix thread root event id in `match.peer.id`.
+Matrix also supports top-level `bindings[]` entries with `type: "acp"` for persistent ACP bindings. Use the Matrix room id or Matrix thread root event id in `match.peer.id`.
 See the full channel index: [Channels](/channels).
 
 ### Group chat mention gating

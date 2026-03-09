@@ -63,6 +63,8 @@ function createAcpCommandSessionBindingService() {
     listBySession: (targetSessionKey: string) =>
       hoisted.sessionBindingListBySessionMock(targetSessionKey),
     resolveByConversation: (ref: unknown) => hoisted.sessionBindingResolveByConversationMock(ref),
+    setIdleTimeoutBySession: vi.fn(async () => []),
+    setMaxAgeBySession: vi.fn(async () => []),
     touch: vi.fn(),
     unbind: (input: unknown) => hoisted.sessionBindingUnbindMock(input),
   };
@@ -118,7 +120,7 @@ type FakeBinding = {
   targetSessionKey: string;
   targetKind: "subagent" | "session";
   conversation: {
-    channel: "discord" | "telegram";
+    channel: "discord" | "matrix" | "telegram";
     accountId: string;
     conversationId: string;
     parentConversationId?: string;
@@ -243,7 +245,7 @@ function createSessionBindingCapabilities() {
 type AcpBindInput = {
   targetSessionKey: string;
   conversation: {
-    channel?: "discord" | "matrix-js" | "telegram";
+    channel?: "discord" | "matrix" | "telegram";
     accountId: string;
     conversationId: string;
     parentConversationId?: string;
@@ -267,9 +269,9 @@ function createAcpThreadBinding(input: AcpBindInput): FakeBinding {
             conversationId: nextConversationId,
             parentConversationId: "parent-1",
           }
-        : channel === "matrix-js"
+        : channel === "matrix"
           ? {
-              channel: "matrix-js",
+              channel: "matrix",
               accountId: input.conversation.accountId,
               conversationId: nextConversationId,
               parentConversationId: input.conversation.parentConversationId ?? "!room:example",
@@ -344,9 +346,9 @@ function createTelegramDmParams(commandBody: string, cfg: OpenClawConfig = baseC
 
 function createMatrixRoomParams(commandBody: string, cfg: OpenClawConfig = baseCfg) {
   const params = buildCommandTestParams(commandBody, cfg, {
-    Provider: "matrix-js",
-    Surface: "matrix-js",
-    OriginatingChannel: "matrix-js",
+    Provider: "matrix",
+    Surface: "matrix",
+    OriginatingChannel: "matrix",
     OriginatingTo: "room:!room:example",
     AccountId: "default",
   });
@@ -651,9 +653,7 @@ describe("/acp command", () => {
   it("rejects Matrix thread-bound ACP spawn when spawnAcpSessions is not enabled", async () => {
     const result = await runMatrixRoomAcpCommand("/acp spawn codex --thread auto");
 
-    expect(result?.reply?.text).toContain(
-      "channels.matrix-js.threadBindings.spawnAcpSessions=true",
-    );
+    expect(result?.reply?.text).toContain("channels.matrix.threadBindings.spawnAcpSessions=true");
     expect(hoisted.closeMock).toHaveBeenCalledTimes(1);
     expect(hoisted.sessionBindingBindMock).not.toHaveBeenCalled();
   });
@@ -663,7 +663,7 @@ describe("/acp command", () => {
       ...baseCfg,
       channels: {
         ...baseCfg.channels,
-        "matrix-js": {
+        matrix: {
           threadBindings: {
             enabled: true,
             spawnAcpSessions: true,
@@ -680,7 +680,7 @@ describe("/acp command", () => {
       expect.objectContaining({
         placement: "current",
         conversation: expect.objectContaining({
-          channel: "matrix-js",
+          channel: "matrix",
           accountId: "default",
           conversationId: "$thread-42",
           parentConversationId: "!room:example",

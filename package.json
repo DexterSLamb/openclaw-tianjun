@@ -132,10 +132,6 @@
       "types": "./dist/plugin-sdk/matrix.d.ts",
       "default": "./dist/plugin-sdk/matrix.js"
     },
-    "./plugin-sdk/matrix-js": {
-      "types": "./dist/plugin-sdk/matrix-js.d.ts",
-      "default": "./dist/plugin-sdk/matrix-js.js"
-    },
     "./plugin-sdk/mattermost": {
       "types": "./dist/plugin-sdk/mattermost.d.ts",
       "default": "./dist/plugin-sdk/mattermost.js"

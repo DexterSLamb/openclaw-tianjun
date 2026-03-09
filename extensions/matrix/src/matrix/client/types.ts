@@ -2,6 +2,7 @@ export type MatrixResolvedConfig = {
   homeserver: string;
   userId: string;
   accessToken?: string;
+  deviceId?: string;
   password?: string;
   deviceName?: string;
   initialSyncLimit?: number;
@@ -19,6 +20,8 @@ export type MatrixAuth = {
   homeserver: string;
   userId: string;
   accessToken: string;
+  password?: string;
+  deviceId?: string;
   deviceName?: string;
   initialSyncLimit?: number;
   encryption?: boolean;
@@ -29,6 +32,8 @@ export type MatrixStoragePaths = {
   storagePath: string;
   cryptoPath: string;
   metaPath: string;
+  recoveryKeyPath: string;
+  idbSnapshotPath: string;
   accountKey: string;
   tokenHash: string;
 };

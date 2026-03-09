@@ -142,9 +142,9 @@ function createTelegramCommandParams(commandBody: string, overrides?: Record<str
 
 function createMatrixCommandParams(commandBody: string, overrides?: Record<string, unknown>) {
   return buildCommandTestParams(commandBody, baseCfg, {
-    Provider: "matrix-js",
-    Surface: "matrix-js",
-    OriginatingChannel: "matrix-js",
+    Provider: "matrix",
+    Surface: "matrix",
+    OriginatingChannel: "matrix",
     OriginatingTo: "room:!room:example",
     To: "room:!room:example",
     AccountId: "default",
@@ -203,7 +203,7 @@ function createMatrixBinding(overrides?: Partial<SessionBindingRecord>): Session
     targetSessionKey: "agent:main:subagent:child",
     targetKind: "subagent",
     conversation: {
-      channel: "matrix-js",
+      channel: "matrix",
       accountId: "default",
       conversationId: "$thread-1",
       parentConversationId: "!room:example",
@@ -241,8 +241,10 @@ describe("/session idle and /session max-age", () => {
       {
         targetSessionKey: binding.targetSessionKey,
         boundAt: Date.now(),
-        lastActivityAt: Date.now(),
-        idleTimeoutMs: 2 * 60 * 60 * 1000,
+        metadata: {
+          lastActivityAt: Date.now(),
+          idleTimeoutMs: 2 * 60 * 60 * 1000,
+        },
       },
     ]);
 
@@ -287,7 +289,9 @@ describe("/session idle and /session max-age", () => {
       {
         targetSessionKey: binding.targetSessionKey,
         boundAt: Date.now(),
-        maxAgeMs: 3 * 60 * 60 * 1000,
+        metadata: {
+          maxAgeMs: 3 * 60 * 60 * 1000,
+        },
       },
     ]);
 
@@ -315,8 +319,10 @@ describe("/session idle and /session max-age", () => {
       {
         targetSessionKey: "agent:main:subagent:child",
         boundAt: Date.now(),
-        lastActivityAt: Date.now(),
-        idleTimeoutMs: 2 * 60 * 60 * 1000,
+        metadata: {
+          lastActivityAt: Date.now(),
+          idleTimeoutMs: 2 * 60 * 60 * 1000,
+        },
       },
     ]);
 
@@ -347,8 +353,10 @@ describe("/session idle and /session max-age", () => {
       {
         targetSessionKey: "agent:main:subagent:child",
         boundAt,
-        lastActivityAt: Date.now(),
-        maxAgeMs: 3 * 60 * 60 * 1000,
+        metadata: {
+          lastActivityAt: Date.now(),
+          maxAgeMs: 3 * 60 * 60 * 1000,
+        },
       },
     ]);
 
@@ -376,8 +384,10 @@ describe("/session idle and /session max-age", () => {
       {
         targetSessionKey: "agent:main:subagent:child",
         boundAt: Date.now(),
-        lastActivityAt: Date.now(),
-        idleTimeoutMs: 2 * 60 * 60 * 1000,
+        metadata: {
+          lastActivityAt: Date.now(),
+          idleTimeoutMs: 2 * 60 * 60 * 1000,
+        },
       },
     ]);
 

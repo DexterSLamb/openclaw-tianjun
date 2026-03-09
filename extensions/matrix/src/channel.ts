@@ -1,19 +1,16 @@
 import {
-  buildAccountScopedDmSecurityPolicy,
-  buildOpenGroupPolicyWarning,
-  collectAllowlistProviderGroupPolicyWarnings,
-  createScopedAccountConfigAccessors,
-} from "openclaw/plugin-sdk/compat";
-import {
   applyAccountNameToChannelSection,
   buildChannelConfigSchema,
-  buildProbeChannelStatusSummary,
-  collectStatusIssuesFromLastError,
   DEFAULT_ACCOUNT_ID,
   deleteAccountFromConfigSection,
+  formatPairingApproveHint,
+  moveSingleAccountChannelSectionToDefaultAccount,
   normalizeAccountId,
   PAIRING_APPROVED_MESSAGE,
+  resolveAllowlistProviderRuntimeGroupPolicy,
+  resolveDefaultGroupPolicy,
   setAccountEnabledInConfigSection,
+  type ChannelSetupInput,
   type ChannelPlugin,
 } from "openclaw/plugin-sdk/matrix";
 import { matrixMessageActions } from "./actions.js";
@@ -30,14 +27,21 @@ import {
   resolveMatrixAccount,
   type ResolvedMatrixAccount,
 } from "./matrix/accounts.js";
-import { resolveMatrixAuth } from "./matrix/client.js";
+import {
+  getMatrixScopedEnvVarNames,
+  hasReadyMatrixEnvAuth,
+  resolveMatrixAuth,
+  resolveScopedMatrixEnvConfig,
+} from "./matrix/client.js";
+import { updateMatrixAccountConfig } from "./matrix/config-update.js";
+import { resolveMatrixConfigPath } from "./matrix/config-update.js";
 import { normalizeMatrixAllowList, normalizeMatrixUserId } from "./matrix/monitor/allowlist.js";
 import { probeMatrix } from "./matrix/probe.js";
+import { isSupportedMatrixAvatarSource } from "./matrix/profile.js";
 import { sendMessageMatrix } from "./matrix/send.js";
 import { matrixOnboardingAdapter } from "./onboarding.js";
 import { matrixOutbound } from "./outbound.js";
 import { resolveMatrixTargets } from "./resolve-targets.js";
-import { normalizeSecretInputString } from "./secret-input.js";
 import type { CoreConfig } from "./types.js";
 
 // Mutex for serializing account startup (workaround for concurrent dynamic import race condition)
@@ -67,44 +71,31 @@ function normalizeMatrixMessagingTarget(raw: string): string | undefined {
   return stripped || undefined;
 }
 
-function buildMatrixConfigUpdate(
-  cfg: CoreConfig,
-  input: {
-    homeserver?: string;
-    userId?: string;
-    accessToken?: string;
-    password?: string;
-    deviceName?: string;
-    initialSyncLimit?: number;
-  },
-): CoreConfig {
-  const existing = cfg.channels?.matrix ?? {};
-  return {
-    ...cfg,
-    channels: {
-      ...cfg.channels,
-      matrix: {
-        ...existing,
-        enabled: true,
-        ...(input.homeserver ? { homeserver: input.homeserver } : {}),
-        ...(input.userId ? { userId: input.userId } : {}),
-        ...(input.accessToken ? { accessToken: input.accessToken } : {}),
-        ...(input.password ? { password: input.password } : {}),
-        ...(input.deviceName ? { deviceName: input.deviceName } : {}),
-        ...(typeof input.initialSyncLimit === "number"
-          ? { initialSyncLimit: input.initialSyncLimit }
-          : {}),
-      },
-    },
-  };
+function resolveMatrixDirectUserId(params: {
+  from?: string;
+  to?: string;
+  chatType?: string;
+}): string | undefined {
+  if (params.chatType !== "direct") {
+    return undefined;
+  }
+  const from = params.from?.trim();
+  const to = params.to?.trim();
+  if (!from || !to || !/^room:/i.test(to)) {
+    return undefined;
+  }
+  const normalized = from
+    .replace(/^matrix:/i, "")
+    .replace(/^user:/i, "")
+    .trim();
+  return normalized.startsWith("@") ? normalized : undefined;
 }
 
-const matrixConfigAccessors = createScopedAccountConfigAccessors({
-  resolveAccount: ({ cfg, accountId }) =>
-    resolveMatrixAccountConfig({ cfg: cfg as CoreConfig, accountId }),
-  resolveAllowFrom: (account) => account.dm?.allowFrom,
-  formatAllowFrom: (allowFrom) => normalizeMatrixAllowList(allowFrom),
-});
+function resolveAvatarInput(input: ChannelSetupInput): string | undefined {
+  const avatarUrl = (input as ChannelSetupInput & { avatarUrl?: string }).avatarUrl;
+  const trimmed = avatarUrl?.trim();
+  return trimmed ? trimmed : undefined;
+}
 
 export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
   id: "matrix",
@@ -150,6 +141,7 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
           "accessToken",
           "password",
           "deviceName",
+          "avatarUrl",
           "initialSyncLimit",
         ],
       }),
@@ -161,38 +153,37 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
       configured: account.configured,
       baseUrl: account.homeserver,
     }),
-    ...matrixConfigAccessors,
+    resolveAllowFrom: ({ cfg, accountId }) => {
+      const matrixConfig = resolveMatrixAccountConfig({ cfg: cfg as CoreConfig, accountId });
+      return (matrixConfig.dm?.allowFrom ?? []).map((entry: string | number) => String(entry));
+    },
+    formatAllowFrom: ({ allowFrom }) => normalizeMatrixAllowList(allowFrom),
   },
   security: {
-    resolveDmPolicy: ({ cfg, accountId, account }) => {
-      return buildAccountScopedDmSecurityPolicy({
-        cfg: cfg as CoreConfig,
-        channelKey: "matrix",
-        accountId,
-        fallbackAccountId: account.accountId ?? DEFAULT_ACCOUNT_ID,
-        policy: account.config.dm?.policy,
+    resolveDmPolicy: ({ account, cfg }) => {
+      const prefix = `${resolveMatrixConfigPath(cfg as CoreConfig, account.accountId)}.dm`;
+      return {
+        policy: account.config.dm?.policy ?? "pairing",
         allowFrom: account.config.dm?.allowFrom ?? [],
-        allowFromPathSuffix: "dm.",
+        policyPath: `${prefix}.policy`,
+        allowFromPath: `${prefix}.allowFrom`,
+        approveHint: formatPairingApproveHint("matrix"),
         normalizeEntry: (raw) => normalizeMatrixUserId(raw),
-      });
+      };
     },
     collectWarnings: ({ account, cfg }) => {
-      return collectAllowlistProviderGroupPolicyWarnings({
-        cfg: cfg as CoreConfig,
-        providerConfigPresent: (cfg as CoreConfig).channels?.matrix !== undefined,
-        configuredGroupPolicy: account.config.groupPolicy,
-        collect: (groupPolicy) =>
-          groupPolicy === "open"
-            ? [
-                buildOpenGroupPolicyWarning({
-                  surface: "Matrix rooms",
-                  openBehavior: "allows any room to trigger (mention-gated)",
-                  remediation:
-                    'Set channels.matrix.groupPolicy="allowlist" + channels.matrix.groups (and optionally channels.matrix.groupAllowFrom) to restrict rooms',
-                }),
-              ]
-            : [],
+      const defaultGroupPolicy = resolveDefaultGroupPolicy(cfg as CoreConfig);
+      const { groupPolicy } = resolveAllowlistProviderRuntimeGroupPolicy({
+        providerConfigPresent: (cfg as CoreConfig).channels?.["matrix"] !== undefined,
+        groupPolicy: account.config.groupPolicy,
+        defaultGroupPolicy,
       });
+      if (groupPolicy !== "open") {
+        return [];
+      }
+      return [
+        '- Matrix rooms: groupPolicy="open" allows any room to trigger (mention-gated). Set channels.matrix.groupPolicy="allowlist" + channels.matrix.groups (and optionally channels.matrix.groupAllowFrom) to restrict rooms.',
+      ];
     },
   },
   groups: {
@@ -207,7 +198,12 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
       return {
         currentChannelId: currentTarget?.trim() || undefined,
         currentThreadTs:
-          context.MessageThreadId != null ? String(context.MessageThreadId) : context.ReplyToId,
+          context.MessageThreadId != null ? String(context.MessageThreadId) : undefined,
+        currentDirectUserId: resolveMatrixDirectUserId({
+          from: context.From,
+          to: context.To,
+          chatType: context.ChatType,
+        }),
         hasRepliedRef,
       };
     },
@@ -319,7 +315,10 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
   },
   actions: matrixMessageActions,
   setup: {
-    resolveAccountId: ({ accountId }) => normalizeAccountId(accountId),
+    resolveAccountId: ({ accountId, input }) =>
+      normalizeAccountId(accountId?.trim() || input?.name?.trim()),
+    resolveBindingAccountId: ({ agentId, accountId }) =>
+      normalizeAccountId(accountId?.trim() || agentId),
     applyAccountName: ({ cfg, accountId, name }) =>
       applyAccountNameToChannelSection({
         cfg: cfg as CoreConfig,
@@ -327,15 +326,25 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
         accountId,
         name,
       }),
-    validateInput: ({ input }) => {
+    validateInput: ({ accountId, input }) => {
+      const avatarUrl = resolveAvatarInput(input);
+      if (avatarUrl && !isSupportedMatrixAvatarSource(avatarUrl)) {
+        return "Matrix avatar URL must be an mxc:// URI or an http(s) URL";
+      }
       if (input.useEnv) {
+        const scopedEnv = resolveScopedMatrixEnvConfig(accountId, process.env);
+        const scopedReady = hasReadyMatrixEnvAuth(scopedEnv);
+        if (accountId !== DEFAULT_ACCOUNT_ID && !scopedReady) {
+          const keys = getMatrixScopedEnvVarNames(accountId);
+          return `Set per-account env vars for "${accountId}" (for example ${keys.homeserver} + ${keys.accessToken} or ${keys.userId} + ${keys.password}).`;
+        }
         return null;
       }
       if (!input.homeserver?.trim()) {
         return "Matrix requires --homeserver";
       }
       const accessToken = input.accessToken?.trim();
-      const password = normalizeSecretInputString(input.password);
+      const password = input.password?.trim();
       const userId = input.userId?.trim();
       if (!accessToken && !password) {
         return "Matrix requires --access-token or --password";
@@ -350,31 +359,40 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
       }
       return null;
     },
-    applyAccountConfig: ({ cfg, input }) => {
+    applyAccountConfig: ({ cfg, accountId, input }) => {
+      const promoted =
+        normalizeAccountId(accountId) !== DEFAULT_ACCOUNT_ID
+          ? moveSingleAccountChannelSectionToDefaultAccount({
+              cfg: cfg as CoreConfig,
+              channelKey: "matrix",
+            })
+          : (cfg as CoreConfig);
       const namedConfig = applyAccountNameToChannelSection({
-        cfg: cfg as CoreConfig,
+        cfg: promoted,
         channelKey: "matrix",
-        accountId: DEFAULT_ACCOUNT_ID,
+        accountId,
         name: input.name,
       });
+      const next = namedConfig as CoreConfig;
       if (input.useEnv) {
-        return {
-          ...namedConfig,
-          channels: {
-            ...namedConfig.channels,
-            matrix: {
-              ...namedConfig.channels?.matrix,
-              enabled: true,
-            },
-          },
-        } as CoreConfig;
+        return setAccountEnabledInConfigSection({
+          cfg: next as CoreConfig,
+          sectionKey: "matrix",
+          accountId,
+          enabled: true,
+          allowTopLevel: true,
+        }) as CoreConfig;
       }
-      return buildMatrixConfigUpdate(namedConfig as CoreConfig, {
+      const accessToken = input.accessToken?.trim();
+      const password = input.password?.trim();
+      const userId = input.userId?.trim();
+      return updateMatrixAccountConfig(next as CoreConfig, accountId, {
         homeserver: input.homeserver?.trim(),
-        userId: input.userId?.trim(),
-        accessToken: input.accessToken?.trim(),
-        password: normalizeSecretInputString(input.password),
+        userId: password && !userId ? null : userId,
+        accessToken: accessToken || (password ? null : undefined),
+        password: password || (accessToken ? null : undefined),
         deviceName: input.deviceName?.trim(),
+        avatarUrl: resolveAvatarInput(input),
         initialSyncLimit: input.initialSyncLimit,
       });
     },
@@ -388,9 +406,31 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
       lastStopAt: null,
       lastError: null,
     },
-    collectStatusIssues: (accounts) => collectStatusIssuesFromLastError("matrix", accounts),
-    buildChannelSummary: ({ snapshot }) =>
-      buildProbeChannelStatusSummary(snapshot, { baseUrl: snapshot.baseUrl ?? null }),
+    collectStatusIssues: (accounts) =>
+      accounts.flatMap((account) => {
+        const lastError = typeof account.lastError === "string" ? account.lastError.trim() : "";
+        if (!lastError) {
+          return [];
+        }
+        return [
+          {
+            channel: "matrix",
+            accountId: account.accountId,
+            kind: "runtime",
+            message: `Channel error: ${lastError}`,
+          },
+        ];
+      }),
+    buildChannelSummary: ({ snapshot }) => ({
+      configured: snapshot.configured ?? false,
+      baseUrl: snapshot.baseUrl ?? null,
+      running: snapshot.running ?? false,
+      lastStartAt: snapshot.lastStartAt ?? null,
+      lastStopAt: snapshot.lastStopAt ?? null,
+      lastError: snapshot.lastError ?? null,
+      probe: snapshot.probe,
+      lastProbeAt: snapshot.lastProbeAt ?? null,
+    }),
     probeAccount: async ({ account, timeoutMs, cfg }) => {
       try {
         const auth = await resolveMatrixAuth({

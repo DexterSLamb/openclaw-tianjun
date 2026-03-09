@@ -79,7 +79,7 @@ Required feature flags for thread-bound ACP:
 - `acp.dispatch.enabled` is on by default (set `false` to pause ACP dispatch)
 - Channel-adapter ACP thread-spawn flag enabled (adapter-specific)
   - Discord: `channels.discord.threadBindings.spawnAcpSessions=true`
-  - Matrix-js: `channels["matrix-js"].threadBindings.spawnAcpSessions=true`
+  - Matrix: `channels["matrix"].threadBindings.spawnAcpSessions=true`
   - Telegram: `channels.telegram.threadBindings.spawnAcpSessions=true`
 
 ### Thread supporting channels
@@ -87,7 +87,7 @@ Required feature flags for thread-bound ACP:
 - Any channel adapter that exposes session/thread binding capability.
 - Current built-in support:
   - Discord threads/channels
-  - Matrix-js room threads and DMs
+  - Matrix room threads and DMs
   - Telegram topics (forum topics in groups/supergroups and DM topics)
 - Plugin channels can add support through the same binding interface.
 
@@ -100,7 +100,7 @@ For non-ephemeral workflows, configure persistent ACP bindings in top-level `bin
 - `bindings[].type="acp"` marks a persistent ACP conversation binding.
 - `bindings[].match` identifies the target conversation:
   - Discord channel or thread: `match.channel="discord"` + `match.peer.id="<channelOrThreadId>"`
-  - Matrix room or thread: `match.channel="matrix-js"` + `match.peer.id="<roomIdOrThreadRootEventId>"`
+  - Matrix room or thread: `match.channel="matrix"` + `match.peer.id="<roomIdOrThreadRootEventId>"`
   - Telegram forum topic: `match.channel="telegram"` + `match.peer.id="<chatId>:topic:<topicId>"`
 - `bindings[].agentId` is the owning OpenClaw agent id.
 - Optional ACP overrides live under `bindings[].acp`:
@@ -311,7 +311,7 @@ Notes:
 - On non-thread binding surfaces, default behavior is effectively `off`.
 - Thread-bound spawn requires channel policy support:
   - Discord: `channels.discord.threadBindings.spawnAcpSessions=true`
-  - Matrix-js: `channels["matrix-js"].threadBindings.spawnAcpSessions=true`
+  - Matrix: `channels["matrix"].threadBindings.spawnAcpSessions=true`
   - Telegram: `channels.telegram.threadBindings.spawnAcpSessions=true`
 
 ## ACP controls
@@ -412,7 +412,7 @@ Core ACP baseline:
 }
 ```
 
-Thread binding config is channel-adapter specific. Example for Discord and Matrix-js:
+Thread binding config is channel-adapter specific. Example for Discord and Matrix:
 
 ```json5
 {
@@ -430,7 +430,7 @@ Thread binding config is channel-adapter specific. Example for Discord and Matri
         spawnAcpSessions: true,
       },
     },
-    "matrix-js": {
+    matrix: {
       threadBindings: {
         enabled: true,
         spawnAcpSessions: true,
@@ -443,7 +443,7 @@ Thread binding config is channel-adapter specific. Example for Discord and Matri
 If thread-bound ACP spawn does not work, verify the adapter feature flag first:
 
 - Discord: `channels.discord.threadBindings.spawnAcpSessions=true`
-- Matrix-js: `channels["matrix-js"].threadBindings.spawnAcpSessions=true`
+- Matrix: `channels["matrix"].threadBindings.spawnAcpSessions=true`
 
 See [Configuration Reference](/gateway/configuration-reference).
 

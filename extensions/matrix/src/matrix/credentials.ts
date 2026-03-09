@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
-import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk/account-id";
+import {
+  resolveMatrixCredentialsDir as resolveSharedMatrixCredentialsDir,
+  resolveMatrixCredentialsPath as resolveSharedMatrixCredentialsPath,
+  writeJsonFileAtomically,
+} from "openclaw/plugin-sdk/matrix";
 import { getMatrixRuntime } from "../runtime.js";
 
 export type MatrixStoredCredentials = {
@@ -13,30 +16,20 @@ export type MatrixStoredCredentials = {
   lastUsedAt?: string;
 };
 
-function credentialsFilename(accountId?: string | null): string {
-  const normalized = normalizeAccountId(accountId);
-  if (normalized === DEFAULT_ACCOUNT_ID) {
-    return "credentials.json";
-  }
-  // normalizeAccountId produces lowercase [a-z0-9-] strings, already filesystem-safe.
-  // Different raw IDs that normalize to the same value are the same logical account.
-  return `credentials-${normalized}.json`;
-}
-
 export function resolveMatrixCredentialsDir(
   env: NodeJS.ProcessEnv = process.env,
   stateDir?: string,
 ): string {
   const resolvedStateDir = stateDir ?? getMatrixRuntime().state.resolveStateDir(env, os.homedir);
-  return path.join(resolvedStateDir, "credentials", "matrix");
+  return resolveSharedMatrixCredentialsDir(resolvedStateDir);
 }
 
 export function resolveMatrixCredentialsPath(
   env: NodeJS.ProcessEnv = process.env,
   accountId?: string | null,
 ): string {
-  const dir = resolveMatrixCredentialsDir(env);
-  return path.join(dir, credentialsFilename(accountId));
+  const resolvedStateDir = getMatrixRuntime().state.resolveStateDir(env, os.homedir);
+  return resolveSharedMatrixCredentialsPath({ stateDir: resolvedStateDir, accountId });
 }
 
 export function loadMatrixCredentials(
@@ -63,14 +56,11 @@ export function loadMatrixCredentials(
   }
 }
 
-export function saveMatrixCredentials(
+export async function saveMatrixCredentials(
   credentials: Omit<MatrixStoredCredentials, "createdAt" | "lastUsedAt">,
   env: NodeJS.ProcessEnv = process.env,
   accountId?: string | null,
-): void {
-  const dir = resolveMatrixCredentialsDir(env);
-  fs.mkdirSync(dir, { recursive: true });
-
+): Promise<void> {
   const credPath = resolveMatrixCredentialsPath(env, accountId);
 
   const existing = loadMatrixCredentials(env, accountId);
@@ -82,13 +72,13 @@ export function saveMatrixCredentials(
     lastUsedAt: now,
   };
 
-  fs.writeFileSync(credPath, JSON.stringify(toSave, null, 2), "utf-8");
+  await writeJsonFileAtomically(credPath, toSave);
 }
 
-export function touchMatrixCredentials(
+export async function touchMatrixCredentials(
   env: NodeJS.ProcessEnv = process.env,
   accountId?: string | null,
-): void {
+): Promise<void> {
   const existing = loadMatrixCredentials(env, accountId);
   if (!existing) {
     return;
@@ -96,7 +86,7 @@ export function touchMatrixCredentials(
 
   existing.lastUsedAt = new Date().toISOString();
   const credPath = resolveMatrixCredentialsPath(env, accountId);
-  fs.writeFileSync(credPath, JSON.stringify(existing, null, 2), "utf-8");
+  await writeJsonFileAtomically(credPath, existing);
 }
 
 export function clearMatrixCredentials(

@@ -107,9 +107,9 @@ function createTelegramTopicCommandParams(commandBody: string) {
 
 function createMatrixCommandParams(commandBody: string, cfg: OpenClawConfig = baseCfg) {
   const params = buildCommandTestParams(commandBody, cfg, {
-    Provider: "matrix-js",
-    Surface: "matrix-js",
-    OriginatingChannel: "matrix-js",
+    Provider: "matrix",
+    Surface: "matrix",
+    OriginatingChannel: "matrix",
     OriginatingTo: "room:!room:example",
     To: "room:!room:example",
     AccountId: "default",
@@ -239,7 +239,7 @@ describe("/focus, /unfocus, /agents", () => {
     const cfg = {
       ...baseCfg,
       channels: {
-        "matrix-js": {
+        matrix: {
           threadBindings: {
             spawnAcpSessions: true,
           },
@@ -253,7 +253,7 @@ describe("/focus, /unfocus, /agents", () => {
       expect.objectContaining({
         placement: "child",
         conversation: expect.objectContaining({
-          channel: "matrix-js",
+          channel: "matrix",
           conversationId: "!room:example",
           parentConversationId: "!room:example",
         }),
@@ -264,9 +264,7 @@ describe("/focus, /unfocus, /agents", () => {
   it("/focus rejects Matrix child thread creation when spawn config is not enabled", async () => {
     const result = await focusCodexAcp(createMatrixCommandParams("/focus codex-acp"));
 
-    expect(result?.reply?.text).toContain(
-      "channels.matrix-js.threadBindings.spawnAcpSessions=true",
-    );
+    expect(result?.reply?.text).toContain("channels.matrix.threadBindings.spawnAcpSessions=true");
     expect(hoisted.sessionBindingBindMock).not.toHaveBeenCalled();
   });
 

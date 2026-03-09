@@ -352,7 +352,7 @@ export const handleSessionCommand: CommandHandler = async (params, allowTextComm
 
   const accountId = resolveChannelAccountId(params);
   const sessionBindingService = getSessionBindingService();
-  const channel = onDiscord ? "discord" : onTelegram ? "telegram" : "matrix-js";
+  const channel = onDiscord ? "discord" : onTelegram ? "telegram" : "matrix";
   const threadId =
     params.ctx.MessageThreadId != null ? String(params.ctx.MessageThreadId).trim() : "";
   const conversationId = onTelegram

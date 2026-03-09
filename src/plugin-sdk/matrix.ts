@@ -10,6 +10,11 @@ export {
   readStringParam,
 } from "../agents/tools/common.js";
 export type { ReplyPayload } from "../auto-reply/types.js";
+export { resolveAckReaction } from "../agents/identity.js";
+export {
+  resolveConfiguredAcpRoute,
+  ensureConfiguredAcpRouteReady,
+} from "../acp/persistent-bindings.route.js";
 export { resolveAllowlistMatchByCandidates } from "../channels/allowlist-match.js";
 export { mergeAllowlist, summarizeMapping } from "../channels/allowlists/resolve-utils.js";
 export { resolveControlCommandGate } from "../channels/command-gating.js";
@@ -37,11 +42,16 @@ export {
   buildSingleChannelSecretPromptState,
   addWildcardAllowFrom,
   mergeAllowFromEntries,
+  promptAccountId,
   promptSingleChannelSecretInput,
   setTopLevelChannelGroupPolicy,
 } from "../channels/plugins/onboarding/helpers.js";
 export { PAIRING_APPROVED_MESSAGE } from "../channels/plugins/pairing-message.js";
-export { applyAccountNameToChannelSection } from "../channels/plugins/setup-helpers.js";
+export {
+  applyAccountNameToChannelSection,
+  migrateBaseNameToDefaultAccount,
+  moveSingleAccountChannelSectionToDefaultAccount,
+} from "../channels/plugins/setup-helpers.js";
 export { createAccountListHelpers } from "../channels/plugins/account-helpers.js";
 export type {
   BaseProbeResult,
@@ -53,10 +63,17 @@ export type {
   ChannelOutboundAdapter,
   ChannelResolveKind,
   ChannelResolveResult,
+  ChannelSetupInput,
   ChannelToolSend,
 } from "../channels/plugins/types.js";
 export type { ChannelPlugin } from "../channels/plugins/types.plugin.js";
 export { createReplyPrefixOptions } from "../channels/reply-prefix.js";
+export { resolveInboundSessionEnvelopeContext } from "../channels/session-envelope.js";
+export { resolveThreadBindingFarewellText } from "../channels/thread-bindings-messages.js";
+export {
+  resolveThreadBindingIdleTimeoutMsForChannel,
+  resolveThreadBindingMaxAgeMsForChannel,
+} from "../channels/thread-bindings-policy.js";
 export { createTypingCallbacks } from "../channels/typing.js";
 export type { OpenClawConfig } from "../config/config.js";
 export {
@@ -80,33 +97,59 @@ export {
 export { buildSecretInputSchema } from "./secret-input-schema.js";
 export { ToolPolicySchema } from "../config/zod-schema.agent-runtime.js";
 export { MarkdownConfigSchema } from "../config/zod-schema.core.js";
+export { formatZonedTimestamp } from "../infra/format-time/format-datetime.js";
+export {
+  hashMatrixAccessToken,
+  resolveMatrixAccountStorageRoot,
+  resolveMatrixCredentialsDir,
+  resolveMatrixCredentialsFilename,
+  resolveMatrixCredentialsPath,
+  resolveMatrixHomeserverKey,
+  resolveMatrixLegacyFlatStoragePaths,
+  sanitizeMatrixPathSegment,
+} from "../infra/matrix-storage-paths.js";
 export { fetchWithSsrFGuard } from "../infra/net/fetch-guard.js";
+export {
+  getSessionBindingService,
+  registerSessionBindingAdapter,
+  unregisterSessionBindingAdapter,
+} from "../infra/outbound/session-binding-service.js";
+export type {
+  BindingTargetKind,
+  SessionBindingAdapter,
+  SessionBindingRecord,
+} from "../infra/outbound/session-binding-service.js";
 export { issuePairingChallenge } from "../pairing/pairing-challenge.js";
 export { emptyPluginConfigSchema } from "../plugins/config-schema.js";
 export type { PluginRuntime, RuntimeLogger } from "../plugins/runtime/types.js";
 export type { OpenClawPluginApi } from "../plugins/types.js";
 export type { PollInput } from "../polls.js";
 export { normalizePollInput } from "../polls.js";
-export { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../routing/session-key.js";
+export {
+  DEFAULT_ACCOUNT_ID,
+  normalizeAccountId,
+  resolveAgentIdFromSessionKey,
+} from "../routing/session-key.js";
 export type { RuntimeEnv } from "../runtime.js";
 export {
   readStoreAllowFromForDmPolicy,
   resolveDmGroupAccessWithLists,
 } from "../security/dm-policy-shared.js";
-export { formatDocsLink } from "../terminal/links.js";
 export { normalizeStringEntries } from "../shared/string-normalization.js";
+export { formatDocsLink } from "../terminal/links.js";
 export type { WizardPrompter } from "../wizard/prompts.js";
 export {
   evaluateGroupRouteAccessForPolicy,
   resolveSenderScopedGroupPolicy,
 } from "./group-access.js";
+export { dispatchReplyFromConfigWithSettledDispatcher } from "./inbound-reply-dispatch.js";
+export { readJsonFileWithFallback, writeJsonFileAtomically } from "./json-store.js";
 export { createScopedPairingAccess } from "./pairing-access.js";
 export { formatResolvedUnresolvedNote } from "./resolution-notes.js";
 export { runPluginCommandWithTimeout } from "./run-command.js";
-export { dispatchReplyFromConfigWithSettledDispatcher } from "./inbound-reply-dispatch.js";
 export { createLoggerBackedRuntime, resolveRuntimeEnv } from "./runtime.js";
-export { resolveInboundSessionEnvelopeContext } from "../channels/session-envelope.js";
 export {
   buildProbeChannelStatusSummary,
   collectStatusIssuesFromLastError,
 } from "./status-helpers.js";
+export type { GatewayRequestHandlerOptions } from "../gateway/server-methods/types.js";

@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { matrixPlugin } from "../../../extensions/matrix-js/src/channel.js";
+import { matrixPlugin } from "../../../extensions/matrix/src/channel.js";
 import { slackPlugin } from "../../../extensions/slack/src/channel.js";
 import { telegramPlugin } from "../../../extensions/telegram/src/channel.js";
 import type { OpenClawConfig } from "../../config/config.js";
@@ -52,7 +52,7 @@ const telegramConfig = {
 
 const matrixConfig = {
   channels: {
-    "matrix-js": {
+    matrix: {
       homeserver: "https://matrix.example.org",
       accessToken: "matrix-test",
     },
@@ -102,14 +102,14 @@ const defaultMatrixDmToolContext = {
 } as const;
 
 let createPluginRuntime: typeof import("../../plugins/runtime/index.js").createPluginRuntime;
-let setMatrixRuntime: typeof import("../../../extensions/matrix-js/src/runtime.js").setMatrixRuntime;
+let setMatrixRuntime: typeof import("../../../extensions/matrix/src/runtime.js").setMatrixRuntime;
 let setSlackRuntime: typeof import("../../../extensions/slack/src/runtime.js").setSlackRuntime;
 let setTelegramRuntime: typeof import("../../../extensions/telegram/src/runtime.js").setTelegramRuntime;
 
 describe("runMessageAction threading auto-injection", () => {
   beforeAll(async () => {
     ({ createPluginRuntime } = await import("../../plugins/runtime/index.js"));
-    ({ setMatrixRuntime } = await import("../../../extensions/matrix-js/src/runtime.js"));
+    ({ setMatrixRuntime } = await import("../../../extensions/matrix/src/runtime.js"));
     ({ setSlackRuntime } = await import("../../../extensions/slack/src/runtime.js"));
     ({ setTelegramRuntime } = await import("../../../extensions/telegram/src/runtime.js"));
   });
@@ -122,7 +122,7 @@ describe("runMessageAction threading auto-injection", () => {
     setActivePluginRegistry(
       createTestRegistry([
         {
-          pluginId: "matrix-js",
+          pluginId: "matrix",
           source: "test",
           plugin: matrixPlugin,
         },
@@ -278,7 +278,7 @@ describe("runMessageAction threading auto-injection", () => {
     const call = await runThreadingAction({
       cfg: matrixConfig,
       actionParams: {
-        channel: "matrix-js",
+        channel: "matrix",
         target: testCase.target,
         message: "hi",
       },
@@ -297,7 +297,7 @@ describe("runMessageAction threading auto-injection", () => {
     const call = await runThreadingAction({
       cfg: matrixConfig,
       actionParams: {
-        channel: "matrix-js",
+        channel: "matrix",
         target: "room:!room:example.org",
         message: "hi",
         threadId: "$explicit",
@@ -315,7 +315,7 @@ describe("runMessageAction threading auto-injection", () => {
     const call = await runThreadingAction({
       cfg: matrixConfig,
       actionParams: {
-        channel: "matrix-js",
+        channel: "matrix",
         target: "user:@alice:example.org",
         message: "hi",
       },
@@ -332,7 +332,7 @@ describe("runMessageAction threading auto-injection", () => {
     const call = await runThreadingAction({
       cfg: matrixConfig,
       actionParams: {
-        channel: "matrix-js",
+        channel: "matrix",
         target: "user:@bob:example.org",
         message: "hi",
       },

@@ -1,5 +1,5 @@
 import { resolveMatrixRoomId } from "../send.js";
-import { resolveActionClient } from "./client.js";
+import { withResolvedActionClient } from "./client.js";
 import { fetchEventSummary, readPinnedEvents } from "./summary.js";
 import {
   EventType,
@@ -16,15 +16,10 @@ async function withResolvedPinRoom<T>(
   opts: MatrixActionClientOpts,
   run: (client: ActionClient, resolvedRoom: string) => Promise<T>,
 ): Promise<T> {
-  const { client, stopOnDone } = await resolveActionClient(opts);
-  try {
+  return await withResolvedActionClient(opts, async (client) => {
     const resolvedRoom = await resolveMatrixRoomId(client, roomId);
     return await run(client, resolvedRoom);
-  } finally {
-    if (stopOnDone) {
-      client.stop();
-    }
-  }
+  });
 }
 
 async function updateMatrixPins(

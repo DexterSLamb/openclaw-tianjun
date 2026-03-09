@@ -26,7 +26,6 @@ const bundledExtensionSubpathLoaders = [
   { id: "llm-task", load: () => import("openclaw/plugin-sdk/llm-task") },
   { id: "lobster", load: () => import("openclaw/plugin-sdk/lobster") },
   { id: "matrix", load: () => import("openclaw/plugin-sdk/matrix") },
-  { id: "matrix-js", load: () => import("openclaw/plugin-sdk/matrix-js") },
   { id: "mattermost", load: () => import("openclaw/plugin-sdk/mattermost") },
   { id: "memory-core", load: () => import("openclaw/plugin-sdk/memory-core") },
   { id: "memory-lancedb", load: () => import("openclaw/plugin-sdk/memory-lancedb") },

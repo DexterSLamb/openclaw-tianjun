@@ -44,7 +44,7 @@ export function resolveAcpCommandThreadId(params: HandleCommandsParams): string 
 
 export function resolveAcpCommandConversationId(params: HandleCommandsParams): string | undefined {
   const channel = resolveAcpCommandChannel(params);
-  if (channel === "matrix-js") {
+  if (channel === "matrix") {
     return resolveMatrixConversationId({
       ctx: {
         MessageThreadId: params.ctx.MessageThreadId,
@@ -112,7 +112,7 @@ export function resolveAcpCommandParentConversationId(
   params: HandleCommandsParams,
 ): string | undefined {
   const channel = resolveAcpCommandChannel(params);
-  if (channel === "matrix-js") {
+  if (channel === "matrix") {
     return resolveMatrixParentConversationId({
       ctx: {
         MessageThreadId: params.ctx.MessageThreadId,
