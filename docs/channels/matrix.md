@@ -39,6 +39,30 @@ See [Plugins](/tools/plugin) for plugin behavior and install rules.
 4. Restart the gateway.
 5. Start a DM with the bot or invite it to a room.
 
+Interactive setup paths:
+
+```bash
+openclaw channels add
+openclaw configure --section channels
+```
+
+What the Matrix wizard actually asks for:
+
+- homeserver URL
+- auth method: access token or password
+- user ID only when you choose password auth
+- optional device name
+- whether to enable E2EE
+- whether to configure Matrix room access now
+
+Wizard behavior that matters:
+
+- If Matrix auth env vars already exist for the selected account, and that account does not already have auth saved in config, the wizard offers an env shortcut and only writes `enabled: true` for that account.
+- When you add another Matrix account interactively, the entered account name is normalized into the account ID used in config and env vars. For example, `Ops Bot` becomes `ops-bot`.
+- DM allowlist prompts accept full `@user:server` values immediately. Display names only work when live directory lookup finds one exact match; otherwise the wizard asks you to retry with a full Matrix ID.
+- Room allowlist prompts accept room IDs and aliases directly. They can also resolve joined-room names live, but unresolved names are only kept as typed during setup and are ignored later by runtime allowlist resolution. Prefer `!room:server` or `#alias:server`.
+- To resolve room names before saving them, use `openclaw channels resolve --channel matrix "Project Room"`.
+
 Minimal token-based setup:
 
 ```json5
@@ -95,6 +119,13 @@ Example for account `ops`:
 
 - `MATRIX_OPS_HOMESERVER`
 - `MATRIX_OPS_ACCESS_TOKEN`
+
+For normalized account ID `ops-bot`, use:
+
+- `MATRIX_OPS_BOT_HOMESERVER`
+- `MATRIX_OPS_BOT_ACCESS_TOKEN`
+
+The interactive wizard only offers the env-var shortcut when those auth env vars are already present and the selected account does not already have Matrix auth saved in config.
 
 ## Configuration example
 
@@ -334,6 +365,13 @@ Current behavior:
 
 See [Groups](/channels/groups) for mention-gating and allowlist behavior.
 
+Pairing example for Matrix DMs:
+
+```bash
+openclaw pairing list matrix
+openclaw pairing approve matrix <CODE>
+```
+
 ## Multi-account example
 
 ```json5
@@ -378,6 +416,7 @@ Live directory lookup uses the logged-in Matrix account:
 
 - User lookups query the Matrix user directory on that homeserver.
 - Room lookups accept explicit room IDs and aliases directly, then fall back to searching joined room names for that account.
+- Joined-room name lookup is best-effort. If a room name cannot be resolved to an ID or alias, it is ignored by runtime allowlist resolution.
 
 ## Configuration reference
 
@@ -394,6 +433,7 @@ Live directory lookup uses the logged-in Matrix account:
 - `allowlistOnly`: force allowlist-only behavior for DMs and rooms.
 - `groupPolicy`: `open`, `allowlist`, or `disabled`.
 - `groupAllowFrom`: allowlist of user IDs for room traffic.
+- `groupAllowFrom` entries should be full Matrix user IDs. Unresolved names are ignored at runtime.
 - `replyToMode`: `off`, `first`, or `all`.
 - `threadReplies`: `off`, `inbound`, or `always`.
 - `threadBindings`: per-channel overrides for thread-bound session routing and lifecycle.
@@ -409,7 +449,8 @@ Live directory lookup uses the logged-in Matrix account:
 - `autoJoin`: invite auto-join policy (`always`, `allowlist`, `off`).
 - `autoJoinAllowlist`: rooms/aliases allowed when `autoJoin` is `allowlist`.
 - `dm`: DM policy block (`enabled`, `policy`, `allowFrom`).
+- `dm.allowFrom` entries should be full Matrix user IDs unless you already resolved them through live directory lookup.
 - `accounts`: named per-account overrides. Top-level `channels.matrix` values act as defaults for these entries.
-- `groups`: per-room policy map.
+- `groups`: per-room policy map. Prefer room IDs or aliases; unresolved room names are ignored at runtime.
 - `rooms`: legacy alias for `groups`.
 - `actions`: per-action tool gating (`messages`, `reactions`, `pins`, `memberInfo`, `channelInfo`, `verification`).
