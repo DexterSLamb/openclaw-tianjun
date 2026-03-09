@@ -372,6 +372,10 @@ openclaw pairing list matrix
 openclaw pairing approve matrix <CODE>
 ```
 
+If an unapproved Matrix user keeps messaging you before approval, OpenClaw reuses the same pending pairing code and may send a reminder reply again after a short cooldown instead of minting a new code.
+
+See [Pairing](/channels/pairing) for the shared DM pairing flow and storage layout.
+
 ## Multi-account example
 
 ```json5
