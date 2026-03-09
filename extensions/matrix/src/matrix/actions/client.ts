@@ -15,11 +15,28 @@ export function ensureNodeRuntime() {
   }
 }
 
+async function ensureActionClientReadiness(
+  client: MatrixActionClient["client"],
+  readiness: MatrixActionClientOpts["readiness"],
+  opts: { createdForOneOff: boolean },
+): Promise<void> {
+  if (readiness === "started") {
+    await client.start();
+    return;
+  }
+  if (readiness === "prepared" || (!readiness && opts.createdForOneOff)) {
+    await client.prepareForOneOff();
+  }
+}
+
 export async function resolveActionClient(
   opts: MatrixActionClientOpts = {},
 ): Promise<MatrixActionClient> {
   ensureNodeRuntime();
   if (opts.client) {
+    await ensureActionClientReadiness(opts.client, opts.readiness, {
+      createdForOneOff: false,
+    });
     return { client: opts.client, stopOnDone: false };
   }
   const cfg = getMatrixRuntime().config.loadConfig() as CoreConfig;
@@ -29,6 +46,9 @@ export async function resolveActionClient(
   });
   const active = getActiveMatrixClient(authContext.accountId);
   if (active) {
+    await ensureActionClientReadiness(active, opts.readiness, {
+      createdForOneOff: false,
+    });
     return { client: active, stopOnDone: false };
   }
   const auth = await resolveMatrixAuth({
@@ -46,7 +66,9 @@ export async function resolveActionClient(
     accountId: auth.accountId,
     autoBootstrapCrypto: false,
   });
-  await client.prepareForOneOff();
+  await ensureActionClientReadiness(client, opts.readiness, {
+    createdForOneOff: true,
+  });
   return { client, stopOnDone: true };
 }
 

@@ -48,6 +48,7 @@ export type MatrixActionClientOpts = {
   client?: MatrixClient;
   timeoutMs?: number;
   accountId?: string | null;
+  readiness?: "none" | "prepared" | "started";
 };
 
 export type MatrixMessageSummary = {

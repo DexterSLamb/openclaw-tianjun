@@ -247,6 +247,10 @@ export class MatrixClient {
   private idbPersistTimer: ReturnType<typeof setInterval> | null = null;
 
   async start(): Promise<void> {
+    await this.startSyncSession({ bootstrapCrypto: true });
+  }
+
+  private async startSyncSession(opts: { bootstrapCrypto: boolean }): Promise<void> {
     if (this.started) {
       return;
     }
@@ -257,7 +261,7 @@ export class MatrixClient {
     await this.client.startClient({
       initialSyncLimit: this.initialSyncLimit,
     });
-    if (this.autoBootstrapCrypto) {
+    if (opts.bootstrapCrypto && this.autoBootstrapCrypto) {
       await this.bootstrapCryptoIfNeeded();
     }
     this.started = true;
@@ -279,6 +283,13 @@ export class MatrixClient {
     } catch {
       // One-off commands should continue even if crypto room prep is incomplete.
     }
+  }
+
+  private async ensureStartedForCryptoControlPlane(): Promise<void> {
+    if (this.started) {
+      return;
+    }
+    await this.startSyncSession({ bootstrapCrypto: false });
   }
 
   stop(): void {
@@ -740,6 +751,7 @@ export class MatrixClient {
       return await fail("Matrix encryption is disabled for this client");
     }
 
+    await this.ensureStartedForCryptoControlPlane();
     const crypto = this.client.getCrypto() as MatrixCryptoBootstrapApi | undefined;
     if (!crypto) {
       return await fail("Matrix crypto is not available (start client with encryption enabled)");
@@ -808,7 +820,7 @@ export class MatrixClient {
       return await fail("Matrix encryption is disabled for this client");
     }
 
-    await this.initializeCryptoIfNeeded();
+    await this.ensureStartedForCryptoControlPlane();
     const crypto = this.client.getCrypto() as MatrixCryptoBootstrapApi | undefined;
     if (!crypto) {
       return await fail("Matrix crypto is not available (start client with encryption enabled)");
@@ -925,7 +937,7 @@ export class MatrixClient {
     let bootstrapError: string | undefined;
     let bootstrapSummary: MatrixCryptoBootstrapResult | null = null;
     try {
-      await this.initializeCryptoIfNeeded();
+      await this.ensureStartedForCryptoControlPlane();
       const crypto = this.client.getCrypto() as MatrixCryptoBootstrapApi | undefined;
       if (!crypto) {
         throw new Error("Matrix crypto is not available (start client with encryption enabled)");

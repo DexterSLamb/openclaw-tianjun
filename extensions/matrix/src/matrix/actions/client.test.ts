@@ -32,6 +32,7 @@ let resolveActionClient: typeof import("./client.js").resolveActionClient;
 function createMockMatrixClient(): MatrixClient {
   return {
     prepareForOneOff: vi.fn(async () => undefined),
+    start: vi.fn(async () => undefined),
   } as unknown as MatrixClient;
 }
 
@@ -92,6 +93,30 @@ describe("resolveActionClient", () => {
     expect(result.stopOnDone).toBe(true);
   });
 
+  it("skips one-off room preparation when readiness is disabled", async () => {
+    const result = await resolveActionClient({
+      accountId: "default",
+      readiness: "none",
+    });
+
+    const oneOffClient = await createMatrixClientMock.mock.results[0]?.value;
+    expect(oneOffClient.prepareForOneOff).not.toHaveBeenCalled();
+    expect(oneOffClient.start).not.toHaveBeenCalled();
+    expect(result.stopOnDone).toBe(true);
+  });
+
+  it("starts one-off clients when started readiness is required", async () => {
+    const result = await resolveActionClient({
+      accountId: "default",
+      readiness: "started",
+    });
+
+    const oneOffClient = await createMatrixClientMock.mock.results[0]?.value;
+    expect(oneOffClient.start).toHaveBeenCalledTimes(1);
+    expect(oneOffClient.prepareForOneOff).not.toHaveBeenCalled();
+    expect(result.stopOnDone).toBe(true);
+  });
+
   it("reuses active monitor client when available", async () => {
     const activeClient = createMockMatrixClient();
     getActiveMatrixClientMock.mockReturnValue(activeClient);
@@ -101,6 +126,20 @@ describe("resolveActionClient", () => {
     expect(result).toEqual({ client: activeClient, stopOnDone: false });
     expect(resolveMatrixAuthMock).not.toHaveBeenCalled();
     expect(createMatrixClientMock).not.toHaveBeenCalled();
+  });
+
+  it("starts active clients when started readiness is required", async () => {
+    const activeClient = createMockMatrixClient();
+    getActiveMatrixClientMock.mockReturnValue(activeClient);
+
+    const result = await resolveActionClient({
+      accountId: "default",
+      readiness: "started",
+    });
+
+    expect(result).toEqual({ client: activeClient, stopOnDone: false });
+    expect(activeClient.start).toHaveBeenCalledTimes(1);
+    expect(activeClient.prepareForOneOff).not.toHaveBeenCalled();
   });
 
   it("uses the implicit resolved account id for active client lookup and storage", async () => {

@@ -14,7 +14,7 @@ import {
   restoreMatrixRoomKeyBackup,
   verifyMatrixRecoveryKey,
 } from "./matrix/actions/verification.js";
-import { setMatrixSdkLogMode } from "./matrix/client/logging.js";
+import { setMatrixSdkConsoleLogging, setMatrixSdkLogMode } from "./matrix/client/logging.js";
 import { resolveMatrixConfigPath, updateMatrixAccountConfig } from "./matrix/config-update.js";
 import { applyMatrixProfileUpdate, type MatrixProfileUpdateResult } from "./profile-update.js";
 import { getMatrixRuntime } from "./runtime.js";
@@ -69,6 +69,7 @@ function printAccountLabel(accountId?: string): void {
 
 function configureCliLogMode(verbose: boolean): void {
   setMatrixSdkLogMode(verbose ? "default" : "quiet");
+  setMatrixSdkConsoleLogging(verbose);
 }
 
 function parseOptionalInt(value: string | undefined, fieldName: string): number | undefined {

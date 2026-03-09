@@ -1068,13 +1068,13 @@ describe("MatrixClient crypto bootstrapping", () => {
       encryption: true,
       recoveryKeyPath: path.join(recoveryDir, "recovery-key.json"),
     });
-    await client.start();
 
     const result = await client.verifyWithRecoveryKey(encoded as string);
     expect(result.success).toBe(true);
     expect(result.verified).toBe(true);
     expect(result.recoveryKeyStored).toBe(true);
     expect(result.deviceId).toBe("DEVICE123");
+    expect(matrixJsClient.startClient).toHaveBeenCalledTimes(1);
     expect(bootstrapSecretStorage).toHaveBeenCalled();
     expect(bootstrapCrossSigning).toHaveBeenCalled();
   });
@@ -1265,6 +1265,7 @@ describe("MatrixClient crypto bootstrapping", () => {
     expect(result.imported).toBe(4);
     expect(result.total).toBe(10);
     expect(result.loadedFromSecretStorage).toBe(true);
+    expect(matrixJsClient.startClient).toHaveBeenCalledTimes(1);
     expect(loadSessionBackupPrivateKeyFromSecretStorage).toHaveBeenCalledTimes(1);
     expect(restoreKeyBackup).toHaveBeenCalledTimes(1);
   });
@@ -1330,6 +1331,7 @@ describe("MatrixClient crypto bootstrapping", () => {
     expect(result.error).toContain(
       "Cross-signing bootstrap finished but server keys are still not published",
     );
+    expect(matrixJsClient.startClient).toHaveBeenCalledTimes(1);
   });
 
   it("reports bootstrap success when own device is verified and keys are published", async () => {

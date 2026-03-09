@@ -12,6 +12,7 @@ const matrixSetupValidateInputMock = vi.fn();
 const matrixRuntimeLoadConfigMock = vi.fn();
 const matrixRuntimeWriteConfigFileMock = vi.fn();
 const restoreMatrixRoomKeyBackupMock = vi.fn();
+const setMatrixSdkConsoleLoggingMock = vi.fn();
 const setMatrixSdkLogModeMock = vi.fn();
 const updateMatrixOwnProfileMock = vi.fn();
 const verifyMatrixRecoveryKeyMock = vi.fn();
@@ -25,6 +26,7 @@ vi.mock("./matrix/actions/verification.js", () => ({
 }));
 
 vi.mock("./matrix/client/logging.js", () => ({
+  setMatrixSdkConsoleLogging: (...args: unknown[]) => setMatrixSdkConsoleLoggingMock(...args),
   setMatrixSdkLogMode: (...args: unknown[]) => setMatrixSdkLogModeMock(...args),
 }));
 

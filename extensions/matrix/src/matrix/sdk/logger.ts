@@ -14,7 +14,16 @@ export function noop(): void {
   // no-op
 }
 
+let forceConsoleLogging = false;
+
+export function setMatrixConsoleLogging(enabled: boolean): void {
+  forceConsoleLogging = enabled;
+}
+
 function resolveRuntimeLogger(module: string): RuntimeLogger | null {
+  if (forceConsoleLogging) {
+    return null;
+  }
   try {
     return getMatrixRuntime().logging.getChildLogger({ module: `matrix:${module}` });
   } catch {
