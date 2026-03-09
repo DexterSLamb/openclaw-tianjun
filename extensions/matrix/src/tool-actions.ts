@@ -7,6 +7,7 @@ import {
   readStringArrayParam,
   readStringParam,
 } from "openclaw/plugin-sdk/matrix";
+import { resolveMatrixAccountConfig } from "./matrix/accounts.js";
 import {
   bootstrapMatrixVerification,
   acceptMatrixVerification,
@@ -131,7 +132,7 @@ export async function handleMatrixAction(
 ): Promise<AgentToolResult<unknown>> {
   const action = readStringParam(params, "action", { required: true });
   const accountId = readStringParam(params, "accountId") ?? undefined;
-  const isActionEnabled = createActionGate(cfg.channels?.["matrix"]?.actions);
+  const isActionEnabled = createActionGate(resolveMatrixAccountConfig({ cfg, accountId }).actions);
   const clientOpts = accountId ? { accountId } : {};
 
   if (reactionActions.has(action)) {

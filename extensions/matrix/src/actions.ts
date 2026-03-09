@@ -7,7 +7,7 @@ import {
   type ChannelMessageActionName,
   type ChannelToolSend,
 } from "openclaw/plugin-sdk/matrix";
-import { resolveMatrixAccount } from "./matrix/accounts.js";
+import { resolveDefaultMatrixAccountId, resolveMatrixAccount } from "./matrix/accounts.js";
 import { handleMatrixAction } from "./tool-actions.js";
 import type { CoreConfig } from "./types.js";
 
@@ -28,44 +28,56 @@ const MATRIX_PLUGIN_HANDLED_ACTIONS = new Set<ChannelMessageActionName>([
   "permissions",
 ]);
 
-function createMatrixExposedActions() {
-  return new Set<ChannelMessageActionName>(["poll", ...MATRIX_PLUGIN_HANDLED_ACTIONS]);
+function createMatrixExposedActions(params: {
+  gate: ReturnType<typeof createActionGate>;
+  encryptionEnabled: boolean;
+}) {
+  const actions = new Set<ChannelMessageActionName>(["poll", "poll-vote"]);
+  if (params.gate("messages")) {
+    actions.add("send");
+    actions.add("read");
+    actions.add("edit");
+    actions.add("delete");
+  }
+  if (params.gate("reactions")) {
+    actions.add("react");
+    actions.add("reactions");
+  }
+  if (params.gate("pins")) {
+    actions.add("pin");
+    actions.add("unpin");
+    actions.add("list-pins");
+  }
+  if (params.gate("profile")) {
+    actions.add("set-profile");
+  }
+  if (params.gate("memberInfo")) {
+    actions.add("member-info");
+  }
+  if (params.gate("channelInfo")) {
+    actions.add("channel-info");
+  }
+  if (params.encryptionEnabled && params.gate("verification")) {
+    actions.add("permissions");
+  }
+  return actions;
 }
 
 export const matrixMessageActions: ChannelMessageActionAdapter = {
   listActions: ({ cfg }) => {
-    const account = resolveMatrixAccount({ cfg: cfg as CoreConfig });
+    const resolvedCfg = cfg as CoreConfig;
+    const account = resolveMatrixAccount({
+      cfg: resolvedCfg,
+      accountId: resolveDefaultMatrixAccountId(resolvedCfg),
+    });
     if (!account.enabled || !account.configured) {
       return [];
     }
-    const gate = createActionGate((cfg as CoreConfig).channels?.["matrix"]?.actions);
-    const actions = createMatrixExposedActions();
-    if (gate("reactions")) {
-      actions.add("react");
-      actions.add("reactions");
-    }
-    if (gate("messages")) {
-      actions.add("read");
-      actions.add("edit");
-      actions.add("delete");
-    }
-    if (gate("pins")) {
-      actions.add("pin");
-      actions.add("unpin");
-      actions.add("list-pins");
-    }
-    if (gate("profile")) {
-      actions.add("set-profile");
-    }
-    if (gate("memberInfo")) {
-      actions.add("member-info");
-    }
-    if (gate("channelInfo")) {
-      actions.add("channel-info");
-    }
-    if (account.config.encryption === true && gate("verification")) {
-      actions.add("permissions");
-    }
+    const gate = createActionGate(account.config.actions);
+    const actions = createMatrixExposedActions({
+      gate,
+      encryptionEnabled: account.config.encryption === true,
+    });
     return Array.from(actions);
   },
   supportsAction: ({ action }) => MATRIX_PLUGIN_HANDLED_ACTIONS.has(action),

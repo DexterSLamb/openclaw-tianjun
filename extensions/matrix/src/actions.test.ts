@@ -78,4 +78,44 @@ describe("matrixMessageActions", () => {
     expect(actions).toContain("set-profile");
     expect(supportsAction!({ action: "set-profile" } as never)).toBe(true);
   });
+
+  it("hides gated actions when the default Matrix account disables them", () => {
+    const actions = matrixMessageActions.listActions!({
+      cfg: {
+        channels: {
+          matrix: {
+            defaultAccount: "assistant",
+            actions: {
+              messages: true,
+              reactions: true,
+              pins: true,
+              profile: true,
+              memberInfo: true,
+              channelInfo: true,
+              verification: true,
+            },
+            accounts: {
+              assistant: {
+                homeserver: "https://matrix.example.org",
+                userId: "@bot:example.org",
+                accessToken: "token",
+                encryption: true,
+                actions: {
+                  messages: false,
+                  reactions: false,
+                  pins: false,
+                  profile: false,
+                  memberInfo: false,
+                  channelInfo: false,
+                  verification: false,
+                },
+              },
+            },
+          },
+        },
+      } as CoreConfig,
+    } as never);
+
+    expect(actions).toEqual(["poll", "poll-vote"]);
+  });
 });

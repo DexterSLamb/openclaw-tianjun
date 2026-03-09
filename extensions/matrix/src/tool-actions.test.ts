@@ -281,4 +281,33 @@ describe("handleMatrixAction pollVote", () => {
       avatarPath: "/tmp/avatar.jpg",
     });
   });
+
+  it("respects account-scoped action overrides when gating direct tool actions", async () => {
+    await expect(
+      handleMatrixAction(
+        {
+          action: "sendMessage",
+          accountId: "ops",
+          to: "room:!room:example",
+          content: "hello",
+        },
+        {
+          channels: {
+            matrix: {
+              actions: {
+                messages: true,
+              },
+              accounts: {
+                ops: {
+                  actions: {
+                    messages: false,
+                  },
+                },
+              },
+            },
+          },
+        } as CoreConfig,
+      ),
+    ).rejects.toThrow("Matrix messages are disabled.");
+  });
 });
