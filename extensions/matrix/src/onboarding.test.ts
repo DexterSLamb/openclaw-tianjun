@@ -160,4 +160,107 @@ describe("matrix onboarding", () => {
     expect(noteText).toContain("MATRIX_<ACCOUNT_ID>_DEVICE_ID");
     expect(noteText).toContain("MATRIX_<ACCOUNT_ID>_DEVICE_NAME");
   });
+
+  it("writes allowlists and room access to the selected Matrix account", async () => {
+    setMatrixRuntime({
+      state: {
+        resolveStateDir: (_env: NodeJS.ProcessEnv, homeDir?: () => string) =>
+          (homeDir ?? (() => "/tmp"))(),
+      },
+      config: {
+        loadConfig: () => ({}),
+      },
+    } as never);
+
+    const prompter = {
+      note: vi.fn(async () => {}),
+      select: vi.fn(async ({ message }: { message: string }) => {
+        if (message === "Matrix already configured. What do you want to do?") {
+          return "add-account";
+        }
+        if (message === "Matrix auth method") {
+          return "token";
+        }
+        if (message === "Matrix rooms access") {
+          return "allowlist";
+        }
+        throw new Error(`unexpected select prompt: ${message}`);
+      }),
+      text: vi.fn(async ({ message }: { message: string }) => {
+        if (message === "Matrix account name") {
+          return "ops";
+        }
+        if (message === "Matrix homeserver URL") {
+          return "https://matrix.ops.example.org";
+        }
+        if (message === "Matrix access token") {
+          return "ops-token";
+        }
+        if (message === "Matrix device name (optional)") {
+          return "Ops Gateway";
+        }
+        if (message === "Matrix allowFrom (full @user:server; display name only if unique)") {
+          return "@alice:example.org";
+        }
+        if (message === "Matrix rooms allowlist (comma-separated)") {
+          return "!ops-room:example.org";
+        }
+        throw new Error(`unexpected text prompt: ${message}`);
+      }),
+      confirm: vi.fn(async ({ message }: { message: string }) => {
+        if (message === "Enable end-to-end encryption (E2EE)?") {
+          return false;
+        }
+        if (message === "Configure Matrix rooms access?") {
+          return true;
+        }
+        return false;
+      }),
+    } as unknown as WizardPrompter;
+
+    const result = await matrixOnboardingAdapter.configureInteractive!({
+      cfg: {
+        channels: {
+          matrix: {
+            accounts: {
+              default: {
+                homeserver: "https://matrix.main.example.org",
+                accessToken: "main-token",
+              },
+            },
+          },
+        },
+      } as CoreConfig,
+      runtime: { log: vi.fn(), error: vi.fn(), exit: vi.fn() } as unknown as RuntimeEnv,
+      prompter,
+      options: undefined,
+      accountOverrides: {},
+      shouldPromptAccountIds: true,
+      forceAllowFrom: true,
+      configured: true,
+      label: "Matrix",
+    });
+
+    expect(result).not.toBe("skip");
+    if (result === "skip") {
+      return;
+    }
+
+    expect(result.accountId).toBe("ops");
+    expect(result.cfg.channels?.["matrix"]?.accounts?.ops).toMatchObject({
+      homeserver: "https://matrix.ops.example.org",
+      accessToken: "ops-token",
+      deviceName: "Ops Gateway",
+      dm: {
+        policy: "allowlist",
+        allowFrom: ["@alice:example.org"],
+      },
+      groupPolicy: "allowlist",
+      groups: {
+        "!ops-room:example.org": { allow: true },
+      },
+    });
+    expect(result.cfg.channels?.["matrix"]?.dm).toBeUndefined();
+    expect(result.cfg.channels?.["matrix"]?.groups).toBeUndefined();
+  });
 });

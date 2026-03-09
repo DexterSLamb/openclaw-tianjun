@@ -13,6 +13,11 @@ export type MatrixAccountPatch = {
   avatarUrl?: string | null;
   encryption?: boolean | null;
   initialSyncLimit?: number | null;
+  dm?: MatrixConfig["dm"] | null;
+  groupPolicy?: MatrixConfig["groupPolicy"] | null;
+  groupAllowFrom?: MatrixConfig["groupAllowFrom"] | null;
+  groups?: MatrixConfig["groups"] | null;
+  rooms?: MatrixConfig["rooms"] | null;
 };
 
 function applyNullableStringField(
@@ -33,6 +38,42 @@ function applyNullableStringField(
     return;
   }
   target[key] = trimmed;
+}
+
+function cloneMatrixDmConfig(dm: MatrixConfig["dm"]): MatrixConfig["dm"] {
+  if (!dm) {
+    return dm;
+  }
+  return {
+    ...dm,
+    ...(dm.allowFrom ? { allowFrom: [...dm.allowFrom] } : {}),
+  };
+}
+
+function cloneMatrixRoomMap(
+  rooms: MatrixConfig["groups"] | MatrixConfig["rooms"],
+): MatrixConfig["groups"] | MatrixConfig["rooms"] {
+  if (!rooms) {
+    return rooms;
+  }
+  return Object.fromEntries(
+    Object.entries(rooms).map(([roomId, roomCfg]) => [roomId, roomCfg ? { ...roomCfg } : roomCfg]),
+  );
+}
+
+function applyNullableArrayField(
+  target: Record<string, unknown>,
+  key: keyof MatrixAccountPatch,
+  value: Array<string | number> | null | undefined,
+): void {
+  if (value === undefined) {
+    return;
+  }
+  if (value === null) {
+    delete target[key];
+    return;
+  }
+  target[key] = [...value];
 }
 
 export function shouldStoreMatrixAccountAtTopLevel(cfg: CoreConfig, accountId: string): boolean {
@@ -101,6 +142,38 @@ export function updateMatrixAccountConfig(
       delete nextAccount.encryption;
     } else {
       nextAccount.encryption = patch.encryption;
+    }
+  }
+  if (patch.dm !== undefined) {
+    if (patch.dm === null) {
+      delete nextAccount.dm;
+    } else {
+      nextAccount.dm = cloneMatrixDmConfig({
+        ...((nextAccount.dm as MatrixConfig["dm"] | undefined) ?? {}),
+        ...patch.dm,
+      });
+    }
+  }
+  if (patch.groupPolicy !== undefined) {
+    if (patch.groupPolicy === null) {
+      delete nextAccount.groupPolicy;
+    } else {
+      nextAccount.groupPolicy = patch.groupPolicy;
+    }
+  }
+  applyNullableArrayField(nextAccount, "groupAllowFrom", patch.groupAllowFrom);
+  if (patch.groups !== undefined) {
+    if (patch.groups === null) {
+      delete nextAccount.groups;
+    } else {
+      nextAccount.groups = cloneMatrixRoomMap(patch.groups);
+    }
+  }
+  if (patch.rooms !== undefined) {
+    if (patch.rooms === null) {
+      delete nextAccount.rooms;
+    } else {
+      nextAccount.rooms = cloneMatrixRoomMap(patch.rooms);
     }
   }
 

@@ -47,4 +47,58 @@ describe("updateMatrixAccountConfig", () => {
       enabled: true,
     });
   });
+
+  it("updates nested access config for named accounts without touching top-level defaults", () => {
+    const cfg = {
+      channels: {
+        matrix: {
+          dm: {
+            policy: "pairing",
+          },
+          groups: {
+            "!default:example.org": { allow: true },
+          },
+          accounts: {
+            ops: {
+              homeserver: "https://matrix.ops.example.org",
+              accessToken: "ops-token",
+              dm: {
+                enabled: true,
+                policy: "pairing",
+              },
+            },
+          },
+        },
+      },
+    } as CoreConfig;
+
+    const updated = updateMatrixAccountConfig(cfg, "ops", {
+      dm: {
+        policy: "allowlist",
+        allowFrom: ["@alice:example.org"],
+      },
+      groupPolicy: "allowlist",
+      groups: {
+        "!ops-room:example.org": { allow: true },
+      },
+      rooms: null,
+    });
+
+    expect(updated.channels?.["matrix"]?.dm?.policy).toBe("pairing");
+    expect(updated.channels?.["matrix"]?.groups).toEqual({
+      "!default:example.org": { allow: true },
+    });
+    expect(updated.channels?.["matrix"]?.accounts?.ops).toMatchObject({
+      dm: {
+        enabled: true,
+        policy: "allowlist",
+        allowFrom: ["@alice:example.org"],
+      },
+      groupPolicy: "allowlist",
+      groups: {
+        "!ops-room:example.org": { allow: true },
+      },
+    });
+    expect(updated.channels?.["matrix"]?.accounts?.ops?.rooms).toBeUndefined();
+  });
 });

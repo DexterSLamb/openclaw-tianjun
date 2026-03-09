@@ -246,6 +246,7 @@ async function maybeConfigureDmPolicies(params: {
 
   let cfg = params.cfg;
   const selectPolicy = async (policy: ChannelOnboardingDmPolicy) => {
+    const accountId = accountIdsByChannel?.get(policy.channel);
     await prompter.note(
       [
         "Default: pairing (unknown DMs get a pairing code).",
@@ -259,28 +260,31 @@ async function maybeConfigureDmPolicies(params: {
       ].join("\n"),
       `${policy.label} DM access`,
     );
-    return (await prompter.select({
-      message: `${policy.label} DM policy`,
-      options: [
-        { value: "pairing", label: "Pairing (recommended)" },
-        { value: "allowlist", label: "Allowlist (specific users only)" },
-        { value: "open", label: "Open (public inbound DMs)" },
-        { value: "disabled", label: "Disabled (ignore DMs)" },
-      ],
-    })) as DmPolicy;
+    return {
+      accountId,
+      nextPolicy: (await prompter.select({
+        message: `${policy.label} DM policy`,
+        options: [
+          { value: "pairing", label: "Pairing (recommended)" },
+          { value: "allowlist", label: "Allowlist (specific users only)" },
+          { value: "open", label: "Open (public inbound DMs)" },
+          { value: "disabled", label: "Disabled (ignore DMs)" },
+        ],
+      })) as DmPolicy,
+    };
   };
 
   for (const policy of dmPolicies) {
-    const current = policy.getCurrent(cfg);
-    const nextPolicy = await selectPolicy(policy);
+    const { accountId, nextPolicy } = await selectPolicy(policy);
+    const current = policy.getCurrent(cfg, accountId);
     if (nextPolicy !== current) {
-      cfg = policy.setPolicy(cfg, nextPolicy);
+      cfg = policy.setPolicy(cfg, nextPolicy, accountId);
     }
     if (nextPolicy === "allowlist" && policy.promptAllowFrom) {
       cfg = await policy.promptAllowFrom({
         cfg,
         prompter,
-        accountId: accountIdsByChannel?.get(policy.channel),
+        accountId,
       });
     }
   }

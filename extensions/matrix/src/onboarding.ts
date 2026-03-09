@@ -31,23 +31,26 @@ import type { CoreConfig } from "./types.js";
 
 const channel = "matrix" as const;
 
-function setMatrixDmPolicy(cfg: CoreConfig, policy: DmPolicy) {
-  const allowFrom =
-    policy === "open" ? addWildcardAllowFrom(cfg.channels?.["matrix"]?.dm?.allowFrom) : undefined;
-  return {
-    ...cfg,
-    channels: {
-      ...cfg.channels,
-      matrix: {
-        ...cfg.channels?.["matrix"],
-        dm: {
-          ...cfg.channels?.["matrix"]?.dm,
-          policy,
-          ...(allowFrom ? { allowFrom } : {}),
-        },
-      },
+function resolveMatrixOnboardingAccountId(cfg: CoreConfig, accountId?: string): string {
+  return normalizeAccountId(
+    accountId?.trim() || resolveDefaultMatrixAccountId(cfg) || DEFAULT_ACCOUNT_ID,
+  );
+}
+
+function setMatrixDmPolicy(cfg: CoreConfig, policy: DmPolicy, accountId?: string) {
+  const resolvedAccountId = resolveMatrixOnboardingAccountId(cfg, accountId);
+  const existing = resolveMatrixAccountConfig({
+    cfg,
+    accountId: resolvedAccountId,
+  });
+  const allowFrom = policy === "open" ? addWildcardAllowFrom(existing.dm?.allowFrom) : undefined;
+  return updateMatrixAccountConfig(cfg, resolvedAccountId, {
+    dm: {
+      ...existing.dm,
+      policy,
+      ...(allowFrom ? { allowFrom } : {}),
     },
-  };
+  });
 }
 
 async function noteMatrixAuthHelp(prompter: WizardPrompter): Promise<void> {
@@ -70,8 +73,10 @@ async function promptMatrixAllowFrom(params: {
   accountId?: string;
 }): Promise<CoreConfig> {
   const { cfg, prompter } = params;
-  const existingAllowFrom = cfg.channels?.["matrix"]?.dm?.allowFrom ?? [];
-  const account = resolveMatrixAccount({ cfg });
+  const accountId = resolveMatrixOnboardingAccountId(cfg, params.accountId);
+  const existingConfig = resolveMatrixAccountConfig({ cfg, accountId });
+  const existingAllowFrom = existingConfig.dm?.allowFrom ?? [];
+  const account = resolveMatrixAccount({ cfg, accountId });
   const canResolve = Boolean(account.configured);
 
   const parseInput = (raw: string) =>
@@ -137,51 +142,32 @@ async function promptMatrixAllowFrom(params: {
     }
 
     const unique = mergeAllowFromEntries(existingAllowFrom, resolvedIds);
-    return {
-      ...cfg,
-      channels: {
-        ...cfg.channels,
-        matrix: {
-          ...cfg.channels?.["matrix"],
-          enabled: true,
-          dm: {
-            ...cfg.channels?.["matrix"]?.dm,
-            policy: "allowlist",
-            allowFrom: unique,
-          },
-        },
+    return updateMatrixAccountConfig(cfg, accountId, {
+      dm: {
+        ...existingConfig.dm,
+        policy: "allowlist",
+        allowFrom: unique,
       },
-    };
+    });
   }
 }
 
-function setMatrixGroupPolicy(cfg: CoreConfig, groupPolicy: "open" | "allowlist" | "disabled") {
-  return {
-    ...cfg,
-    channels: {
-      ...cfg.channels,
-      matrix: {
-        ...cfg.channels?.["matrix"],
-        enabled: true,
-        groupPolicy,
-      },
-    },
-  };
+function setMatrixGroupPolicy(
+  cfg: CoreConfig,
+  groupPolicy: "open" | "allowlist" | "disabled",
+  accountId?: string,
+) {
+  return updateMatrixAccountConfig(cfg, resolveMatrixOnboardingAccountId(cfg, accountId), {
+    groupPolicy,
+  });
 }
 
-function setMatrixGroupRooms(cfg: CoreConfig, roomKeys: string[]) {
+function setMatrixGroupRooms(cfg: CoreConfig, roomKeys: string[], accountId?: string) {
   const groups = Object.fromEntries(roomKeys.map((key) => [key, { allow: true }]));
-  return {
-    ...cfg,
-    channels: {
-      ...cfg.channels,
-      matrix: {
-        ...cfg.channels?.["matrix"],
-        enabled: true,
-        groups,
-      },
-    },
-  };
+  return updateMatrixAccountConfig(cfg, resolveMatrixOnboardingAccountId(cfg, accountId), {
+    groups,
+    rooms: null,
+  });
 }
 
 const dmPolicy: ChannelOnboardingDmPolicy = {
@@ -189,8 +175,12 @@ const dmPolicy: ChannelOnboardingDmPolicy = {
   channel,
   policyKey: "channels.matrix.dm.policy",
   allowFromKey: "channels.matrix.dm.allowFrom",
-  getCurrent: (cfg) => (cfg as CoreConfig).channels?.["matrix"]?.dm?.policy ?? "pairing",
-  setPolicy: (cfg, policy) => setMatrixDmPolicy(cfg as CoreConfig, policy),
+  getCurrent: (cfg, accountId) =>
+    resolveMatrixAccountConfig({
+      cfg: cfg as CoreConfig,
+      accountId: resolveMatrixOnboardingAccountId(cfg as CoreConfig, accountId),
+    }).dm?.policy ?? "pairing",
+  setPolicy: (cfg, policy, accountId) => setMatrixDmPolicy(cfg as CoreConfig, policy, accountId),
   promptAllowFrom: promptMatrixAllowFrom,
 };
 
@@ -291,7 +281,11 @@ async function runMatrixConfigure(params: {
     if (useEnv) {
       next = updateMatrixAccountConfig(next, accountId, { enabled: true });
       if (params.forceAllowFrom) {
-        next = await promptMatrixAllowFrom({ cfg: next, prompter: params.prompter });
+        next = await promptMatrixAllowFrom({
+          cfg: next,
+          prompter: params.prompter,
+          accountId,
+        });
       }
       return { cfg: next, accountId };
     }
@@ -399,21 +393,26 @@ async function runMatrixConfigure(params: {
   });
 
   if (params.forceAllowFrom) {
-    next = await promptMatrixAllowFrom({ cfg: next, prompter: params.prompter });
+    next = await promptMatrixAllowFrom({
+      cfg: next,
+      prompter: params.prompter,
+      accountId,
+    });
   }
 
-  const existingGroups = next.channels?.["matrix"]?.groups ?? next.channels?.["matrix"]?.rooms;
+  const existingAccountConfig = resolveMatrixAccountConfig({ cfg: next, accountId });
+  const existingGroups = existingAccountConfig.groups ?? existingAccountConfig.rooms;
   const accessConfig = await promptChannelAccessConfig({
     prompter: params.prompter,
     label: "Matrix rooms",
-    currentPolicy: next.channels?.["matrix"]?.groupPolicy ?? "allowlist",
+    currentPolicy: existingAccountConfig.groupPolicy ?? "allowlist",
     currentEntries: Object.keys(existingGroups ?? {}),
     placeholder: "!roomId:server, #alias:server, Project Room",
     updatePrompt: Boolean(existingGroups),
   });
   if (accessConfig) {
     if (accessConfig.policy !== "allowlist") {
-      next = setMatrixGroupPolicy(next, accessConfig.policy);
+      next = setMatrixGroupPolicy(next, accessConfig.policy, accountId);
     } else {
       let roomKeys = accessConfig.entries;
       if (accessConfig.entries.length > 0) {
@@ -432,6 +431,7 @@ async function runMatrixConfigure(params: {
             }
             const matches = await listMatrixDirectoryGroupsLive({
               cfg: next,
+              accountId,
               query: trimmed,
               limit: 10,
             });
@@ -466,8 +466,8 @@ async function runMatrixConfigure(params: {
           );
         }
       }
-      next = setMatrixGroupPolicy(next, "allowlist");
-      next = setMatrixGroupRooms(next, roomKeys);
+      next = setMatrixGroupPolicy(next, "allowlist", accountId);
+      next = setMatrixGroupRooms(next, roomKeys, accountId);
     }
   }
 
