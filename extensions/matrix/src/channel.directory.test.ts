@@ -1,6 +1,7 @@
 import type { PluginRuntime, RuntimeEnv } from "openclaw/plugin-sdk/matrix";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { matrixPlugin } from "./channel.js";
+import { resolveMatrixAccount } from "./matrix/accounts.js";
 import { resolveMatrixConfigForAccount } from "./matrix/client/config.js";
 import { setMatrixRuntime } from "./runtime.js";
 import type { CoreConfig } from "./types.js";
@@ -204,6 +205,66 @@ describe("matrix directory", () => {
         groupId: "!room:example.org",
       }),
     ).toBe(false);
+  });
+
+  it("reports room access warnings against the active Matrix config path", () => {
+    expect(
+      matrixPlugin.security?.collectWarnings?.({
+        cfg: {
+          channels: {
+            matrix: {
+              groupPolicy: "open",
+            },
+          },
+        } as CoreConfig,
+        account: resolveMatrixAccount({
+          cfg: {
+            channels: {
+              matrix: {
+                groupPolicy: "open",
+              },
+            },
+          } as CoreConfig,
+          accountId: "default",
+        }),
+      }),
+    ).toEqual([
+      '- Matrix rooms: groupPolicy="open" allows any room to trigger (mention-gated). Set channels.matrix.groupPolicy="allowlist" + channels.matrix.groups (and optionally channels.matrix.groupAllowFrom) to restrict rooms.',
+    ]);
+
+    expect(
+      matrixPlugin.security?.collectWarnings?.({
+        cfg: {
+          channels: {
+            matrix: {
+              defaultAccount: "assistant",
+              accounts: {
+                assistant: {
+                  groupPolicy: "open",
+                },
+              },
+            },
+          },
+        } as CoreConfig,
+        account: resolveMatrixAccount({
+          cfg: {
+            channels: {
+              matrix: {
+                defaultAccount: "assistant",
+                accounts: {
+                  assistant: {
+                    groupPolicy: "open",
+                  },
+                },
+              },
+            },
+          } as CoreConfig,
+          accountId: "assistant",
+        }),
+      }),
+    ).toEqual([
+      '- Matrix rooms: groupPolicy="open" allows any room to trigger (mention-gated). Set channels.matrix.accounts.assistant.groupPolicy="allowlist" + channels.matrix.accounts.assistant.groups (and optionally channels.matrix.accounts.assistant.groupAllowFrom) to restrict rooms.',
+    ]);
   });
 
   it("writes matrix non-default account credentials under channels.matrix.accounts", () => {

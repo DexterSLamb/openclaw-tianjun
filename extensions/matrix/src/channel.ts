@@ -157,8 +157,9 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
       if (groupPolicy !== "open") {
         return [];
       }
+      const configPath = resolveMatrixConfigPath(cfg as CoreConfig, account.accountId);
       return [
-        '- Matrix rooms: groupPolicy="open" allows any room to trigger (mention-gated). Set channels.matrix.groupPolicy="allowlist" + channels.matrix.groups (and optionally channels.matrix.groupAllowFrom) to restrict rooms.',
+        `- Matrix rooms: groupPolicy="open" allows any room to trigger (mention-gated). Set ${configPath}.groupPolicy="allowlist" + ${configPath}.groups (and optionally ${configPath}.groupAllowFrom) to restrict rooms.`,
       ];
     },
   },
