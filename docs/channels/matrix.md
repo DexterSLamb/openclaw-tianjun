@@ -362,6 +362,19 @@ See [Groups](/channels/groups) for mention-gating and allowlist behavior.
 }
 ```
 
+## Target resolution
+
+Matrix accepts these target forms anywhere OpenClaw asks you for a room or user target:
+
+- Users: `@user:server`, `user:@user:server`, or `matrix:user:@user:server`
+- Rooms: `!room:server`, `room:!room:server`, or `matrix:room:!room:server`
+- Aliases: `#alias:server`, `channel:#alias:server`, or `matrix:channel:#alias:server`
+
+Live directory lookup uses the logged-in Matrix account:
+
+- User lookups query the Matrix user directory on that homeserver.
+- Room lookups accept explicit room IDs and aliases directly, then fall back to searching joined room names for that account.
+
 ## Configuration reference
 
 - `enabled`: enable or disable the channel.
