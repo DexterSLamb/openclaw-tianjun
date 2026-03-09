@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { CoreConfig } from "../../types.js";
 import type { MatrixAuth } from "../client.js";
 import type { MatrixClient } from "../sdk.js";
 import { registerMatrixMonitorEvents } from "./events.js";
@@ -14,6 +15,8 @@ function getSentNoticeBody(sendMessage: ReturnType<typeof vi.fn>, index = 0): st
 }
 
 function createHarness(params?: {
+  cfg?: CoreConfig;
+  accountId?: string;
   authEncryption?: boolean;
   cryptoAvailable?: boolean;
   verifications?: Array<{
@@ -50,9 +53,10 @@ function createHarness(params?: {
   } as unknown as MatrixClient;
 
   registerMatrixMonitorEvents({
+    cfg: params?.cfg ?? { channels: { matrix: {} } },
     client,
     auth: {
-      accountId: "default",
+      accountId: params?.accountId ?? "default",
       encryption: params?.authEncryption ?? true,
     } as MatrixAuth,
     logVerboseMessage: vi.fn(),
@@ -264,6 +268,35 @@ describe("registerMatrixMonitorEvents verification routing", () => {
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(
       "matrix: encrypted event received without encryption enabled; set channels.matrix.encryption=true and verify the device to decrypt",
+      { roomId: "!room:example.org" },
+    );
+  });
+
+  it("uses the active Matrix account path in encrypted-event warnings", () => {
+    const { logger, roomEventListener } = createHarness({
+      accountId: "ops",
+      authEncryption: false,
+      cfg: {
+        channels: {
+          matrix: {
+            accounts: {
+              ops: {},
+            },
+          },
+        },
+      },
+    });
+
+    roomEventListener("!room:example.org", {
+      event_id: "$enc1",
+      sender: "@alice:example.org",
+      type: EventType.RoomMessageEncrypted,
+      origin_server_ts: Date.now(),
+      content: {},
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      "matrix: encrypted event received without encryption enabled; set channels.matrix.accounts.ops.encryption=true and verify the device to decrypt",
       { roomId: "!room:example.org" },
     );
   });

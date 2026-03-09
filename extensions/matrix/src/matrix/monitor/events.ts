@@ -1,11 +1,14 @@
 import type { PluginRuntime, RuntimeLogger } from "openclaw/plugin-sdk/matrix";
+import type { CoreConfig } from "../../types.js";
 import type { MatrixAuth } from "../client.js";
+import { formatMatrixEncryptedEventDisabledWarning } from "../encryption-guidance.js";
 import type { MatrixClient } from "../sdk.js";
 import type { MatrixRawEvent } from "./types.js";
 import { EventType } from "./types.js";
 import { createMatrixVerificationEventRouter } from "./verification-events.js";
 
 export function registerMatrixMonitorEvents(params: {
+  cfg: CoreConfig;
   client: MatrixClient;
   auth: MatrixAuth;
   logVerboseMessage: (message: string) => void;
@@ -16,6 +19,7 @@ export function registerMatrixMonitorEvents(params: {
   onRoomMessage: (roomId: string, event: MatrixRawEvent) => void | Promise<void>;
 }): void {
   const {
+    cfg,
     client,
     auth,
     logVerboseMessage,
@@ -85,8 +89,7 @@ export function registerMatrixMonitorEvents(params: {
       );
       if (auth.encryption !== true && !warnedEncryptedRooms.has(roomId)) {
         warnedEncryptedRooms.add(roomId);
-        const warning =
-          "matrix: encrypted event received without encryption enabled; set channels.matrix.encryption=true and verify the device to decrypt";
+        const warning = formatMatrixEncryptedEventDisabledWarning(cfg, auth.accountId);
         logger.warn(warning, { roomId });
       }
       if (auth.encryption === true && !client.crypto && !warnedCryptoMissingRooms.has(roomId)) {

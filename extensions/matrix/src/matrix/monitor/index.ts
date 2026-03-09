@@ -208,6 +208,7 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
   );
 
   registerMatrixMonitorEvents({
+    cfg,
     client,
     auth,
     logVerboseMessage,

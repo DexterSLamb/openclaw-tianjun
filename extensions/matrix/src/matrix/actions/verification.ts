@@ -1,11 +1,16 @@
+import { getMatrixRuntime } from "../../runtime.js";
+import type { CoreConfig } from "../../types.js";
+import { formatMatrixEncryptionUnavailableError } from "../encryption-guidance.js";
 import { withResolvedActionClient } from "./client.js";
 import type { MatrixActionClientOpts } from "./types.js";
 
 function requireCrypto(
   client: import("../sdk.js").MatrixClient,
+  opts: MatrixActionClientOpts,
 ): NonNullable<import("../sdk.js").MatrixClient["crypto"]> {
   if (!client.crypto) {
-    throw new Error("Matrix encryption is not available (enable channels.matrix.encryption=true)");
+    const cfg = getMatrixRuntime().config.loadConfig() as CoreConfig;
+    throw new Error(formatMatrixEncryptionUnavailableError(cfg, opts.accountId));
   }
   return client.crypto;
 }
@@ -22,7 +27,7 @@ export async function listMatrixVerifications(opts: MatrixActionClientOpts = {})
   return await withResolvedActionClient(
     { ...opts, readiness: "started" },
     async (client) => {
-      const crypto = requireCrypto(client);
+      const crypto = requireCrypto(client, opts);
       return await crypto.listVerifications();
     },
     "persist",
@@ -40,7 +45,7 @@ export async function requestMatrixVerification(
   return await withResolvedActionClient(
     { ...params, readiness: "started" },
     async (client) => {
-      const crypto = requireCrypto(client);
+      const crypto = requireCrypto(client, params);
       const ownUser = params.ownUser ?? (!params.userId && !params.deviceId && !params.roomId);
       return await crypto.requestVerification({
         ownUser,
@@ -60,7 +65,7 @@ export async function acceptMatrixVerification(
   return await withResolvedActionClient(
     { ...opts, readiness: "started" },
     async (client) => {
-      const crypto = requireCrypto(client);
+      const crypto = requireCrypto(client, opts);
       return await crypto.acceptVerification(resolveVerificationId(requestId));
     },
     "persist",
@@ -74,7 +79,7 @@ export async function cancelMatrixVerification(
   return await withResolvedActionClient(
     { ...opts, readiness: "started" },
     async (client) => {
-      const crypto = requireCrypto(client);
+      const crypto = requireCrypto(client, opts);
       return await crypto.cancelVerification(resolveVerificationId(requestId), {
         reason: opts.reason?.trim() || undefined,
         code: opts.code?.trim() || undefined,
@@ -91,7 +96,7 @@ export async function startMatrixVerification(
   return await withResolvedActionClient(
     { ...opts, readiness: "started" },
     async (client) => {
-      const crypto = requireCrypto(client);
+      const crypto = requireCrypto(client, opts);
       return await crypto.startVerification(resolveVerificationId(requestId), opts.method ?? "sas");
     },
     "persist",
@@ -105,7 +110,7 @@ export async function generateMatrixVerificationQr(
   return await withResolvedActionClient(
     { ...opts, readiness: "started" },
     async (client) => {
-      const crypto = requireCrypto(client);
+      const crypto = requireCrypto(client, opts);
       return await crypto.generateVerificationQr(resolveVerificationId(requestId));
     },
     "persist",
@@ -120,7 +125,7 @@ export async function scanMatrixVerificationQr(
   return await withResolvedActionClient(
     { ...opts, readiness: "started" },
     async (client) => {
-      const crypto = requireCrypto(client);
+      const crypto = requireCrypto(client, opts);
       const payload = qrDataBase64.trim();
       if (!payload) {
         throw new Error("Matrix QR data is required");
@@ -138,7 +143,7 @@ export async function getMatrixVerificationSas(
   return await withResolvedActionClient(
     { ...opts, readiness: "started" },
     async (client) => {
-      const crypto = requireCrypto(client);
+      const crypto = requireCrypto(client, opts);
       return await crypto.getVerificationSas(resolveVerificationId(requestId));
     },
     "persist",
@@ -152,7 +157,7 @@ export async function confirmMatrixVerificationSas(
   return await withResolvedActionClient(
     { ...opts, readiness: "started" },
     async (client) => {
-      const crypto = requireCrypto(client);
+      const crypto = requireCrypto(client, opts);
       return await crypto.confirmVerificationSas(resolveVerificationId(requestId));
     },
     "persist",
@@ -166,7 +171,7 @@ export async function mismatchMatrixVerificationSas(
   return await withResolvedActionClient(
     { ...opts, readiness: "started" },
     async (client) => {
-      const crypto = requireCrypto(client);
+      const crypto = requireCrypto(client, opts);
       return await crypto.mismatchVerificationSas(resolveVerificationId(requestId));
     },
     "persist",
@@ -180,7 +185,7 @@ export async function confirmMatrixVerificationReciprocateQr(
   return await withResolvedActionClient(
     { ...opts, readiness: "started" },
     async (client) => {
-      const crypto = requireCrypto(client);
+      const crypto = requireCrypto(client, opts);
       return await crypto.confirmVerificationReciprocateQr(resolveVerificationId(requestId));
     },
     "persist",
@@ -193,7 +198,7 @@ export async function getMatrixEncryptionStatus(
   return await withResolvedActionClient(
     { ...opts, readiness: "started" },
     async (client) => {
-      const crypto = requireCrypto(client);
+      const crypto = requireCrypto(client, opts);
       const recoveryKey = await crypto.getRecoveryKey();
       return {
         encryptionEnabled: true,
