@@ -13,6 +13,30 @@ export function resolveMatrixChannelConfig(cfg: OpenClawConfig): Record<string, 
   return isRecord(cfg.channels?.matrix) ? cfg.channels.matrix : null;
 }
 
+export function findMatrixAccountEntry(
+  cfg: OpenClawConfig,
+  accountId: string,
+): Record<string, unknown> | null {
+  const channel = resolveMatrixChannelConfig(cfg);
+  if (!channel) {
+    return null;
+  }
+
+  const accounts = isRecord(channel.accounts) ? channel.accounts : null;
+  if (!accounts) {
+    return null;
+  }
+
+  const normalizedAccountId = normalizeAccountId(accountId);
+  for (const [rawAccountId, value] of Object.entries(accounts)) {
+    if (normalizeAccountId(rawAccountId) === normalizedAccountId && isRecord(value)) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 export function resolveConfiguredMatrixAccountIds(cfg: OpenClawConfig): string[] {
   const channel = resolveMatrixChannelConfig(cfg);
   if (!channel) {
@@ -24,9 +48,9 @@ export function resolveConfiguredMatrixAccountIds(cfg: OpenClawConfig): string[]
     return [DEFAULT_ACCOUNT_ID];
   }
 
-  const ids = Object.keys(accounts)
-    .map((accountId) => normalizeAccountId(accountId))
-    .filter((accountId) => accountId.length > 0 && isRecord(accounts[accountId]));
+  const ids = Object.entries(accounts)
+    .filter(([, value]) => isRecord(value))
+    .map(([accountId]) => normalizeAccountId(accountId));
 
   return Array.from(new Set(ids.length > 0 ? ids : [DEFAULT_ACCOUNT_ID])).toSorted((a, b) =>
     a.localeCompare(b),
@@ -39,18 +63,17 @@ export function resolveMatrixDefaultOrOnlyAccountId(cfg: OpenClawConfig): string
     return DEFAULT_ACCOUNT_ID;
   }
 
-  const accounts = isRecord(channel.accounts) ? channel.accounts : null;
   const configuredDefault = normalizeOptionalAccountId(
     typeof channel.defaultAccount === "string" ? channel.defaultAccount : undefined,
   );
-  if (configuredDefault && accounts && isRecord(accounts[configuredDefault])) {
+  const configuredAccountIds = resolveConfiguredMatrixAccountIds(cfg);
+  if (configuredDefault && configuredAccountIds.includes(configuredDefault)) {
     return configuredDefault;
   }
-  if (accounts && isRecord(accounts[DEFAULT_ACCOUNT_ID])) {
+  if (configuredAccountIds.includes(DEFAULT_ACCOUNT_ID)) {
     return DEFAULT_ACCOUNT_ID;
   }
 
-  const configuredAccountIds = resolveConfiguredMatrixAccountIds(cfg);
   if (configuredAccountIds.length === 1) {
     return configuredAccountIds[0] ?? DEFAULT_ACCOUNT_ID;
   }

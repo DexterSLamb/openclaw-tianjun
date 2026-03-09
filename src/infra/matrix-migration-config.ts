@@ -3,7 +3,7 @@ import os from "node:os";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import { normalizeAccountId } from "../routing/session-key.js";
-import { resolveMatrixChannelConfig } from "./matrix-account-selection.js";
+import { findMatrixAccountEntry, resolveMatrixChannelConfig } from "./matrix-account-selection.js";
 import { resolveMatrixCredentialsPath } from "./matrix-storage-paths.js";
 
 export type MatrixStoredCredentials = {
@@ -12,10 +12,6 @@ export type MatrixStoredCredentials = {
   accessToken: string;
   deviceId?: string;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 function clean(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -60,12 +56,7 @@ function resolveMatrixAccountConfigEntry(
   cfg: OpenClawConfig,
   accountId: string,
 ): Record<string, unknown> | null {
-  const channel = resolveMatrixChannelConfig(cfg);
-  if (!channel) {
-    return null;
-  }
-  const accounts = isRecord(channel.accounts) ? channel.accounts : null;
-  return accounts && isRecord(accounts[accountId]) ? accounts[accountId] : null;
+  return findMatrixAccountEntry(cfg, accountId);
 }
 
 export function resolveMatrixMigrationConfigFields(params: {
