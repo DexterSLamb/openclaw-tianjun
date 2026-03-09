@@ -157,6 +157,25 @@ describe("matrix directory", () => {
     });
   });
 
+  it("accepts raw room ids when inferring Matrix direct user ids", () => {
+    expect(
+      matrixPlugin.threading?.buildToolContext?.({
+        cfg: {} as CoreConfig,
+        context: {
+          From: "user:@alice:example.org",
+          To: "!dm:example.org",
+          ChatType: "direct",
+        },
+        hasRepliedRef: { value: false },
+      }),
+    ).toEqual({
+      currentChannelId: "!dm:example.org",
+      currentThreadTs: undefined,
+      currentDirectUserId: "@alice:example.org",
+      hasRepliedRef: { value: false },
+    });
+  });
+
   it("resolves group mention policy from account config", () => {
     const cfg = {
       channels: {

@@ -62,10 +62,10 @@ describe("resolveMatrixTargets (users)", () => {
 
     expect(result?.resolved).toBe(true);
     expect(result?.id).toBe("!two:example.org");
-    expect(result?.note).toBe("multiple matches; chose first");
+    expect(result?.note).toBeUndefined();
   });
 
-  it("reuses directory lookups for duplicate inputs", async () => {
+  it("reuses directory lookups for normalized duplicate inputs", async () => {
     vi.mocked(listMatrixDirectoryPeersLive).mockResolvedValue([
       { kind: "user", id: "@alice:example.org", name: "Alice" },
     ]);
@@ -75,7 +75,7 @@ describe("resolveMatrixTargets (users)", () => {
 
     const userResults = await resolveMatrixTargets({
       cfg: {},
-      inputs: ["Alice", "Alice"],
+      inputs: ["Alice", " alice "],
       kind: "user",
     });
     const groupResults = await resolveMatrixTargets({
@@ -88,5 +88,35 @@ describe("resolveMatrixTargets (users)", () => {
     expect(groupResults.every((entry) => entry.resolved)).toBe(true);
     expect(listMatrixDirectoryPeersLive).toHaveBeenCalledTimes(1);
     expect(listMatrixDirectoryGroupsLive).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts prefixed fully qualified ids without directory lookups", async () => {
+    const userResults = await resolveMatrixTargets({
+      cfg: {},
+      inputs: ["matrix:user:@alice:example.org"],
+      kind: "user",
+    });
+    const groupResults = await resolveMatrixTargets({
+      cfg: {},
+      inputs: ["matrix:room:!team:example.org"],
+      kind: "group",
+    });
+
+    expect(userResults).toEqual([
+      {
+        input: "matrix:user:@alice:example.org",
+        resolved: true,
+        id: "@alice:example.org",
+      },
+    ]);
+    expect(groupResults).toEqual([
+      {
+        input: "matrix:room:!team:example.org",
+        resolved: true,
+        id: "!team:example.org",
+      },
+    ]);
+    expect(listMatrixDirectoryPeersLive).not.toHaveBeenCalled();
+    expect(listMatrixDirectoryGroupsLive).not.toHaveBeenCalled();
   });
 });

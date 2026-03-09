@@ -39,6 +39,13 @@ import { normalizeMatrixAllowList, normalizeMatrixUserId } from "./matrix/monito
 import { probeMatrix } from "./matrix/probe.js";
 import { isSupportedMatrixAvatarSource } from "./matrix/profile.js";
 import { sendMessageMatrix } from "./matrix/send.js";
+import {
+  isMatrixQualifiedUserId,
+  normalizeMatrixDirectoryGroupId,
+  normalizeMatrixDirectoryUserId,
+  normalizeMatrixMessagingTarget,
+  resolveMatrixDirectUserId,
+} from "./matrix/target-ids.js";
 import { matrixOnboardingAdapter } from "./onboarding.js";
 import { matrixOutbound } from "./outbound.js";
 import { resolveMatrixTargets } from "./resolve-targets.js";
@@ -57,39 +64,6 @@ const meta = {
   order: 70,
   quickstartAllowFrom: true,
 };
-
-function normalizeMatrixMessagingTarget(raw: string): string | undefined {
-  let normalized = raw.trim();
-  if (!normalized) {
-    return undefined;
-  }
-  const lowered = normalized.toLowerCase();
-  if (lowered.startsWith("matrix:")) {
-    normalized = normalized.slice("matrix:".length).trim();
-  }
-  const stripped = normalized.replace(/^(room|channel|user):/i, "").trim();
-  return stripped || undefined;
-}
-
-function resolveMatrixDirectUserId(params: {
-  from?: string;
-  to?: string;
-  chatType?: string;
-}): string | undefined {
-  if (params.chatType !== "direct") {
-    return undefined;
-  }
-  const from = params.from?.trim();
-  const to = params.to?.trim();
-  if (!from || !to || !/^room:/i.test(to)) {
-    return undefined;
-  }
-  const normalized = from
-    .replace(/^matrix:/i, "")
-    .replace(/^user:/i, "")
-    .trim();
-  return normalized.startsWith("@") ? normalized : undefined;
-}
 
 function resolveAvatarInput(input: ChannelSetupInput): string | undefined {
   const avatarUrl = (input as ChannelSetupInput & { avatarUrl?: string }).avatarUrl;
@@ -234,48 +208,35 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
       const ids = new Set<string>();
 
       for (const entry of account.config.dm?.allowFrom ?? []) {
-        const raw = String(entry).trim();
-        if (!raw || raw === "*") {
-          continue;
+        const normalized = normalizeMatrixDirectoryUserId(String(entry));
+        if (normalized) {
+          ids.add(normalized);
         }
-        ids.add(raw.replace(/^matrix:/i, ""));
       }
 
       for (const entry of account.config.groupAllowFrom ?? []) {
-        const raw = String(entry).trim();
-        if (!raw || raw === "*") {
-          continue;
+        const normalized = normalizeMatrixDirectoryUserId(String(entry));
+        if (normalized) {
+          ids.add(normalized);
         }
-        ids.add(raw.replace(/^matrix:/i, ""));
       }
 
       const groups = account.config.groups ?? account.config.rooms ?? {};
       for (const room of Object.values(groups)) {
         for (const entry of room.users ?? []) {
-          const raw = String(entry).trim();
-          if (!raw || raw === "*") {
-            continue;
+          const normalized = normalizeMatrixDirectoryUserId(String(entry));
+          if (normalized) {
+            ids.add(normalized);
           }
-          ids.add(raw.replace(/^matrix:/i, ""));
         }
       }
 
       return Array.from(ids)
-        .map((raw) => raw.trim())
-        .filter(Boolean)
-        .map((raw) => {
-          const lowered = raw.toLowerCase();
-          const cleaned = lowered.startsWith("user:") ? raw.slice("user:".length).trim() : raw;
-          if (cleaned.startsWith("@")) {
-            return `user:${cleaned}`;
-          }
-          return cleaned;
-        })
         .filter((id) => (q ? id.toLowerCase().includes(q) : true))
         .slice(0, limit && limit > 0 ? limit : undefined)
         .map((id) => {
           const raw = id.startsWith("user:") ? id.slice("user:".length) : id;
-          const incomplete = !raw.startsWith("@") || !raw.includes(":");
+          const incomplete = !isMatrixQualifiedUserId(raw);
           return {
             kind: "user",
             id,
@@ -288,19 +249,8 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
       const q = query?.trim().toLowerCase() || "";
       const groups = account.config.groups ?? account.config.rooms ?? {};
       const ids = Object.keys(groups)
-        .map((raw) => raw.trim())
-        .filter((raw) => Boolean(raw) && raw !== "*")
-        .map((raw) => raw.replace(/^matrix:/i, ""))
-        .map((raw) => {
-          const lowered = raw.toLowerCase();
-          if (lowered.startsWith("room:") || lowered.startsWith("channel:")) {
-            return raw;
-          }
-          if (raw.startsWith("!")) {
-            return `room:${raw}`;
-          }
-          return raw;
-        })
+        .map((raw) => normalizeMatrixDirectoryGroupId(raw))
+        .filter(Boolean)
         .filter((id) => (q ? id.toLowerCase().includes(q) : true))
         .slice(0, limit && limit > 0 ? limit : undefined)
         .map((id) => ({ kind: "group", id }) as const);

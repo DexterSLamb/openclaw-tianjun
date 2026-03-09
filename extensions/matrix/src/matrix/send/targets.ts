@@ -1,4 +1,5 @@
 import type { MatrixClient } from "../sdk.js";
+import { isMatrixQualifiedUserId, normalizeMatrixResolvableTarget } from "../target-ids.js";
 import { EventType, type MatrixDirectAccountData } from "./types.js";
 
 function normalizeTarget(raw: string): string {
@@ -61,7 +62,7 @@ async function persistDirectRoom(
 
 async function resolveDirectRoomId(client: MatrixClient, userId: string): Promise<string> {
   const trimmed = userId.trim();
-  if (!trimmed.startsWith("@")) {
+  if (!isMatrixQualifiedUserId(trimmed)) {
     throw new Error(`Matrix user IDs must be fully qualified (got "${trimmed}")`);
   }
 
@@ -124,21 +125,12 @@ async function resolveDirectRoomId(client: MatrixClient, userId: string): Promis
 }
 
 export async function resolveMatrixRoomId(client: MatrixClient, raw: string): Promise<string> {
-  const target = normalizeTarget(raw);
+  const target = normalizeMatrixResolvableTarget(normalizeTarget(raw));
   const lowered = target.toLowerCase();
-  if (lowered.startsWith("matrix:")) {
-    return await resolveMatrixRoomId(client, target.slice("matrix:".length));
-  }
-  if (lowered.startsWith("room:")) {
-    return await resolveMatrixRoomId(client, target.slice("room:".length));
-  }
-  if (lowered.startsWith("channel:")) {
-    return await resolveMatrixRoomId(client, target.slice("channel:".length));
-  }
   if (lowered.startsWith("user:")) {
     return await resolveDirectRoomId(client, target.slice("user:".length));
   }
-  if (target.startsWith("@")) {
+  if (isMatrixQualifiedUserId(target)) {
     return await resolveDirectRoomId(client, target);
   }
   if (target.startsWith("#")) {
