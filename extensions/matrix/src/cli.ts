@@ -15,6 +15,7 @@ import {
   restoreMatrixRoomKeyBackup,
   verifyMatrixRecoveryKey,
 } from "./matrix/actions/verification.js";
+import { resolveMatrixAuthContext } from "./matrix/client.js";
 import { setMatrixSdkConsoleLogging, setMatrixSdkLogMode } from "./matrix/client/logging.js";
 import { resolveMatrixConfigPath, updateMatrixAccountConfig } from "./matrix/config-update.js";
 import { isOpenClawManagedMatrixDevice } from "./matrix/device-health.js";
@@ -67,6 +68,17 @@ function printTimestamp(label: string, value: string | null | undefined): void {
 
 function printAccountLabel(accountId?: string): void {
   console.log(`Account: ${normalizeAccountId(accountId)}`);
+}
+
+function resolveMatrixCliAccountId(accountId?: string): string {
+  const cfg = getMatrixRuntime().config.loadConfig() as CoreConfig;
+  return resolveMatrixAuthContext({ cfg, accountId }).accountId;
+}
+
+function formatMatrixCliCommand(command: string, accountId?: string): string {
+  const normalizedAccountId = normalizeAccountId(accountId);
+  const suffix = normalizedAccountId === "default" ? "" : ` --account ${normalizedAccountId}`;
+  return `openclaw matrix ${command}${suffix}`;
 }
 
 function printMatrixOwnDevices(
@@ -445,8 +457,8 @@ function printVerificationTrustDiagnostics(status: {
   console.log(`Signed by owner: ${status.signedByOwner ? "yes" : "no"}`);
 }
 
-function printVerificationGuidance(status: MatrixCliVerificationStatus): void {
-  printGuidance(buildVerificationGuidance(status));
+function printVerificationGuidance(status: MatrixCliVerificationStatus, accountId?: string): void {
+  printGuidance(buildVerificationGuidance(status, accountId));
 }
 
 function resolveBackupIssue(backup: MatrixCliBackupStatus): MatrixCliBackupIssue {
@@ -526,15 +538,22 @@ function printBackupSummary(backup: MatrixCliBackupStatus): void {
   }
 }
 
-function buildVerificationGuidance(status: MatrixCliVerificationStatus): string[] {
+function buildVerificationGuidance(
+  status: MatrixCliVerificationStatus,
+  accountId?: string,
+): string[] {
   const backup = resolveBackupStatus(status);
   const backupIssue = resolveBackupIssue(backup);
   const nextSteps = new Set<string>();
   if (!status.verified) {
-    nextSteps.add("Run 'openclaw matrix verify device <key>' to verify this device.");
+    nextSteps.add(
+      `Run '${formatMatrixCliCommand("verify device <key>", accountId)}' to verify this device.`,
+    );
   }
   if (backupIssue.code === "missing-server-backup") {
-    nextSteps.add("Run 'openclaw matrix verify bootstrap' to create a room key backup.");
+    nextSteps.add(
+      `Run '${formatMatrixCliCommand("verify bootstrap", accountId)}' to create a room key backup.`,
+    );
   } else if (
     backupIssue.code === "key-load-failed" ||
     backupIssue.code === "key-not-loaded" ||
@@ -542,24 +561,24 @@ function buildVerificationGuidance(status: MatrixCliVerificationStatus): string[
   ) {
     if (status.recoveryKeyStored) {
       nextSteps.add(
-        "Backup key is not loaded on this device. Run 'openclaw matrix verify backup restore' to load it and restore old room keys.",
+        `Backup key is not loaded on this device. Run '${formatMatrixCliCommand("verify backup restore", accountId)}' to load it and restore old room keys.`,
       );
     } else {
       nextSteps.add(
-        "Store a recovery key with 'openclaw matrix verify device <key>', then run 'openclaw matrix verify backup restore'.",
+        `Store a recovery key with '${formatMatrixCliCommand("verify device <key>", accountId)}', then run '${formatMatrixCliCommand("verify backup restore", accountId)}'.`,
       );
     }
   } else if (backupIssue.code === "key-mismatch") {
     nextSteps.add(
-      "Backup key mismatch on this device. Re-run 'openclaw matrix verify device <key>' with the matching recovery key.",
+      `Backup key mismatch on this device. Re-run '${formatMatrixCliCommand("verify device <key>", accountId)}' with the matching recovery key.`,
     );
   } else if (backupIssue.code === "untrusted-signature") {
     nextSteps.add(
-      "Backup trust chain is not verified on this device. Re-run 'openclaw matrix verify device <key>'.",
+      `Backup trust chain is not verified on this device. Re-run '${formatMatrixCliCommand("verify device <key>", accountId)}'.`,
     );
   } else if (backupIssue.code === "indeterminate") {
     nextSteps.add(
-      "Run 'openclaw matrix verify status --verbose' to inspect backup trust diagnostics.",
+      `Run '${formatMatrixCliCommand("verify status --verbose", accountId)}' to inspect backup trust diagnostics.`,
     );
   }
   if (status.pendingVerifications > 0) {
@@ -578,7 +597,11 @@ function printGuidance(lines: string[]): void {
   }
 }
 
-function printVerificationStatus(status: MatrixCliVerificationStatus, verbose = false): void {
+function printVerificationStatus(
+  status: MatrixCliVerificationStatus,
+  verbose = false,
+  accountId?: string,
+): void {
   console.log(`Verified by owner: ${status.verified ? "yes" : "no"}`);
   const backup = resolveBackupStatus(status);
   const backupIssue = resolveBackupIssue(backup);
@@ -597,7 +620,7 @@ function printVerificationStatus(status: MatrixCliVerificationStatus, verbose = 
   } else {
     console.log(`Recovery key stored: ${status.recoveryKeyStored ? "yes" : "no"}`);
   }
-  printVerificationGuidance(status);
+  printVerificationGuidance(status, accountId);
 }
 
 export function registerMatrixCli(params: { program: Command }): void {
@@ -762,17 +785,18 @@ export function registerMatrixCli(params: { program: Command }): void {
         includeRecoveryKey?: boolean;
         json?: boolean;
       }) => {
+        const accountId = resolveMatrixCliAccountId(options.account);
         await runMatrixCliCommand({
           verbose: options.verbose === true,
           json: options.json === true,
           run: async () =>
             await getMatrixVerificationStatus({
-              accountId: options.account,
+              accountId,
               includeRecoveryKey: options.includeRecoveryKey === true,
             }),
           onText: (status, verbose) => {
-            printAccountLabel(options.account);
-            printVerificationStatus(status, verbose);
+            printAccountLabel(accountId);
+            printVerificationStatus(status, verbose, accountId);
           },
           errorPrefix: "Error",
         });
@@ -788,12 +812,13 @@ export function registerMatrixCli(params: { program: Command }): void {
     .option("--verbose", "Show detailed diagnostics")
     .option("--json", "Output as JSON")
     .action(async (options: { account?: string; verbose?: boolean; json?: boolean }) => {
+      const accountId = resolveMatrixCliAccountId(options.account);
       await runMatrixCliCommand({
         verbose: options.verbose === true,
         json: options.json === true,
-        run: async () => await getMatrixRoomKeyBackupStatus({ accountId: options.account }),
+        run: async () => await getMatrixRoomKeyBackupStatus({ accountId }),
         onText: (status, verbose) => {
-          printAccountLabel(options.account);
+          printAccountLabel(accountId);
           printBackupSummary(status);
           if (verbose) {
             printBackupStatus(status);
@@ -817,16 +842,17 @@ export function registerMatrixCli(params: { program: Command }): void {
         verbose?: boolean;
         json?: boolean;
       }) => {
+        const accountId = resolveMatrixCliAccountId(options.account);
         await runMatrixCliCommand({
           verbose: options.verbose === true,
           json: options.json === true,
           run: async () =>
             await restoreMatrixRoomKeyBackup({
-              accountId: options.account,
+              accountId,
               recoveryKey: options.recoveryKey,
             }),
           onText: (result, verbose) => {
-            printAccountLabel(options.account);
+            printAccountLabel(accountId);
             console.log(`Restore success: ${result.success ? "yes" : "no"}`);
             if (result.error) {
               console.log(`Error: ${result.error}`);
@@ -865,17 +891,18 @@ export function registerMatrixCli(params: { program: Command }): void {
         verbose?: boolean;
         json?: boolean;
       }) => {
+        const accountId = resolveMatrixCliAccountId(options.account);
         await runMatrixCliCommand({
           verbose: options.verbose === true,
           json: options.json === true,
           run: async () =>
             await bootstrapMatrixVerification({
-              accountId: options.account,
+              accountId,
               recoveryKey: options.recoveryKey,
               forceResetCrossSigning: options.forceResetCrossSigning === true,
             }),
           onText: (result, verbose) => {
-            printAccountLabel(options.account);
+            printAccountLabel(accountId);
             console.log(`Bootstrap success: ${result.success ? "yes" : "no"}`);
             if (result.error) {
               console.log(`Error: ${result.error}`);
@@ -896,10 +923,13 @@ export function registerMatrixCli(params: { program: Command }): void {
               );
               printVerificationBackupSummary(result.verification);
             }
-            printVerificationGuidance({
-              ...result.verification,
-              pendingVerifications: result.pendingVerifications,
-            });
+            printVerificationGuidance(
+              {
+                ...result.verification,
+                pendingVerifications: result.pendingVerifications,
+              },
+              accountId,
+            );
           },
           shouldFail: (result) => !result.success,
           errorPrefix: "Verification bootstrap failed",
@@ -916,12 +946,13 @@ export function registerMatrixCli(params: { program: Command }): void {
     .option("--json", "Output as JSON")
     .action(
       async (key: string, options: { account?: string; verbose?: boolean; json?: boolean }) => {
+        const accountId = resolveMatrixCliAccountId(options.account);
         await runMatrixCliCommand({
           verbose: options.verbose === true,
           json: options.json === true,
-          run: async () => await verifyMatrixRecoveryKey(key, { accountId: options.account }),
+          run: async () => await verifyMatrixRecoveryKey(key, { accountId }),
           onText: (result, verbose) => {
-            printAccountLabel(options.account);
+            printAccountLabel(accountId);
             if (!result.success) {
               console.error(`Verification failed: ${result.error ?? "unknown error"}`);
               return;
@@ -935,10 +966,13 @@ export function registerMatrixCli(params: { program: Command }): void {
               printTimestamp("Recovery key created at", result.recoveryKeyCreatedAt);
               printTimestamp("Verified at", result.verifiedAt);
             }
-            printVerificationGuidance({
-              ...result,
-              pendingVerifications: 0,
-            });
+            printVerificationGuidance(
+              {
+                ...result,
+                pendingVerifications: 0,
+              },
+              accountId,
+            );
           },
           shouldFail: (result) => !result.success,
           errorPrefix: "Verification failed",
@@ -956,12 +990,13 @@ export function registerMatrixCli(params: { program: Command }): void {
     .option("--verbose", "Show detailed diagnostics")
     .option("--json", "Output as JSON")
     .action(async (options: { account?: string; verbose?: boolean; json?: boolean }) => {
+      const accountId = resolveMatrixCliAccountId(options.account);
       await runMatrixCliCommand({
         verbose: options.verbose === true,
         json: options.json === true,
-        run: async () => await listMatrixOwnDevices({ accountId: options.account }),
+        run: async () => await listMatrixOwnDevices({ accountId }),
         onText: (result) => {
-          printAccountLabel(options.account);
+          printAccountLabel(accountId);
           printMatrixOwnDevices(result);
         },
         errorPrefix: "Device listing failed",
@@ -975,12 +1010,13 @@ export function registerMatrixCli(params: { program: Command }): void {
     .option("--verbose", "Show detailed diagnostics")
     .option("--json", "Output as JSON")
     .action(async (options: { account?: string; verbose?: boolean; json?: boolean }) => {
+      const accountId = resolveMatrixCliAccountId(options.account);
       await runMatrixCliCommand({
         verbose: options.verbose === true,
         json: options.json === true,
-        run: async () => await pruneMatrixStaleGatewayDevices({ accountId: options.account }),
+        run: async () => await pruneMatrixStaleGatewayDevices({ accountId }),
         onText: (result, verbose) => {
-          printAccountLabel(options.account);
+          printAccountLabel(accountId);
           console.log(
             `Deleted stale OpenClaw devices: ${result.deletedDeviceIds.length ? result.deletedDeviceIds.join(", ") : "none"}`,
           );

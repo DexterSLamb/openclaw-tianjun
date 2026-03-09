@@ -9,6 +9,7 @@ const listMatrixOwnDevicesMock = vi.fn();
 const pruneMatrixStaleGatewayDevicesMock = vi.fn();
 const resolveMatrixAccountConfigMock = vi.fn();
 const resolveMatrixAccountMock = vi.fn();
+const resolveMatrixAuthContextMock = vi.fn();
 const matrixSetupApplyAccountConfigMock = vi.fn();
 const matrixSetupValidateInputMock = vi.fn();
 const matrixRuntimeLoadConfigMock = vi.fn();
@@ -45,6 +46,10 @@ vi.mock("./matrix/actions/profile.js", () => ({
 vi.mock("./matrix/accounts.js", () => ({
   resolveMatrixAccount: (...args: unknown[]) => resolveMatrixAccountMock(...args),
   resolveMatrixAccountConfig: (...args: unknown[]) => resolveMatrixAccountConfigMock(...args),
+}));
+
+vi.mock("./matrix/client.js", () => ({
+  resolveMatrixAuthContext: (...args: unknown[]) => resolveMatrixAuthContextMock(...args),
 }));
 
 vi.mock("./channel.js", () => ({
@@ -89,6 +94,14 @@ describe("matrix CLI verification commands", () => {
     matrixSetupApplyAccountConfigMock.mockImplementation(({ cfg }: { cfg: unknown }) => cfg);
     matrixRuntimeLoadConfigMock.mockReturnValue({});
     matrixRuntimeWriteConfigFileMock.mockResolvedValue(undefined);
+    resolveMatrixAuthContextMock.mockImplementation(
+      ({ cfg, accountId }: { cfg: unknown; accountId?: string | null }) => ({
+        cfg,
+        env: process.env,
+        accountId: accountId ?? "default",
+        resolved: {},
+      }),
+    );
     resolveMatrixAccountMock.mockReturnValue({
       configured: false,
     });
@@ -716,6 +729,54 @@ describe("matrix CLI verification commands", () => {
 
     expect(console.log).toHaveBeenCalledWith(
       "Backup issue: backup decryption key could not be loaded from secret storage (secret storage key is not available)",
+    );
+  });
+
+  it("prints resolved account-aware guidance when a named Matrix account is selected implicitly", async () => {
+    resolveMatrixAuthContextMock.mockImplementation(
+      ({ cfg, accountId }: { cfg: unknown; accountId?: string | null }) => ({
+        cfg,
+        env: process.env,
+        accountId: accountId ?? "assistant",
+        resolved: {},
+      }),
+    );
+    getMatrixVerificationStatusMock.mockResolvedValue({
+      encryptionEnabled: true,
+      verified: false,
+      localVerified: false,
+      crossSigningVerified: false,
+      signedByOwner: false,
+      userId: "@bot:example.org",
+      deviceId: "DEVICE123",
+      backupVersion: null,
+      backup: {
+        serverVersion: null,
+        activeVersion: null,
+        trusted: null,
+        matchesDecryptionKey: null,
+        decryptionKeyCached: null,
+        keyLoadAttempted: false,
+        keyLoadError: null,
+      },
+      recoveryKeyStored: false,
+      recoveryKeyCreatedAt: null,
+      pendingVerifications: 0,
+    });
+    const program = buildProgram();
+
+    await program.parseAsync(["matrix", "verify", "status"], { from: "user" });
+
+    expect(getMatrixVerificationStatusMock).toHaveBeenCalledWith({
+      accountId: "assistant",
+      includeRecoveryKey: false,
+    });
+    expect(console.log).toHaveBeenCalledWith("Account: assistant");
+    expect(console.log).toHaveBeenCalledWith(
+      "- Run 'openclaw matrix verify device <key> --account assistant' to verify this device.",
+    );
+    expect(console.log).toHaveBeenCalledWith(
+      "- Run 'openclaw matrix verify bootstrap --account assistant' to create a room key backup.",
     );
   });
 
