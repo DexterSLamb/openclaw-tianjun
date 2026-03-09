@@ -71,7 +71,7 @@ describe("MatrixRecoveryKeyStore", () => {
       keyId: "GENERATED",
       keyInfo: { name: "generated" },
       privateKey: new Uint8Array([5, 6, 7, 8]),
-      encodedPrivateKey: "encoded-generated-key",
+      encodedPrivateKey: "encoded-generated-key", // pragma: allowlist secret
     };
     const createRecoveryKeyFromPassphrase = vi.fn(async () => generated);
     const bootstrapSecretStorage = vi.fn(
@@ -98,7 +98,7 @@ describe("MatrixRecoveryKeyStore", () => {
     );
     expect(store.getRecoveryKeySummary()).toMatchObject({
       keyId: "GENERATED",
-      encodedPrivateKey: "encoded-generated-key",
+      encodedPrivateKey: "encoded-generated-key", // pragma: allowlist secret
     });
   });
 
@@ -144,7 +144,7 @@ describe("MatrixRecoveryKeyStore", () => {
       keyId: "RECOVERED",
       keyInfo: { name: "recovered" },
       privateKey: new Uint8Array([1, 1, 2, 3]),
-      encodedPrivateKey: "encoded-recovered-key",
+      encodedPrivateKey: "encoded-recovered-key", // pragma: allowlist secret
     };
     const createRecoveryKeyFromPassphrase = vi.fn(async () => generated);
     const bootstrapSecretStorage = vi.fn(
@@ -171,7 +171,7 @@ describe("MatrixRecoveryKeyStore", () => {
     );
     expect(store.getRecoveryKeySummary()).toMatchObject({
       keyId: "RECOVERED",
-      encodedPrivateKey: "encoded-recovered-key",
+      encodedPrivateKey: "encoded-recovered-key", // pragma: allowlist secret
     });
   });
 
@@ -182,7 +182,7 @@ describe("MatrixRecoveryKeyStore", () => {
       keyId: "REPAIRED",
       keyInfo: { name: "repaired" },
       privateKey: new Uint8Array([7, 7, 8, 9]),
-      encodedPrivateKey: "encoded-repaired-key",
+      encodedPrivateKey: "encoded-repaired-key", // pragma: allowlist secret
     };
     const createRecoveryKeyFromPassphrase = vi.fn(async () => generated);
     const bootstrapSecretStorage = vi.fn(
@@ -223,7 +223,7 @@ describe("MatrixRecoveryKeyStore", () => {
     );
     expect(store.getRecoveryKeySummary()).toMatchObject({
       keyId: "REPAIRED",
-      encodedPrivateKey: "encoded-repaired-key",
+      encodedPrivateKey: "encoded-repaired-key", // pragma: allowlist secret
     });
   });
 

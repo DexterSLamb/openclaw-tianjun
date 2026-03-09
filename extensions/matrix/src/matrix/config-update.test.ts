@@ -31,8 +31,8 @@ describe("updateMatrixAccountConfig", () => {
             default: {
               homeserver: "https://matrix.example.org",
               userId: "@bot:example.org",
-              accessToken: "old-token",
-              password: "old-password",
+              accessToken: "old-token", // pragma: allowlist secret
+              password: "old-password", // pragma: allowlist secret
               encryption: true,
             },
           },

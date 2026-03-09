@@ -44,7 +44,7 @@ describe("matrix onboarding", () => {
 
     process.env.MATRIX_HOMESERVER = "https://matrix.env.example.org";
     process.env.MATRIX_USER_ID = "@env:example.org";
-    process.env.MATRIX_PASSWORD = "env-password";
+    process.env.MATRIX_PASSWORD = "env-password"; // pragma: allowlist secret
     process.env.MATRIX_ACCESS_TOKEN = "";
     process.env.MATRIX_OPS_HOMESERVER = "https://matrix.ops.env.example.org";
     process.env.MATRIX_OPS_ACCESS_TOKEN = "ops-env-token";

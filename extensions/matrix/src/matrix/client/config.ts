@@ -108,7 +108,7 @@ export function getMatrixScopedEnvVarNames(accountId: string): {
     homeserver: `MATRIX_${token}_HOMESERVER`,
     userId: `MATRIX_${token}_USER_ID`,
     accessToken: `MATRIX_${token}_ACCESS_TOKEN`,
-    password: `MATRIX_${token}_PASSWORD`,
+    password: `MATRIX_${token}_PASSWORD`, // pragma: allowlist secret
     deviceId: `MATRIX_${token}_DEVICE_ID`,
     deviceName: `MATRIX_${token}_DEVICE_NAME`,
   };

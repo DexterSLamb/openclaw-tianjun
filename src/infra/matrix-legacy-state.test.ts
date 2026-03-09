@@ -65,7 +65,7 @@ describe("matrix legacy state migration", () => {
           matrix: {
             homeserver: "https://matrix.example.org",
             userId: "@bot:example.org",
-            password: "secret",
+            password: "secret", // pragma: allowlist secret
           },
         },
       };

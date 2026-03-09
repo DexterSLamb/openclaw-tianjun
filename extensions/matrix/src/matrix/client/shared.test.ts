@@ -26,7 +26,7 @@ function authFor(accountId: string): MatrixAuth {
     homeserver: "https://matrix.example.org",
     userId: `@${accountId}:example.org`,
     accessToken: `token-${accountId}`,
-    password: "secret",
+    password: "secret", // pragma: allowlist secret
     deviceId: `${accountId.toUpperCase()}-DEVICE`,
     deviceName: `${accountId} device`,
     initialSyncLimit: undefined,

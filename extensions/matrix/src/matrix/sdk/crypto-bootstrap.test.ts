@@ -279,7 +279,7 @@ describe("MatrixCryptoBootstrapper", () => {
       {
         type: "m.login.password",
         identifier: { type: "m.id.user", user: "@bot:example.org" },
-        password: "super-secret-password",
+        password: "super-secret-password", // pragma: allowlist secret
       },
     ]);
   });

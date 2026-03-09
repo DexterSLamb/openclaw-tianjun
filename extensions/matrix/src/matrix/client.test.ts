@@ -110,7 +110,7 @@ describe("resolveMatrixAuth", () => {
         matrix: {
           homeserver: "https://matrix.example.org",
           userId: "@bot:example.org",
-          password: "secret",
+          password: "secret", // pragma: allowlist secret
           encryption: true,
         },
       },
@@ -158,7 +158,7 @@ describe("resolveMatrixAuth", () => {
         matrix: {
           homeserver: "https://matrix.example.org",
           userId: "@bot:example.org",
-          password: "secret",
+          password: "secret", // pragma: allowlist secret
         },
       },
     } as CoreConfig;
@@ -196,7 +196,7 @@ describe("resolveMatrixAuth", () => {
         matrix: {
           homeserver: "https://matrix.example.org",
           userId: "@bot:example.org",
-          password: "secret",
+          password: "secret", // pragma: allowlist secret
         },
       },
     } as CoreConfig;

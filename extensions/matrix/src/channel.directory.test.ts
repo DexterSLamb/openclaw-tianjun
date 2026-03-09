@@ -476,7 +476,7 @@ describe("matrix directory", () => {
       input: {
         homeserver: "https://matrix.example.org",
         userId: "@bot:example.org",
-        password: "new-password",
+        password: "new-password", // pragma: allowlist secret
       },
     }) as CoreConfig;
 
@@ -492,7 +492,7 @@ describe("matrix directory", () => {
             default: {
               homeserver: "https://matrix.example.org",
               userId: "@bot:example.org",
-              password: "old-password",
+              password: "old-password", // pragma: allowlist secret
             },
           },
         },

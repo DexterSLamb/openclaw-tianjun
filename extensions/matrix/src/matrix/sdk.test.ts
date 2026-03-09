@@ -813,7 +813,7 @@ describe("MatrixClient crypto bootstrapping", () => {
     matrixJsClient.getCrypto = vi.fn(() => ({ on: vi.fn() }));
     const client = new MatrixClient("https://matrix.example.org", "token", undefined, undefined, {
       encryption: true,
-      password: "secret-password",
+      password: "secret-password", // pragma: allowlist secret
     });
     const bootstrapSpy = vi
       .fn()
@@ -846,7 +846,7 @@ describe("MatrixClient crypto bootstrapping", () => {
     matrixJsClient.getCrypto = vi.fn(() => ({ on: vi.fn() }));
     const client = new MatrixClient("https://matrix.example.org", "token", undefined, undefined, {
       encryption: true,
-      password: "secret-password",
+      password: "secret-password", // pragma: allowlist secret
     });
     const bootstrapSpy = vi.fn().mockResolvedValue({
       crossSigningReady: false,

@@ -679,10 +679,13 @@ export class MatrixClient {
     let keyLoadAttempted = false;
     let keyLoadError: string | null = null;
     if (serverVersion && decryptionKeyCached === false) {
-      if (typeof crypto.loadSessionBackupPrivateKeyFromSecretStorage === "function") {
+      if (
+        typeof crypto.loadSessionBackupPrivateKeyFromSecretStorage ===
+        "function" /* pragma: allowlist secret */
+      ) {
         keyLoadAttempted = true;
         try {
-          await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
+          await crypto.loadSessionBackupPrivateKeyFromSecretStorage(); // pragma: allowlist secret
         } catch (err) {
           keyLoadError = err instanceof Error ? err.message : String(err);
         }
@@ -777,8 +780,9 @@ export class MatrixClient {
     }
 
     let defaultKeyId: string | null | undefined = undefined;
-    if (typeof crypto.getSecretStorageStatus === "function") {
-      const status = await crypto.getSecretStorageStatus().catch(() => null);
+    const canReadSecretStorageStatus = typeof crypto.getSecretStorageStatus === "function"; // pragma: allowlist secret
+    if (canReadSecretStorageStatus) {
+      const status = await crypto.getSecretStorageStatus().catch(() => null); // pragma: allowlist secret
       defaultKeyId = status?.defaultKeyId;
     }
 
@@ -844,8 +848,9 @@ export class MatrixClient {
       const rawRecoveryKey = params.recoveryKey?.trim();
       if (rawRecoveryKey) {
         let defaultKeyId: string | null | undefined = undefined;
-        if (typeof crypto.getSecretStorageStatus === "function") {
-          const status = await crypto.getSecretStorageStatus().catch(() => null);
+        const canReadSecretStorageStatus = typeof crypto.getSecretStorageStatus === "function"; // pragma: allowlist secret
+        if (canReadSecretStorageStatus) {
+          const status = await crypto.getSecretStorageStatus().catch(() => null); // pragma: allowlist secret
           defaultKeyId = status?.defaultKeyId;
         }
         this.recoveryKeyStore.storeEncodedRecoveryKey({
@@ -856,12 +861,15 @@ export class MatrixClient {
 
       let activeVersion = await this.resolveActiveRoomKeyBackupVersion(crypto);
       if (!activeVersion) {
-        if (typeof crypto.loadSessionBackupPrivateKeyFromSecretStorage !== "function") {
+        if (
+          typeof crypto.loadSessionBackupPrivateKeyFromSecretStorage !==
+          "function" /* pragma: allowlist secret */
+        ) {
           return await fail(
             "Matrix crypto backend cannot load backup keys from secret storage. Verify this device with 'openclaw matrix verify device <key>' first.",
           );
         }
-        await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
+        await crypto.loadSessionBackupPrivateKeyFromSecretStorage(); // pragma: allowlist secret
         loadedFromSecretStorage = true;
         activeVersion = await this.resolveActiveRoomKeyBackupVersion(crypto);
       }
@@ -960,8 +968,9 @@ export class MatrixClient {
       const rawRecoveryKey = params?.recoveryKey?.trim();
       if (rawRecoveryKey) {
         let defaultKeyId: string | null | undefined = undefined;
-        if (typeof crypto.getSecretStorageStatus === "function") {
-          const status = await crypto.getSecretStorageStatus().catch(() => null);
+        const canReadSecretStorageStatus = typeof crypto.getSecretStorageStatus === "function"; // pragma: allowlist secret
+        if (canReadSecretStorageStatus) {
+          const status = await crypto.getSecretStorageStatus().catch(() => null); // pragma: allowlist secret
           defaultKeyId = status?.defaultKeyId;
         }
         this.recoveryKeyStore.storeEncodedRecoveryKey({
@@ -1072,10 +1081,11 @@ export class MatrixClient {
   private async resolveCachedRoomKeyBackupDecryptionKey(
     crypto: MatrixCryptoBootstrapApi,
   ): Promise<boolean | null> {
-    if (typeof crypto.getSessionBackupPrivateKey !== "function") {
+    const canGetSessionBackupPrivateKey = typeof crypto.getSessionBackupPrivateKey === "function"; // pragma: allowlist secret
+    if (!canGetSessionBackupPrivateKey) {
       return null;
     }
-    const key = await crypto.getSessionBackupPrivateKey().catch(() => null);
+    const key = await crypto.getSessionBackupPrivateKey().catch(() => null); // pragma: allowlist secret
     return key ? key.length > 0 : false;
   }
 

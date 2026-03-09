@@ -87,7 +87,7 @@ Password-based setup (token is cached after login):
       enabled: true,
       homeserver: "https://matrix.example.org",
       userId: "@bot:example.org",
-      password: "replace-me",
+      password: "replace-me", // pragma: allowlist secret
       deviceName: "OpenClaw Gateway",
     },
   },

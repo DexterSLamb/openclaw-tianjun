@@ -308,7 +308,7 @@ describe("matrix CLI verification commands", () => {
         input: expect.objectContaining({
           homeserver: "https://matrix.example.org",
           userId: "@ops:example.org",
-          password: "secret",
+          password: "secret", // pragma: allowlist secret
         }),
       }),
     );

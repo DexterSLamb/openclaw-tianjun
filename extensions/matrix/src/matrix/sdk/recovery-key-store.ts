@@ -135,7 +135,8 @@ export class MatrixRecoveryKeyStore {
     } = {},
   ): Promise<void> {
     let status: MatrixSecretStorageStatus | null = null;
-    if (typeof crypto.getSecretStorageStatus === "function") {
+    const canReadSecretStorageStatus = typeof crypto.getSecretStorageStatus === "function"; // pragma: allowlist secret
+    if (canReadSecretStorageStatus) {
       try {
         status = await crypto.getSecretStorageStatus();
       } catch (err) {
@@ -268,7 +269,7 @@ export class MatrixRecoveryKeyStore {
       if (
         parsed.version !== 1 ||
         typeof parsed.createdAt !== "string" ||
-        typeof parsed.privateKeyBase64 !== "string" ||
+        typeof parsed.privateKeyBase64 !== "string" || // pragma: allowlist secret
         !parsed.privateKeyBase64.trim()
       ) {
         return null;
