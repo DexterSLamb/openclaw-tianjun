@@ -798,6 +798,7 @@ export class MatrixClient {
     await this.cryptoBootstrapper.bootstrap(crypto, {
       allowAutomaticCrossSigningReset: false,
     });
+    await this.enableTrustedRoomKeyBackupIfPossible(crypto);
     const status = await this.getOwnDeviceVerificationStatus();
     if (!status.verified) {
       return {
@@ -871,6 +872,7 @@ export class MatrixClient {
         }
         await crypto.loadSessionBackupPrivateKeyFromSecretStorage(); // pragma: allowlist secret
         loadedFromSecretStorage = true;
+        await this.enableTrustedRoomKeyBackupIfPossible(crypto);
         activeVersion = await this.resolveActiveRoomKeyBackupVersion(crypto);
       }
       if (!activeVersion) {
@@ -1134,6 +1136,15 @@ export class MatrixClient {
     } catch {
       return null;
     }
+  }
+
+  private async enableTrustedRoomKeyBackupIfPossible(
+    crypto: MatrixCryptoBootstrapApi,
+  ): Promise<void> {
+    if (typeof crypto.checkKeyBackupAndEnable !== "function") {
+      return;
+    }
+    await crypto.checkKeyBackupAndEnable();
   }
 
   private async ensureRoomKeyBackupEnabled(crypto: MatrixCryptoBootstrapApi): Promise<void> {

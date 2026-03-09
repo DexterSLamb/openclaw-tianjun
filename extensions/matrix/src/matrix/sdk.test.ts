@@ -1043,6 +1043,7 @@ describe("MatrixClient crypto bootstrapping", () => {
     matrixJsClient.getDeviceId = vi.fn(() => "DEVICE123");
     const bootstrapSecretStorage = vi.fn(async () => {});
     const bootstrapCrossSigning = vi.fn(async () => {});
+    const checkKeyBackupAndEnable = vi.fn(async () => {});
     const getSecretStorageStatus = vi.fn(async () => ({
       ready: true,
       defaultKeyId: "SSSSKEY",
@@ -1061,6 +1062,7 @@ describe("MatrixClient crypto bootstrapping", () => {
       requestOwnUserVerification: vi.fn(async () => null),
       getSecretStorageStatus,
       getDeviceVerificationStatus,
+      checkKeyBackupAndEnable,
     }));
 
     const recoveryDir = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-sdk-verify-key-"));
@@ -1077,6 +1079,7 @@ describe("MatrixClient crypto bootstrapping", () => {
     expect(matrixJsClient.startClient).toHaveBeenCalledTimes(1);
     expect(bootstrapSecretStorage).toHaveBeenCalled();
     expect(bootstrapCrossSigning).toHaveBeenCalled();
+    expect(checkKeyBackupAndEnable).toHaveBeenCalledTimes(1);
   });
 
   it("fails recovery-key verification when the device is only locally trusted", async () => {
@@ -1237,11 +1240,13 @@ describe("MatrixClient crypto bootstrapping", () => {
       .mockResolvedValueOnce("9")
       .mockResolvedValue("9");
     const loadSessionBackupPrivateKeyFromSecretStorage = vi.fn(async () => {});
+    const checkKeyBackupAndEnable = vi.fn(async () => {});
     const restoreKeyBackup = vi.fn(async () => ({ imported: 4, total: 10 }));
     matrixJsClient.getCrypto = vi.fn(() => ({
       on: vi.fn(),
       getActiveSessionBackupVersion,
       loadSessionBackupPrivateKeyFromSecretStorage,
+      checkKeyBackupAndEnable,
       restoreKeyBackup,
       getSessionBackupPrivateKey: vi.fn(async () => new Uint8Array([1])),
       getKeyBackupInfo: vi.fn(async () => ({
@@ -1267,6 +1272,46 @@ describe("MatrixClient crypto bootstrapping", () => {
     expect(result.loadedFromSecretStorage).toBe(true);
     expect(matrixJsClient.startClient).toHaveBeenCalledTimes(1);
     expect(loadSessionBackupPrivateKeyFromSecretStorage).toHaveBeenCalledTimes(1);
+    expect(checkKeyBackupAndEnable).toHaveBeenCalledTimes(1);
+    expect(restoreKeyBackup).toHaveBeenCalledTimes(1);
+  });
+
+  it("activates backup after loading the key from secret storage before restore", async () => {
+    const getActiveSessionBackupVersion = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce("5256")
+      .mockResolvedValue("5256");
+    const loadSessionBackupPrivateKeyFromSecretStorage = vi.fn(async () => {});
+    const checkKeyBackupAndEnable = vi.fn(async () => {});
+    const restoreKeyBackup = vi.fn(async () => ({ imported: 0, total: 0 }));
+    matrixJsClient.getCrypto = vi.fn(() => ({
+      on: vi.fn(),
+      getActiveSessionBackupVersion,
+      getSessionBackupPrivateKey: vi.fn(async () => new Uint8Array([1])),
+      loadSessionBackupPrivateKeyFromSecretStorage,
+      checkKeyBackupAndEnable,
+      restoreKeyBackup,
+      getKeyBackupInfo: vi.fn(async () => ({
+        algorithm: "m.megolm_backup.v1.curve25519-aes-sha2",
+        auth_data: {},
+        version: "5256",
+      })),
+      isKeyBackupTrusted: vi.fn(async () => ({
+        trusted: true,
+        matchesDecryptionKey: true,
+      })),
+    }));
+
+    const client = new MatrixClient("https://matrix.example.org", "token", undefined, undefined, {
+      encryption: true,
+    });
+
+    const result = await client.restoreRoomKeyBackup();
+    expect(result.success).toBe(true);
+    expect(result.backupVersion).toBe("5256");
+    expect(loadSessionBackupPrivateKeyFromSecretStorage).toHaveBeenCalledTimes(1);
+    expect(checkKeyBackupAndEnable).toHaveBeenCalledTimes(1);
     expect(restoreKeyBackup).toHaveBeenCalledTimes(1);
   });
 

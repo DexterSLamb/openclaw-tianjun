@@ -10,6 +10,23 @@ import type {
   MatrixStoredRecoveryKey,
 } from "./types.js";
 
+export function isRepairableSecretStorageAccessError(err: unknown): boolean {
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  if (!message) {
+    return false;
+  }
+  if (message.includes("getsecretstoragekey callback returned falsey")) {
+    return true;
+  }
+  // The homeserver still has secret storage, but the local recovery key cannot
+  // authenticate/decrypt a required secret. During explicit bootstrap we can
+  // recreate secret storage and continue with a new local baseline.
+  if (message.includes("decrypting secret") && message.includes("bad mac")) {
+    return true;
+  }
+  return false;
+}
+
 export class MatrixRecoveryKeyStore {
   private readonly secretStorageKeyCache = new Map<
     string,
@@ -215,17 +232,16 @@ export class MatrixRecoveryKeyStore {
     } catch (err) {
       const shouldRecreateWithoutRecoveryKey =
         options.allowSecretStorageRecreateWithoutRecoveryKey === true &&
-        !recoveryKey &&
         hasDefaultSecretStorageKey &&
-        err instanceof Error &&
-        err.message.includes("getSecretStorageKey callback returned falsey");
+        isRepairableSecretStorageAccessError(err);
       if (!shouldRecreateWithoutRecoveryKey) {
         throw err;
       }
 
+      recoveryKey = null;
       LogService.warn(
         "MatrixClientLite",
-        "Secret storage exists on the server but no local recovery key is available; recreating secret storage and generating a new recovery key during explicit bootstrap.",
+        "Secret storage exists on the server but local recovery material cannot unlock it; recreating secret storage during explicit bootstrap.",
       );
       await crypto.bootstrapSecretStorage({
         setupNewSecretStorage: true,

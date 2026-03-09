@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CoreConfig } from "../types.js";
-import { resolveMatrixAuth, resolveMatrixConfig, resolveMatrixConfigForAccount } from "./client.js";
+import {
+  resolveMatrixAuth,
+  resolveMatrixAuthContext,
+  resolveMatrixConfig,
+  resolveMatrixConfigForAccount,
+} from "./client.js";
 import * as credentialsModule from "./credentials.js";
 import * as sdkModule from "./sdk.js";
 
@@ -88,6 +93,40 @@ describe("resolveMatrixConfig", () => {
     expect(resolved.homeserver).toBe("https://ops.example.org");
     expect(resolved.accessToken).toBe("ops-token");
     expect(resolved.deviceName).toBe("Ops Device");
+  });
+
+  it("prefers channels.matrix.accounts.default over global env for the default account", () => {
+    const cfg = {
+      channels: {
+        matrix: {
+          accounts: {
+            default: {
+              homeserver: "https://matrix.gumadeiras.com",
+              userId: "@pinguini:matrix.gumadeiras.com",
+              password: "cfg-pass", // pragma: allowlist secret
+              deviceName: "OpenClaw Gateway Pinguini",
+              encryption: true,
+            },
+          },
+        },
+      },
+    } as CoreConfig;
+    const env = {
+      MATRIX_HOMESERVER: "https://env.example.org",
+      MATRIX_USER_ID: "@env:example.org",
+      MATRIX_PASSWORD: "env-pass",
+      MATRIX_DEVICE_NAME: "EnvDevice",
+    } as NodeJS.ProcessEnv;
+
+    const resolved = resolveMatrixAuthContext({ cfg, env });
+    expect(resolved.accountId).toBe("default");
+    expect(resolved.resolved).toMatchObject({
+      homeserver: "https://matrix.gumadeiras.com",
+      userId: "@pinguini:matrix.gumadeiras.com",
+      password: "cfg-pass",
+      deviceName: "OpenClaw Gateway Pinguini",
+      encryption: true,
+    });
   });
 });
 

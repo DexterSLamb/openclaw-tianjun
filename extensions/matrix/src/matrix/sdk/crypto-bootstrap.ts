@@ -3,6 +3,7 @@ import { VerificationPhase } from "matrix-js-sdk/lib/crypto-api/verification.js"
 import type { MatrixDecryptBridge } from "./decrypt-bridge.js";
 import { LogService } from "./logger.js";
 import type { MatrixRecoveryKeyStore } from "./recovery-key-store.js";
+import { isRepairableSecretStorageAccessError } from "./recovery-key-store.js";
 import type {
   MatrixAuthDict,
   MatrixCryptoBootstrapApi,
@@ -176,12 +177,11 @@ export class MatrixCryptoBootstrapper<TRawEvent extends MatrixRawEvent> {
     } catch (err) {
       const shouldRepairSecretStorage =
         options.allowSecretStorageRecreateWithoutRecoveryKey &&
-        err instanceof Error &&
-        err.message.includes("getSecretStorageKey callback returned falsey");
+        isRepairableSecretStorageAccessError(err);
       if (shouldRepairSecretStorage) {
         LogService.warn(
           "MatrixClientLite",
-          "Cross-signing bootstrap could not access secret storage; recreating secret storage during explicit bootstrap and retrying.",
+          "Cross-signing bootstrap could not unlock secret storage; recreating secret storage during explicit bootstrap and retrying.",
         );
         await this.deps.recoveryKeyStore.bootstrapSecretStorageWithRecoveryKey(crypto, {
           allowSecretStorageRecreateWithoutRecoveryKey: true,

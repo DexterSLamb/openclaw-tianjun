@@ -328,16 +328,9 @@ export function resolveMatrixAuthContext(params?: {
   const cfg = params?.cfg ?? (getMatrixRuntime().config.loadConfig() as CoreConfig);
   const env = params?.env ?? process.env;
   const explicitAccountId = normalizeOptionalAccountId(params?.accountId);
-  const defaultResolved = resolveMatrixConfig(cfg, env);
   const effectiveAccountId =
-    explicitAccountId ??
-    (defaultResolved.homeserver
-      ? DEFAULT_ACCOUNT_ID
-      : (resolveImplicitMatrixAccountId(cfg, env) ?? DEFAULT_ACCOUNT_ID));
-  const resolved =
-    effectiveAccountId === DEFAULT_ACCOUNT_ID && defaultResolved.homeserver
-      ? defaultResolved
-      : resolveMatrixConfigForAccount(cfg, effectiveAccountId, env);
+    explicitAccountId ?? resolveImplicitMatrixAccountId(cfg, env) ?? DEFAULT_ACCOUNT_ID;
+  const resolved = resolveMatrixConfigForAccount(cfg, effectiveAccountId, env);
 
   return {
     cfg,
