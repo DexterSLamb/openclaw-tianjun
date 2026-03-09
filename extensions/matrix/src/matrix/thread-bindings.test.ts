@@ -8,9 +8,12 @@ import {
   __testing,
 } from "../../../../src/infra/outbound/session-binding-service.js";
 import { setMatrixRuntime } from "../runtime.js";
+import { resolveMatrixStoragePaths } from "./client/storage.js";
 import {
   createMatrixThreadBindingManager,
   resetMatrixThreadBindingsForTests,
+  setMatrixThreadBindingIdleTimeoutBySessionKey,
+  setMatrixThreadBindingMaxAgeBySessionKey,
 } from "./thread-bindings.js";
 
 const sendMessageMatrixMock = vi.hoisted(() =>
@@ -30,6 +33,12 @@ vi.mock("./send.js", async () => {
 
 describe("matrix thread bindings", () => {
   let stateDir: string;
+  const auth = {
+    accountId: "ops",
+    homeserver: "https://matrix.example.org",
+    userId: "@bot:example.org",
+    accessToken: "token",
+  } as const;
 
   beforeEach(async () => {
     stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "matrix-thread-bindings-"));
@@ -46,12 +55,7 @@ describe("matrix thread bindings", () => {
   it("creates child Matrix thread bindings from a top-level room context", async () => {
     await createMatrixThreadBindingManager({
       accountId: "ops",
-      auth: {
-        accountId: "ops",
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-      },
+      auth,
       client: {} as never,
       idleTimeoutMs: 24 * 60 * 60 * 1000,
       maxAgeMs: 0,
@@ -87,12 +91,7 @@ describe("matrix thread bindings", () => {
   it("posts intro messages inside existing Matrix threads for current placement", async () => {
     await createMatrixThreadBindingManager({
       accountId: "ops",
-      auth: {
-        accountId: "ops",
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-      },
+      auth,
       client: {} as never,
       idleTimeoutMs: 24 * 60 * 60 * 1000,
       maxAgeMs: 0,
@@ -138,12 +137,7 @@ describe("matrix thread bindings", () => {
     try {
       await createMatrixThreadBindingManager({
         accountId: "ops",
-        auth: {
-          accountId: "ops",
-          homeserver: "https://matrix.example.org",
-          userId: "@bot:example.org",
-          accessToken: "token",
-        },
+        auth,
         client: {} as never,
         idleTimeoutMs: 1_000,
         maxAgeMs: 0,
@@ -184,12 +178,7 @@ describe("matrix thread bindings", () => {
   it("sends threaded farewell messages when bindings are unbound", async () => {
     await createMatrixThreadBindingManager({
       accountId: "ops",
-      auth: {
-        accountId: "ops",
-        homeserver: "https://matrix.example.org",
-        userId: "@bot:example.org",
-        accessToken: "token",
-      },
+      auth,
       client: {} as never,
       idleTimeoutMs: 1_000,
       maxAgeMs: 0,
@@ -225,5 +214,111 @@ describe("matrix thread bindings", () => {
         threadId: "$thread",
       }),
     );
+  });
+
+  it("updates lifecycle windows by session key and refreshes activity", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-06T10:00:00.000Z"));
+    try {
+      const manager = await createMatrixThreadBindingManager({
+        accountId: "ops",
+        auth,
+        client: {} as never,
+        idleTimeoutMs: 24 * 60 * 60 * 1000,
+        maxAgeMs: 0,
+        enableSweeper: false,
+      });
+
+      await getSessionBindingService().bind({
+        targetSessionKey: "agent:ops:subagent:child",
+        targetKind: "subagent",
+        conversation: {
+          channel: "matrix",
+          accountId: "ops",
+          conversationId: "$thread",
+          parentConversationId: "!room:example",
+        },
+        placement: "current",
+      });
+      const original = manager.listBySessionKey("agent:ops:subagent:child")[0];
+      expect(original).toBeDefined();
+
+      const idleUpdated = setMatrixThreadBindingIdleTimeoutBySessionKey({
+        accountId: "ops",
+        targetSessionKey: "agent:ops:subagent:child",
+        idleTimeoutMs: 2 * 60 * 60 * 1000,
+      });
+      vi.setSystemTime(new Date("2026-03-06T12:00:00.000Z"));
+      const maxAgeUpdated = setMatrixThreadBindingMaxAgeBySessionKey({
+        accountId: "ops",
+        targetSessionKey: "agent:ops:subagent:child",
+        maxAgeMs: 6 * 60 * 60 * 1000,
+      });
+
+      expect(idleUpdated).toHaveLength(1);
+      expect(idleUpdated[0]?.metadata?.idleTimeoutMs).toBe(2 * 60 * 60 * 1000);
+      expect(maxAgeUpdated).toHaveLength(1);
+      expect(maxAgeUpdated[0]?.metadata?.maxAgeMs).toBe(6 * 60 * 60 * 1000);
+      expect(maxAgeUpdated[0]?.boundAt).toBe(original?.boundAt);
+      expect(maxAgeUpdated[0]?.metadata?.lastActivityAt).toBe(
+        Date.parse("2026-03-06T12:00:00.000Z"),
+      );
+      expect(manager.listBySessionKey("agent:ops:subagent:child")[0]?.maxAgeMs).toBe(
+        6 * 60 * 60 * 1000,
+      );
+      expect(manager.listBySessionKey("agent:ops:subagent:child")[0]?.lastActivityAt).toBe(
+        Date.parse("2026-03-06T12:00:00.000Z"),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("flushes pending touch persistence on stop", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-06T10:00:00.000Z"));
+    try {
+      const manager = await createMatrixThreadBindingManager({
+        accountId: "ops",
+        auth,
+        client: {} as never,
+        idleTimeoutMs: 24 * 60 * 60 * 1000,
+        maxAgeMs: 0,
+        enableSweeper: false,
+      });
+      const binding = await getSessionBindingService().bind({
+        targetSessionKey: "agent:ops:subagent:child",
+        targetKind: "subagent",
+        conversation: {
+          channel: "matrix",
+          accountId: "ops",
+          conversationId: "$thread",
+          parentConversationId: "!room:example",
+        },
+        placement: "current",
+      });
+      const touchedAt = Date.parse("2026-03-06T12:00:00.000Z");
+      getSessionBindingService().touch(binding.bindingId, touchedAt);
+
+      manager.stop();
+      vi.useRealTimers();
+
+      const bindingsPath = path.join(
+        resolveMatrixStoragePaths({
+          ...auth,
+          env: process.env,
+        }).rootDir,
+        "thread-bindings.json",
+      );
+      await vi.waitFor(async () => {
+        const raw = await fs.readFile(bindingsPath, "utf-8");
+        const parsed = JSON.parse(raw) as {
+          bindings?: Array<{ lastActivityAt?: number }>;
+        };
+        expect(parsed.bindings?.[0]?.lastActivityAt).toBe(touchedAt);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

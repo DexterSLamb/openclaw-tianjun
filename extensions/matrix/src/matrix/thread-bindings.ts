@@ -232,14 +232,27 @@ async function loadBindingsFromDisk(filePath: string, accountId: string) {
   return loaded;
 }
 
-async function persistBindings(filePath: string, accountId: string): Promise<void> {
-  const bindings = [...BINDINGS_BY_ACCOUNT_CONVERSATION.values()]
-    .filter((entry) => entry.accountId === accountId)
-    .sort((a, b) => a.boundAt - b.boundAt);
-  await writeJsonFileAtomically(filePath, {
+function toStoredBindingsState(
+  bindings: MatrixThreadBindingRecord[],
+): StoredMatrixThreadBindingState {
+  return {
     version: STORE_VERSION,
-    bindings,
-  } satisfies StoredMatrixThreadBindingState);
+    bindings: [...bindings].sort((a, b) => a.boundAt - b.boundAt),
+  };
+}
+
+async function persistBindingsSnapshot(
+  filePath: string,
+  bindings: MatrixThreadBindingRecord[],
+): Promise<void> {
+  await writeJsonFileAtomically(filePath, toStoredBindingsState(bindings));
+}
+
+async function persistBindings(filePath: string, accountId: string): Promise<void> {
+  await persistBindingsSnapshot(
+    filePath,
+    [...BINDINGS_BY_ACCOUNT_CONVERSATION.values()].filter((entry) => entry.accountId === accountId),
+  );
 }
 
 function setBindingRecord(record: MatrixThreadBindingRecord): void {
@@ -360,6 +373,16 @@ export async function createMatrixThreadBindingManager(params: {
   }
 
   const persist = async () => await persistBindings(filePath, params.accountId);
+  const persistSafely = (reason: string, bindings?: MatrixThreadBindingRecord[]) => {
+    void persistBindingsSnapshot(
+      filePath,
+      bindings ?? listBindingsForAccount(params.accountId),
+    ).catch((err) => {
+      params.logVerboseMessage?.(
+        `matrix: failed persisting thread bindings account=${params.accountId} action=${reason}: ${String(err)}`,
+      );
+    });
+  };
   const defaults = {
     idleTimeoutMs: params.idleTimeoutMs,
     maxAgeMs: params.maxAgeMs,
@@ -371,9 +394,31 @@ export async function createMatrixThreadBindingManager(params: {
     }
     persistTimer = setTimeout(() => {
       persistTimer = null;
-      void persist();
+      persistSafely("delayed-touch");
     }, delayMs);
     persistTimer.unref?.();
+  };
+  const updateBindingsBySessionKey = (input: {
+    targetSessionKey: string;
+    update: (entry: MatrixThreadBindingRecord, now: number) => MatrixThreadBindingRecord;
+    persistReason: string;
+  }): MatrixThreadBindingRecord[] => {
+    const targetSessionKey = input.targetSessionKey.trim();
+    if (!targetSessionKey) {
+      return [];
+    }
+    const now = Date.now();
+    const nextBindings = listBindingsForAccount(params.accountId)
+      .filter((entry) => entry.targetSessionKey === targetSessionKey)
+      .map((entry) => input.update(entry, now));
+    if (nextBindings.length === 0) {
+      return [];
+    }
+    for (const entry of nextBindings) {
+      setBindingRecord(entry);
+    }
+    persistSafely(input.persistReason);
+    return nextBindings;
   };
 
   const manager: MatrixThreadBindingManager = {
@@ -414,30 +459,26 @@ export async function createMatrixThreadBindingManager(params: {
       return nextRecord;
     },
     setIdleTimeoutBySessionKey: ({ targetSessionKey, idleTimeoutMs }) => {
-      const nextBindings = listBindingsForAccount(params.accountId)
-        .filter((entry) => entry.targetSessionKey === targetSessionKey.trim())
-        .map((entry) => ({
+      return updateBindingsBySessionKey({
+        targetSessionKey,
+        persistReason: "idle-timeout-update",
+        update: (entry, now) => ({
           ...entry,
           idleTimeoutMs: Math.max(0, Math.floor(idleTimeoutMs)),
-        }));
-      for (const entry of nextBindings) {
-        setBindingRecord(entry);
-      }
-      void persist();
-      return nextBindings;
+          lastActivityAt: now,
+        }),
+      });
     },
     setMaxAgeBySessionKey: ({ targetSessionKey, maxAgeMs }) => {
-      const nextBindings = listBindingsForAccount(params.accountId)
-        .filter((entry) => entry.targetSessionKey === targetSessionKey.trim())
-        .map((entry) => ({
+      return updateBindingsBySessionKey({
+        targetSessionKey,
+        persistReason: "max-age-update",
+        update: (entry, now) => ({
           ...entry,
           maxAgeMs: Math.max(0, Math.floor(maxAgeMs)),
-        }));
-      for (const entry of nextBindings) {
-        setBindingRecord(entry);
-      }
-      void persist();
-      return nextBindings;
+          lastActivityAt: now,
+        }),
+      });
     },
     stop: () => {
       if (sweepTimer) {
@@ -446,6 +487,7 @@ export async function createMatrixThreadBindingManager(params: {
       if (persistTimer) {
         clearTimeout(persistTimer);
         persistTimer = null;
+        persistSafely("shutdown-flush");
       }
       unregisterSessionBindingAdapter({
         channel: "matrix",
@@ -631,6 +673,7 @@ export async function createMatrixThreadBindingManager(params: {
         }),
       );
     }, THREAD_BINDINGS_SWEEP_INTERVAL_MS);
+    sweepTimer.unref?.();
   }
 
   MANAGERS_BY_ACCOUNT_ID.set(params.accountId, manager);
