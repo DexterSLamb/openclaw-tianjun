@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   listMatrixPins: vi.fn(),
   getMatrixMemberInfo: vi.fn(),
   getMatrixRoomInfo: vi.fn(),
+  applyMatrixProfileUpdate: vi.fn(),
 }));
 
 vi.mock("./matrix/actions.js", async () => {
@@ -35,6 +36,10 @@ vi.mock("./matrix/send.js", async () => {
   };
 });
 
+vi.mock("./profile-update.js", () => ({
+  applyMatrixProfileUpdate: (...args: unknown[]) => mocks.applyMatrixProfileUpdate(...args),
+}));
+
 describe("handleMatrixAction pollVote", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -55,6 +60,18 @@ describe("handleMatrixAction pollVote", () => {
     });
     mocks.getMatrixMemberInfo.mockResolvedValue({ userId: "@u:example" });
     mocks.getMatrixRoomInfo.mockResolvedValue({ roomId: "!room:example" });
+    mocks.applyMatrixProfileUpdate.mockResolvedValue({
+      accountId: "ops",
+      displayName: "Ops Bot",
+      avatarUrl: "mxc://example/avatar",
+      profile: {
+        displayNameUpdated: true,
+        avatarUpdated: true,
+        resolvedAvatarUrl: "mxc://example/avatar",
+        convertedAvatarFromHttp: false,
+      },
+      configPath: "channels.matrix.accounts.ops",
+    });
   });
 
   it("parses snake_case vote params and forwards normalized selectors", async () => {
@@ -217,6 +234,32 @@ describe("handleMatrixAction pollVote", () => {
     });
     expect(mocks.getMatrixRoomInfo).toHaveBeenCalledWith("!room:example", {
       accountId: "ops",
+    });
+  });
+
+  it("persists self-profile updates through the shared profile helper", async () => {
+    const result = await handleMatrixAction(
+      {
+        action: "setProfile",
+        account_id: "ops",
+        display_name: "Ops Bot",
+        avatar_url: "mxc://example/avatar",
+      },
+      { channels: { matrix: { actions: { profile: true } } } } as CoreConfig,
+    );
+
+    expect(mocks.applyMatrixProfileUpdate).toHaveBeenCalledWith({
+      account: "ops",
+      displayName: "Ops Bot",
+      avatarUrl: "mxc://example/avatar",
+    });
+    expect(result.details).toMatchObject({
+      ok: true,
+      accountId: "ops",
+      profile: {
+        displayNameUpdated: true,
+        avatarUpdated: true,
+      },
     });
   });
 });

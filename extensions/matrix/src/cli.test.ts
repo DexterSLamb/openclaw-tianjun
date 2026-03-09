@@ -310,6 +310,9 @@ describe("matrix CLI verification commands", () => {
     getMatrixVerificationStatusMock.mockResolvedValue({
       encryptionEnabled: true,
       verified: true,
+      localVerified: true,
+      crossSigningVerified: true,
+      signedByOwner: true,
       userId: "@bot:example.org",
       deviceId: "DEVICE123",
       backupVersion: "1",
@@ -332,6 +335,8 @@ describe("matrix CLI verification commands", () => {
       `Recovery key created at: ${formatExpectedLocalTimestamp(recoveryCreatedAt)}`,
     );
     expect(console.log).toHaveBeenCalledWith("Diagnostics:");
+    expect(console.log).toHaveBeenCalledWith("Locally trusted: yes");
+    expect(console.log).toHaveBeenCalledWith("Signed by owner: yes");
     expect(setMatrixSdkLogModeMock).toHaveBeenCalledWith("default");
   });
 
@@ -413,6 +418,9 @@ describe("matrix CLI verification commands", () => {
     getMatrixVerificationStatusMock.mockResolvedValue({
       encryptionEnabled: true,
       verified: true,
+      localVerified: true,
+      crossSigningVerified: true,
+      signedByOwner: true,
       userId: "@bot:example.org",
       deviceId: "DEVICE123",
       backupVersion: "1",
@@ -444,6 +452,9 @@ describe("matrix CLI verification commands", () => {
     getMatrixVerificationStatusMock.mockResolvedValue({
       encryptionEnabled: true,
       verified: true,
+      localVerified: true,
+      crossSigningVerified: true,
+      signedByOwner: true,
       userId: "@bot:example.org",
       deviceId: "DEVICE123",
       backupVersion: "5256",
@@ -479,6 +490,9 @@ describe("matrix CLI verification commands", () => {
     getMatrixVerificationStatusMock.mockResolvedValue({
       encryptionEnabled: true,
       verified: true,
+      localVerified: true,
+      crossSigningVerified: true,
+      signedByOwner: true,
       userId: "@bot:example.org",
       deviceId: "DEVICE123",
       backupVersion: "5256",

@@ -843,6 +843,34 @@ describe("MatrixClient crypto bootstrapping", () => {
     expect(status.deviceId).toBe("DEVICE123");
   });
 
+  it("does not treat local-only trust as owner verification", async () => {
+    matrixJsClient.getUserId = vi.fn(() => "@bot:example.org");
+    matrixJsClient.getDeviceId = vi.fn(() => "DEVICE123");
+    matrixJsClient.getCrypto = vi.fn(() => ({
+      on: vi.fn(),
+      bootstrapCrossSigning: vi.fn(async () => {}),
+      bootstrapSecretStorage: vi.fn(async () => {}),
+      requestOwnUserVerification: vi.fn(async () => null),
+      getDeviceVerificationStatus: vi.fn(async () => ({
+        isVerified: () => true,
+        localVerified: true,
+        crossSigningVerified: false,
+        signedByOwner: false,
+      })),
+    }));
+
+    const client = new MatrixClient("https://matrix.example.org", "token", undefined, undefined, {
+      encryption: true,
+    });
+    await client.start();
+
+    const status = await client.getOwnDeviceVerificationStatus();
+    expect(status.localVerified).toBe(true);
+    expect(status.crossSigningVerified).toBe(false);
+    expect(status.signedByOwner).toBe(false);
+    expect(status.verified).toBe(false);
+  });
+
   it("verifies with a provided recovery key and reports success", async () => {
     const encoded = encodeRecoveryKey(new Uint8Array(Array.from({ length: 32 }, (_, i) => i + 1)));
     expect(encoded).toBeTypeOf("string");
@@ -885,6 +913,42 @@ describe("MatrixClient crypto bootstrapping", () => {
     expect(result.deviceId).toBe("DEVICE123");
     expect(bootstrapSecretStorage).toHaveBeenCalled();
     expect(bootstrapCrossSigning).toHaveBeenCalled();
+  });
+
+  it("fails recovery-key verification when the device is only locally trusted", async () => {
+    const encoded = encodeRecoveryKey(new Uint8Array(Array.from({ length: 32 }, (_, i) => i + 1)));
+
+    matrixJsClient.getUserId = vi.fn(() => "@bot:example.org");
+    matrixJsClient.getDeviceId = vi.fn(() => "DEVICE123");
+    matrixJsClient.getCrypto = vi.fn(() => ({
+      on: vi.fn(),
+      bootstrapCrossSigning: vi.fn(async () => {}),
+      bootstrapSecretStorage: vi.fn(async () => {}),
+      requestOwnUserVerification: vi.fn(async () => null),
+      getSecretStorageStatus: vi.fn(async () => ({
+        ready: true,
+        defaultKeyId: "SSSSKEY",
+        secretStorageKeyValidityMap: { SSSSKEY: true },
+      })),
+      getDeviceVerificationStatus: vi.fn(async () => ({
+        isVerified: () => true,
+        localVerified: true,
+        crossSigningVerified: false,
+        signedByOwner: false,
+      })),
+    }));
+
+    const recoveryDir = fs.mkdtempSync(path.join(os.tmpdir(), "matrix-sdk-verify-local-only-"));
+    const client = new MatrixClient("https://matrix.example.org", "token", undefined, undefined, {
+      encryption: true,
+      recoveryKeyPath: path.join(recoveryDir, "recovery-key.json"),
+    });
+    await client.start();
+
+    const result = await client.verifyWithRecoveryKey(encoded as string);
+    expect(result.success).toBe(false);
+    expect(result.verified).toBe(false);
+    expect(result.error).toContain("not verified by its owner");
   });
 
   it("reports detailed room-key backup health", async () => {
@@ -1138,6 +1202,42 @@ describe("MatrixClient crypto bootstrapping", () => {
     expect(result.verification.verified).toBe(true);
     expect(result.crossSigning.published).toBe(true);
     expect(result.cryptoBootstrap).not.toBeNull();
+  });
+
+  it("reports bootstrap failure when the device is only locally trusted", async () => {
+    matrixJsClient.getUserId = vi.fn(() => "@bot:example.org");
+    matrixJsClient.getDeviceId = vi.fn(() => "DEVICE123");
+    matrixJsClient.getCrypto = vi.fn(() => ({
+      on: vi.fn(),
+      bootstrapCrossSigning: vi.fn(async () => {}),
+      bootstrapSecretStorage: vi.fn(async () => {}),
+      requestOwnUserVerification: vi.fn(async () => null),
+      isCrossSigningReady: vi.fn(async () => true),
+      userHasCrossSigningKeys: vi.fn(async () => true),
+      getDeviceVerificationStatus: vi.fn(async () => ({
+        isVerified: () => true,
+        localVerified: true,
+        crossSigningVerified: false,
+        signedByOwner: false,
+      })),
+    }));
+
+    const client = new MatrixClient("https://matrix.example.org", "token", undefined, undefined, {
+      encryption: true,
+    });
+    vi.spyOn(client, "getOwnCrossSigningPublicationStatus").mockResolvedValue({
+      userId: "@bot:example.org",
+      masterKeyPublished: true,
+      selfSigningKeyPublished: true,
+      userSigningKeyPublished: true,
+      published: true,
+    });
+
+    const result = await client.bootstrapOwnDeviceVerification();
+    expect(result.success).toBe(false);
+    expect(result.verification.localVerified).toBe(true);
+    expect(result.verification.signedByOwner).toBe(false);
+    expect(result.error).toContain("not verified by its owner after bootstrap");
   });
 
   it("creates a key backup during bootstrap when none exists on the server", async () => {

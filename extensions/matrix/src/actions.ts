@@ -22,6 +22,7 @@ const MATRIX_PLUGIN_HANDLED_ACTIONS = new Set<ChannelMessageActionName>([
   "pin",
   "unpin",
   "list-pins",
+  "set-profile",
   "member-info",
   "channel-info",
   "permissions",
@@ -52,6 +53,9 @@ export const matrixMessageActions: ChannelMessageActionAdapter = {
       actions.add("pin");
       actions.add("unpin");
       actions.add("list-pins");
+    }
+    if (gate("profile")) {
+      actions.add("set-profile");
     }
     if (gate("memberInfo")) {
       actions.add("member-info");
@@ -181,6 +185,14 @@ export const matrixMessageActions: ChannelMessageActionAdapter = {
         action: action === "pin" ? "pinMessage" : action === "unpin" ? "unpinMessage" : "listPins",
         roomId: resolveRoomId(),
         messageId,
+      });
+    }
+
+    if (action === "set-profile") {
+      return await dispatch({
+        action: "setProfile",
+        displayName: readStringParam(params, "displayName") ?? readStringParam(params, "name"),
+        avatarUrl: readStringParam(params, "avatarUrl"),
       });
     }
 

@@ -35,6 +35,7 @@ export type MatrixActionConfig = {
   reactions?: boolean;
   messages?: boolean;
   pins?: boolean;
+  profile?: boolean;
   memberInfo?: boolean;
   channelInfo?: boolean;
   verification?: boolean;

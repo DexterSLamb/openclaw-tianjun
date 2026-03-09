@@ -230,6 +230,48 @@ describe("MatrixCryptoBootstrapper", () => {
     expect(crossSignDevice).toHaveBeenCalledWith("DEVICE123");
   });
 
+  it("does not treat local-only trust as sufficient for own-device bootstrap", async () => {
+    const deps = createBootstrapperDeps();
+    const setDeviceVerified = vi.fn(async () => {});
+    const crossSignDevice = vi.fn(async () => {});
+    const getDeviceVerificationStatus = vi
+      .fn<
+        () => Promise<{
+          isVerified: () => boolean;
+          localVerified: boolean;
+          crossSigningVerified: boolean;
+          signedByOwner: boolean;
+        }>
+      >()
+      .mockResolvedValueOnce({
+        isVerified: () => true,
+        localVerified: true,
+        crossSigningVerified: false,
+        signedByOwner: false,
+      })
+      .mockResolvedValueOnce({
+        isVerified: () => true,
+        localVerified: true,
+        crossSigningVerified: true,
+        signedByOwner: true,
+      });
+    const crypto = createCryptoApi({
+      getDeviceVerificationStatus,
+      setDeviceVerified,
+      crossSignDevice,
+      isCrossSigningReady: vi.fn(async () => true),
+    });
+    const bootstrapper = new MatrixCryptoBootstrapper(
+      deps as unknown as MatrixCryptoBootstrapperDeps<MatrixRawEvent>,
+    );
+
+    await bootstrapper.bootstrap(crypto);
+
+    expect(setDeviceVerified).toHaveBeenCalledWith("@bot:example.org", "DEVICE123", true);
+    expect(crossSignDevice).toHaveBeenCalledWith("DEVICE123");
+    expect(getDeviceVerificationStatus).toHaveBeenCalledTimes(2);
+  });
+
   it("auto-accepts incoming verification requests from other users", async () => {
     const deps = createBootstrapperDeps();
     const listeners = new Map<string, (...args: unknown[]) => void>();

@@ -402,7 +402,7 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
         env: process.env,
       });
       if (startupVerification.kind === "verified") {
-        logger.info("matrix: device is verified and ready for encrypted rooms");
+        logger.info("matrix: device is verified by its owner and ready for encrypted rooms");
       } else if (
         startupVerification.kind === "disabled" ||
         startupVerification.kind === "cooldown" ||

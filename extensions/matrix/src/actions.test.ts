@@ -66,4 +66,16 @@ describe("matrixMessageActions", () => {
     expect(supportsAction!({ action: "poll" } as never)).toBe(false);
     expect(supportsAction!({ action: "poll-vote" } as never)).toBe(true);
   });
+
+  it("exposes and handles self-profile updates", () => {
+    const listActions = matrixMessageActions.listActions;
+    const supportsAction = matrixMessageActions.supportsAction;
+
+    const actions = listActions!({
+      cfg: createConfiguredMatrixConfig(),
+    } as never);
+
+    expect(actions).toContain("set-profile");
+    expect(supportsAction!({ action: "set-profile" } as never)).toBe(true);
+  });
 });

@@ -9,6 +9,7 @@ const matrixActionSchema = z
     reactions: z.boolean().optional(),
     messages: z.boolean().optional(),
     pins: z.boolean().optional(),
+    profile: z.boolean().optional(),
     memberInfo: z.boolean().optional(),
     channelInfo: z.boolean().optional(),
     verification: z.boolean().optional(),

@@ -27,6 +27,7 @@ import type {
   MessageEventContent,
 } from "./sdk/types.js";
 import { MatrixVerificationManager } from "./sdk/verification-manager.js";
+import { isMatrixDeviceOwnerVerified } from "./sdk/verification-status.js";
 
 export { ConsoleLogger, LogService };
 export type {
@@ -47,6 +48,8 @@ export type MatrixOwnDeviceVerificationStatus = {
   encryptionEnabled: boolean;
   userId: string | null;
   deviceId: string | null;
+  // "verified" is intentionally strict: other Matrix clients should trust messages
+  // from this device without showing "not verified by its owner" warnings.
   verified: boolean;
   localVerified: boolean;
   crossSigningVerified: boolean;
@@ -101,17 +104,6 @@ export type MatrixVerificationBootstrapResult = {
   pendingVerifications: number;
   cryptoBootstrap: MatrixCryptoBootstrapResult | null;
 };
-
-function isMatrixDeviceVerified(
-  status: MatrixDeviceVerificationStatusLike | null | undefined,
-): boolean {
-  return (
-    status?.isVerified?.() === true ||
-    status?.localVerified === true ||
-    status?.crossSigningVerified === true ||
-    status?.signedByOwner === true
-  );
-}
 
 function normalizeOptionalString(value: string | null | undefined): string | null {
   const normalized = value?.trim();
@@ -659,7 +651,7 @@ export class MatrixClient {
       encryptionEnabled: true,
       userId,
       deviceId,
-      verified: isMatrixDeviceVerified(deviceStatus),
+      verified: isMatrixDeviceOwnerVerified(deviceStatus),
       localVerified: deviceStatus?.localVerified === true,
       crossSigningVerified: deviceStatus?.crossSigningVerified === true,
       signedByOwner: deviceStatus?.signedByOwner === true,
@@ -715,7 +707,7 @@ export class MatrixClient {
       return {
         success: false,
         error:
-          "Matrix device is still unverified after applying recovery key. Verify your recovery key and ensure cross-signing is available.",
+          "Matrix device is still not verified by its owner after applying the recovery key. Ensure cross-signing is available and the device is signed.",
         ...status,
       };
     }
@@ -901,7 +893,7 @@ export class MatrixClient {
     const error = success
       ? undefined
       : (bootstrapError ??
-        "Matrix verification bootstrap did not produce a verified device with published cross-signing keys");
+        "Matrix verification bootstrap did not produce a device verified by its owner with published cross-signing keys");
     return {
       success,
       error,

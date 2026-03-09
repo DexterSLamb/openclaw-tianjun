@@ -22,6 +22,9 @@ type VerificationSummaryLike = {
 
 function createHarness(params?: {
   verified?: boolean;
+  localVerified?: boolean;
+  crossSigningVerified?: boolean;
+  signedByOwner?: boolean;
   requestVerification?: () => Promise<{ id: string; transactionId?: string }>;
   listVerifications?: () => Promise<VerificationSummaryLike[]>;
 }) {
@@ -37,9 +40,9 @@ function createHarness(params?: {
     userId: "@bot:example.org",
     deviceId: "DEVICE123",
     verified: params?.verified === true,
-    localVerified: params?.verified === true,
-    crossSigningVerified: params?.verified === true,
-    signedByOwner: params?.verified === true,
+    localVerified: params?.localVerified ?? params?.verified === true,
+    crossSigningVerified: params?.crossSigningVerified ?? params?.verified === true,
+    signedByOwner: params?.signedByOwner ?? params?.verified === true,
     recoveryKeyStored: false,
     recoveryKeyCreatedAt: null,
     recoveryKeyId: null,
@@ -89,6 +92,31 @@ describe("ensureMatrixStartupVerification", () => {
 
     expect(result.kind).toBe("verified");
     expect(harness.client.crypto.requestVerification).not.toHaveBeenCalled();
+  });
+
+  it("still requests startup verification when trust is only local", async () => {
+    const tempHome = createTempStateDir();
+    const harness = createHarness({
+      verified: false,
+      localVerified: true,
+      crossSigningVerified: false,
+      signedByOwner: false,
+    });
+
+    const result = await ensureMatrixStartupVerification({
+      client: harness.client as never,
+      auth: {
+        homeserver: "https://matrix.example.org",
+        userId: "@bot:example.org",
+        accessToken: "token",
+        encryption: true,
+      },
+      accountConfig: {},
+      stateFilePath: createStateFilePath(tempHome),
+    });
+
+    expect(result.kind).toBe("requested");
+    expect(harness.client.crypto.requestVerification).toHaveBeenCalledWith({ ownUser: true });
   });
 
   it("skips automatic requests when a self verification is already pending", async () => {

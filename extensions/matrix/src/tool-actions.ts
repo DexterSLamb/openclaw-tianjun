@@ -39,12 +39,14 @@ import {
   verifyMatrixRecoveryKey,
 } from "./matrix/actions.js";
 import { reactMatrixMessage } from "./matrix/send.js";
+import { applyMatrixProfileUpdate } from "./profile-update.js";
 import type { CoreConfig } from "./types.js";
 
 const messageActions = new Set(["sendMessage", "editMessage", "deleteMessage", "readMessages"]);
 const reactionActions = new Set(["react", "reactions"]);
 const pinActions = new Set(["pinMessage", "unpinMessage", "listPins"]);
 const pollActions = new Set(["pollVote"]);
+const profileActions = new Set(["setProfile"]);
 const verificationActions = new Set([
   "encryptionStatus",
   "verificationList",
@@ -256,6 +258,18 @@ export async function handleMatrixAction(
     }
     const result = await listMatrixPins(roomId, clientOpts);
     return jsonResult({ ok: true, pinned: result.pinned, events: result.events });
+  }
+
+  if (profileActions.has(action)) {
+    if (!isActionEnabled("profile")) {
+      throw new Error("Matrix profile updates are disabled.");
+    }
+    const result = await applyMatrixProfileUpdate({
+      account: accountId,
+      displayName: readStringParam(params, "displayName") ?? readStringParam(params, "name"),
+      avatarUrl: readStringParam(params, "avatarUrl"),
+    });
+    return jsonResult({ ok: true, ...result });
   }
 
   if (action === "memberInfo") {

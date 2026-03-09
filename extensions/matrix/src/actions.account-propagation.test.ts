@@ -82,4 +82,27 @@ describe("matrixMessageActions account propagation", () => {
       expect.any(Object),
     );
   });
+
+  it("forwards accountId for self-profile updates", async () => {
+    await matrixMessageActions.handleAction?.(
+      createContext({
+        action: "set-profile",
+        accountId: "ops",
+        params: {
+          displayName: "Ops Bot",
+          avatarUrl: "mxc://example/avatar",
+        },
+      }),
+    );
+
+    expect(mocks.handleMatrixAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "setProfile",
+        accountId: "ops",
+        displayName: "Ops Bot",
+        avatarUrl: "mxc://example/avatar",
+      }),
+      expect.any(Object),
+    );
+  });
 });

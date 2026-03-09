@@ -15,6 +15,7 @@ import {
 } from "./matrix/actions/verification.js";
 import { setMatrixSdkLogMode } from "./matrix/client/logging.js";
 import { resolveMatrixConfigPath, updateMatrixAccountConfig } from "./matrix/config-update.js";
+import { applyMatrixProfileUpdate, type MatrixProfileUpdateResult } from "./profile-update.js";
 import { getMatrixRuntime } from "./runtime.js";
 import type { CoreConfig } from "./types.js";
 
@@ -200,60 +201,18 @@ async function addMatrixAccount(params: {
   };
 }
 
-type MatrixCliProfileSetResult = {
-  accountId: string;
-  displayName: string | null;
-  avatarUrl: string | null;
-  profile: {
-    displayNameUpdated: boolean;
-    avatarUpdated: boolean;
-    resolvedAvatarUrl: string | null;
-    convertedAvatarFromHttp: boolean;
-  };
-  configPath: string;
-};
+type MatrixCliProfileSetResult = MatrixProfileUpdateResult;
 
 async function setMatrixProfile(params: {
   account?: string;
   name?: string;
   avatarUrl?: string;
 }): Promise<MatrixCliProfileSetResult> {
-  const runtime = getMatrixRuntime();
-  const cfg = runtime.config.loadConfig() as CoreConfig;
-  const accountId = normalizeAccountId(params.account);
-  const displayName = params.name?.trim() || null;
-  const avatarUrl = params.avatarUrl?.trim() || null;
-  if (!displayName && !avatarUrl) {
-    throw new Error("Provide --name and/or --avatar-url.");
-  }
-
-  const synced = await updateMatrixOwnProfile({
-    accountId,
-    displayName: displayName ?? undefined,
-    avatarUrl: avatarUrl ?? undefined,
+  return await applyMatrixProfileUpdate({
+    account: params.account,
+    displayName: params.name,
+    avatarUrl: params.avatarUrl,
   });
-  const persistedAvatarUrl =
-    synced.convertedAvatarFromHttp && synced.resolvedAvatarUrl
-      ? synced.resolvedAvatarUrl
-      : avatarUrl;
-  const updated = updateMatrixAccountConfig(cfg, accountId, {
-    name: displayName ?? undefined,
-    avatarUrl: persistedAvatarUrl ?? undefined,
-  });
-  await runtime.config.writeConfigFile(updated as never);
-
-  return {
-    accountId,
-    displayName,
-    avatarUrl: persistedAvatarUrl ?? null,
-    profile: {
-      displayNameUpdated: synced.displayNameUpdated,
-      avatarUpdated: synced.avatarUpdated,
-      resolvedAvatarUrl: synced.resolvedAvatarUrl,
-      convertedAvatarFromHttp: synced.convertedAvatarFromHttp,
-    },
-    configPath: resolveMatrixConfigPath(updated, accountId),
-  };
 }
 
 type MatrixCliCommandConfig<TResult> = {
@@ -309,6 +268,9 @@ type MatrixCliVerificationStatus = {
   verified: boolean;
   userId: string | null;
   deviceId: string | null;
+  localVerified: boolean;
+  crossSigningVerified: boolean;
+  signedByOwner: boolean;
   backupVersion: string | null;
   backup?: MatrixCliBackupStatus;
   recoveryKeyStored: boolean;
@@ -389,6 +351,16 @@ function printVerificationBackupStatus(status: {
   backup?: MatrixCliBackupStatus;
 }): void {
   printBackupStatus(resolveBackupStatus(status));
+}
+
+function printVerificationTrustDiagnostics(status: {
+  localVerified: boolean;
+  crossSigningVerified: boolean;
+  signedByOwner: boolean;
+}): void {
+  console.log(`Locally trusted: ${status.localVerified ? "yes" : "no"}`);
+  console.log(`Cross-signing verified: ${status.crossSigningVerified ? "yes" : "no"}`);
+  console.log(`Signed by owner: ${status.signedByOwner ? "yes" : "no"}`);
 }
 
 function printVerificationGuidance(status: MatrixCliVerificationStatus): void {
@@ -525,7 +497,7 @@ function printGuidance(lines: string[]): void {
 }
 
 function printVerificationStatus(status: MatrixCliVerificationStatus, verbose = false): void {
-  console.log(`Verified: ${status.verified ? "yes" : "no"}`);
+  console.log(`Verified by owner: ${status.verified ? "yes" : "no"}`);
   const backup = resolveBackupStatus(status);
   const backupIssue = resolveBackupIssue(backup);
   printVerificationBackupSummary(status);
@@ -535,6 +507,7 @@ function printVerificationStatus(status: MatrixCliVerificationStatus, verbose = 
   if (verbose) {
     console.log("Diagnostics:");
     printVerificationIdentity(status);
+    printVerificationTrustDiagnostics(status);
     printVerificationBackupStatus(status);
     console.log(`Recovery key stored: ${status.recoveryKeyStored ? "yes" : "no"}`);
     printTimestamp("Recovery key created at", status.recoveryKeyCreatedAt);
@@ -804,9 +777,10 @@ export function registerMatrixCli(params: { program: Command }): void {
             if (result.error) {
               console.log(`Error: ${result.error}`);
             }
-            console.log(`Verified: ${result.verification.verified ? "yes" : "no"}`);
+            console.log(`Verified by owner: ${result.verification.verified ? "yes" : "no"}`);
             printVerificationIdentity(result.verification);
             if (verbose) {
+              printVerificationTrustDiagnostics(result.verification);
               console.log(
                 `Cross-signing published: ${result.crossSigning.published ? "yes" : "no"} (master=${result.crossSigning.masterKeyPublished ? "yes" : "no"}, self=${result.crossSigning.selfSigningKeyPublished ? "yes" : "no"}, user=${result.crossSigning.userSigningKeyPublished ? "yes" : "no"})`,
               );
@@ -853,6 +827,7 @@ export function registerMatrixCli(params: { program: Command }): void {
             printVerificationIdentity(result);
             printVerificationBackupSummary(result);
             if (verbose) {
+              printVerificationTrustDiagnostics(result);
               printVerificationBackupStatus(result);
               printTimestamp("Recovery key created at", result.recoveryKeyCreatedAt);
               printTimestamp("Verified at", result.verifiedAt);

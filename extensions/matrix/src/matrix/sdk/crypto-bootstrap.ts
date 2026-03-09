@@ -13,6 +13,7 @@ import type {
   MatrixVerificationManager,
   MatrixVerificationRequestLike,
 } from "./verification-manager.js";
+import { isMatrixDeviceOwnerVerified } from "./verification-status.js";
 
 export type MatrixCryptoBootstrapperDeps<TRawEvent extends MatrixRawEvent> = {
   getUserId: () => Promise<string>;
@@ -293,11 +294,7 @@ export class MatrixCryptoBootstrapper<TRawEvent extends MatrixRawEvent> {
       typeof crypto.getDeviceVerificationStatus === "function"
         ? await crypto.getDeviceVerificationStatus(userId, deviceId).catch(() => null)
         : null;
-    const alreadyVerified =
-      deviceStatus?.isVerified?.() === true ||
-      deviceStatus?.localVerified === true ||
-      deviceStatus?.crossSigningVerified === true ||
-      deviceStatus?.signedByOwner === true;
+    const alreadyVerified = isMatrixDeviceOwnerVerified(deviceStatus);
 
     if (alreadyVerified) {
       return true;
@@ -321,13 +318,9 @@ export class MatrixCryptoBootstrapper<TRawEvent extends MatrixRawEvent> {
       typeof crypto.getDeviceVerificationStatus === "function"
         ? await crypto.getDeviceVerificationStatus(userId, deviceId).catch(() => null)
         : null;
-    const verified =
-      refreshedStatus?.isVerified?.() === true ||
-      refreshedStatus?.localVerified === true ||
-      refreshedStatus?.crossSigningVerified === true ||
-      refreshedStatus?.signedByOwner === true;
+    const verified = isMatrixDeviceOwnerVerified(refreshedStatus);
     if (!verified && strict) {
-      throw new Error(`Matrix own device ${deviceId} is not verified after bootstrap`);
+      throw new Error(`Matrix own device ${deviceId} is not verified by its owner after bootstrap`);
     }
     return verified;
   }
