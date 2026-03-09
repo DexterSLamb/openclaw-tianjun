@@ -83,4 +83,40 @@ describe("matrix legacy state migration", () => {
       expect(fs.existsSync(detection.targetStoragePath)).toBe(true);
     });
   });
+
+  it("records which account receives a flat legacy store when multiple Matrix accounts exist", async () => {
+    await withTempHome(async (home) => {
+      const stateDir = path.join(home, ".openclaw");
+      writeFile(path.join(stateDir, "matrix", "bot-storage.json"), '{"next_batch":"s1"}');
+
+      const cfg: OpenClawConfig = {
+        channels: {
+          matrix: {
+            defaultAccount: "work",
+            accounts: {
+              work: {
+                homeserver: "https://matrix.example.org",
+                userId: "@work-bot:example.org",
+                accessToken: "tok-work",
+              },
+              alerts: {
+                homeserver: "https://matrix.example.org",
+                userId: "@alerts-bot:example.org",
+                accessToken: "tok-alerts",
+              },
+            },
+          },
+        },
+      };
+
+      const detection = detectLegacyMatrixState({ cfg, env: process.env });
+      expect(detection && "warning" in detection).toBe(false);
+      if (!detection || "warning" in detection) {
+        throw new Error("expected a migratable Matrix legacy state plan");
+      }
+
+      expect(detection.accountId).toBe("work");
+      expect(detection.selectionNote).toContain('account "work"');
+    });
+  });
 });

@@ -33,6 +33,7 @@ type MatrixLegacyStatePlan = {
   targetRootDir: string;
   targetStoragePath: string;
   targetCryptoPath: string;
+  selectionNote?: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -128,6 +129,32 @@ function resolveMatrixTargetAccountId(cfg: OpenClawConfig): string {
   return DEFAULT_ACCOUNT_ID;
 }
 
+function resolveMatrixFlatStoreSelectionNote(params: {
+  channel: Record<string, unknown>;
+  accountId: string;
+}): string | undefined {
+  const accounts = isRecord(params.channel.accounts) ? params.channel.accounts : null;
+  if (!accounts) {
+    return undefined;
+  }
+
+  const configuredAccounts = Array.from(
+    new Set(
+      Object.keys(accounts)
+        .map((accountId) => normalizeAccountId(accountId))
+        .filter(Boolean),
+    ),
+  );
+  if (configuredAccounts.length <= 1) {
+    return undefined;
+  }
+
+  return (
+    `Legacy Matrix flat store uses one shared on-disk state, so it will be migrated into ` +
+    `account "${params.accountId}".`
+  );
+}
+
 function resolveMatrixMigrationPlan(params: {
   cfg: OpenClawConfig;
   env: NodeJS.ProcessEnv;
@@ -149,6 +176,7 @@ function resolveMatrixMigrationPlan(params: {
   const accountId = resolveMatrixTargetAccountId(params.cfg);
   const account = resolveMatrixAccountConfig(params.cfg, accountId);
   const stored = loadStoredMatrixCredentials(params.env, accountId);
+  const selectionNote = resolveMatrixFlatStoreSelectionNote({ channel, accountId });
 
   const homeserver = typeof account.homeserver === "string" ? account.homeserver.trim() : "";
   const configUserId = typeof account.userId === "string" ? account.userId.trim() : "";
@@ -191,6 +219,7 @@ function resolveMatrixMigrationPlan(params: {
     targetRootDir: rootDir,
     targetStoragePath: path.join(rootDir, "bot-storage.json"),
     targetCryptoPath: path.join(rootDir, "crypto"),
+    selectionNote,
   };
 }
 
@@ -266,10 +295,13 @@ export async function autoMigrateLegacyMatrixState(params: {
   });
 
   if (changes.length > 0) {
+    const details = [
+      ...changes.map((entry) => `- ${entry}`),
+      ...(detection.selectionNote ? [`- ${detection.selectionNote}`] : []),
+      "- No user action required.",
+    ];
     params.log?.info?.(
-      `matrix: plugin upgraded in place for account "${detection.accountId}".\n${changes
-        .map((entry) => `- ${entry}`)
-        .join("\n")}\n- No user action required.`,
+      `matrix: plugin upgraded in place for account "${detection.accountId}".\n${details.join("\n")}`,
     );
   }
   if (warnings.length > 0) {

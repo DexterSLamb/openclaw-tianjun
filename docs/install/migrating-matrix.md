@@ -59,8 +59,7 @@ OpenClaw cannot automatically recover:
 
 Current warning scope:
 
-- stale custom Matrix plugin path installs are surfaced by `openclaw doctor` today
-- gateway startup does not currently emit a separate Matrix-specific custom-path warning
+- stale custom Matrix plugin path installs are surfaced by both gateway startup and `openclaw doctor`
 
 If your old installation had local-only encrypted history that was never backed up, some older encrypted messages may remain unreadable after the upgrade.
 

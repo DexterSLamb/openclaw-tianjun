@@ -27,6 +27,10 @@ import {
   normalizeTrustedSafeBinDirs,
 } from "../infra/exec-safe-bin-trust.js";
 import {
+  detectMatrixInstallPathIssue,
+  formatMatrixInstallPathIssue,
+} from "../infra/matrix-install-path-warnings.js";
+import {
   autoPrepareLegacyMatrixCrypto,
   detectLegacyMatrixCrypto,
 } from "../infra/matrix-legacy-crypto.js";
@@ -300,6 +304,7 @@ function formatMatrixLegacyStatePreview(
     "- Matrix plugin upgraded in place.",
     `- Legacy sync store: ${detection.legacyStoragePath} -> ${detection.targetStoragePath}`,
     `- Legacy crypto store: ${detection.legacyCryptoPath} -> ${detection.targetCryptoPath}`,
+    ...(detection.selectionNote ? [`- ${detection.selectionNote}`] : []),
     '- Run "openclaw doctor --fix" to migrate this Matrix state now.',
   ].join("\n");
 }
@@ -326,33 +331,14 @@ function formatMatrixLegacyCryptoPreview(
 }
 
 async function collectMatrixInstallPathWarnings(cfg: OpenClawConfig): Promise<string[]> {
-  const install = cfg.plugins?.installs?.matrix;
-  if (!install || install.source !== "path") {
+  const issue = await detectMatrixInstallPathIssue(cfg);
+  if (!issue) {
     return [];
   }
-
-  const candidatePaths = [install.sourcePath, install.installPath]
-    .map((value) => (typeof value === "string" ? value.trim() : ""))
-    .filter(Boolean);
-  if (candidatePaths.length === 0) {
-    return [];
-  }
-
-  for (const candidatePath of candidatePaths) {
-    try {
-      await fs.access(path.resolve(candidatePath));
-      return [];
-    } catch {
-      // keep checking remaining candidates
-    }
-  }
-
-  const missingPath = candidatePaths[0] ?? "(unknown)";
-  return [
-    `- Matrix is installed from a custom path that no longer exists: ${missingPath}`,
-    `- Reinstall with "${formatCliCommand("openclaw plugins install @openclaw/matrix")}".`,
-    `- If you are running from a repo checkout, you can also use "${formatCliCommand("openclaw plugins install ./extensions/matrix")}".`,
-  ];
+  return formatMatrixInstallPathIssue({
+    issue,
+    formatCommand: formatCliCommand,
+  }).map((entry) => `- ${entry}`);
 }
 
 function scanTelegramAllowFromUsernameEntries(cfg: OpenClawConfig): TelegramAllowFromUsernameHit[] {
