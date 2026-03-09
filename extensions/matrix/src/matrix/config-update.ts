@@ -93,6 +93,18 @@ export function resolveMatrixConfigPath(cfg: CoreConfig, accountId: string): str
   return `channels.matrix.accounts.${normalizedAccountId}`;
 }
 
+export function resolveMatrixConfigFieldPath(
+  cfg: CoreConfig,
+  accountId: string,
+  fieldPath: string,
+): string {
+  const suffix = fieldPath.trim().replace(/^\.+/, "");
+  if (!suffix) {
+    return resolveMatrixConfigPath(cfg, accountId);
+  }
+  return `${resolveMatrixConfigPath(cfg, accountId)}.${suffix}`;
+}
+
 export function updateMatrixAccountConfig(
   cfg: CoreConfig,
   accountId: string,

@@ -1,8 +1,28 @@
 import { describe, expect, it } from "vitest";
 import type { CoreConfig } from "../types.js";
-import { updateMatrixAccountConfig } from "./config-update.js";
+import { resolveMatrixConfigFieldPath, updateMatrixAccountConfig } from "./config-update.js";
 
 describe("updateMatrixAccountConfig", () => {
+  it("resolves account-aware Matrix config field paths", () => {
+    expect(resolveMatrixConfigFieldPath({} as CoreConfig, "default", "dm.policy")).toBe(
+      "channels.matrix.dm.policy",
+    );
+
+    const cfg = {
+      channels: {
+        matrix: {
+          accounts: {
+            ops: {},
+          },
+        },
+      },
+    } as CoreConfig;
+
+    expect(resolveMatrixConfigFieldPath(cfg, "ops", ".dm.allowFrom")).toBe(
+      "channels.matrix.accounts.ops.dm.allowFrom",
+    );
+  });
+
   it("supports explicit null clears and boolean false values", () => {
     const cfg = {
       channels: {

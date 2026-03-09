@@ -11,6 +11,7 @@ import {
   listNormalizedMatrixAccountIds,
   resolveMatrixBaseConfig,
 } from "../account-config.js";
+import { resolveMatrixConfigFieldPath } from "../config-update.js";
 import { MatrixClient } from "../sdk.js";
 import { ensureMatrixSdkLoggingConfigured } from "./logging.js";
 import type { MatrixAuth, MatrixResolvedConfig } from "./types.js";
@@ -27,6 +28,54 @@ type MatrixEnvConfig = {
   deviceId?: string;
   deviceName?: string;
 };
+
+type MatrixConfigStringField =
+  | "homeserver"
+  | "userId"
+  | "accessToken"
+  | "password"
+  | "deviceId"
+  | "deviceName";
+
+function resolveMatrixBaseConfigFieldPath(field: MatrixConfigStringField): string {
+  return `channels.matrix.${field}`;
+}
+
+function readMatrixBaseConfigField(
+  matrix: ReturnType<typeof resolveMatrixBaseConfig>,
+  field: MatrixConfigStringField,
+): string {
+  return clean(matrix[field], resolveMatrixBaseConfigFieldPath(field));
+}
+
+function readMatrixAccountConfigField(
+  cfg: CoreConfig,
+  accountId: string,
+  account: Partial<Record<MatrixConfigStringField, unknown>>,
+  field: MatrixConfigStringField,
+): string {
+  return clean(account[field], resolveMatrixConfigFieldPath(cfg, accountId, field));
+}
+
+function resolveMatrixStringField(params: {
+  matrix: ReturnType<typeof resolveMatrixBaseConfig>;
+  field: MatrixConfigStringField;
+  accountValue?: string;
+  scopedEnvValue?: string;
+  globalEnvValue?: string;
+}): string {
+  return (
+    params.accountValue ||
+    params.scopedEnvValue ||
+    readMatrixBaseConfigField(params.matrix, params.field) ||
+    params.globalEnvValue ||
+    ""
+  );
+}
+
+function clampMatrixInitialSyncLimit(value: unknown): number | undefined {
+  return typeof value === "number" ? Math.max(0, Math.floor(value)) : undefined;
+}
 
 function resolveGlobalMatrixEnvConfig(env: NodeJS.ProcessEnv): MatrixEnvConfig {
   return {
@@ -100,36 +149,47 @@ export function resolveMatrixConfig(
   const matrix = resolveMatrixBaseConfig(cfg);
   const defaultScopedEnv = resolveScopedMatrixEnvConfig(DEFAULT_ACCOUNT_ID, env);
   const globalEnv = resolveGlobalMatrixEnvConfig(env);
-  const homeserver =
-    clean(matrix.homeserver, "channels.matrix.homeserver") ||
-    defaultScopedEnv.homeserver ||
-    globalEnv.homeserver;
-  const userId =
-    clean(matrix.userId, "channels.matrix.userId") || defaultScopedEnv.userId || globalEnv.userId;
+  const homeserver = resolveMatrixStringField({
+    matrix,
+    field: "homeserver",
+    scopedEnvValue: defaultScopedEnv.homeserver,
+    globalEnvValue: globalEnv.homeserver,
+  });
+  const userId = resolveMatrixStringField({
+    matrix,
+    field: "userId",
+    scopedEnvValue: defaultScopedEnv.userId,
+    globalEnvValue: globalEnv.userId,
+  });
   const accessToken =
-    clean(matrix.accessToken, "channels.matrix.accessToken") ||
-    defaultScopedEnv.accessToken ||
-    globalEnv.accessToken ||
-    undefined;
+    resolveMatrixStringField({
+      matrix,
+      field: "accessToken",
+      scopedEnvValue: defaultScopedEnv.accessToken,
+      globalEnvValue: globalEnv.accessToken,
+    }) || undefined;
   const password =
-    clean(matrix.password, "channels.matrix.password") ||
-    defaultScopedEnv.password ||
-    globalEnv.password ||
-    undefined;
+    resolveMatrixStringField({
+      matrix,
+      field: "password",
+      scopedEnvValue: defaultScopedEnv.password,
+      globalEnvValue: globalEnv.password,
+    }) || undefined;
   const deviceId =
-    clean(matrix.deviceId, "channels.matrix.deviceId") ||
-    defaultScopedEnv.deviceId ||
-    globalEnv.deviceId ||
-    undefined;
+    resolveMatrixStringField({
+      matrix,
+      field: "deviceId",
+      scopedEnvValue: defaultScopedEnv.deviceId,
+      globalEnvValue: globalEnv.deviceId,
+    }) || undefined;
   const deviceName =
-    clean(matrix.deviceName, "channels.matrix.deviceName") ||
-    defaultScopedEnv.deviceName ||
-    globalEnv.deviceName ||
-    undefined;
-  const initialSyncLimit =
-    typeof matrix.initialSyncLimit === "number"
-      ? Math.max(0, Math.floor(matrix.initialSyncLimit))
-      : undefined;
+    resolveMatrixStringField({
+      matrix,
+      field: "deviceName",
+      scopedEnvValue: defaultScopedEnv.deviceName,
+      globalEnvValue: globalEnv.deviceName,
+    }) || undefined;
+  const initialSyncLimit = clampMatrixInitialSyncLimit(matrix.initialSyncLimit);
   const encryption = matrix.encryption ?? false;
   return {
     homeserver,
@@ -153,76 +213,58 @@ export function resolveMatrixConfigForAccount(
   const normalizedAccountId = normalizeAccountId(accountId);
   const scopedEnv = resolveScopedMatrixEnvConfig(normalizedAccountId, env);
   const globalEnv = resolveGlobalMatrixEnvConfig(env);
-
-  const accountHomeserver = clean(
-    account.homeserver,
-    `channels.matrix.accounts.${normalizedAccountId}.homeserver`,
-  );
-  const accountUserId = clean(
-    account.userId,
-    `channels.matrix.accounts.${normalizedAccountId}.userId`,
-  );
-  const accountAccessToken = clean(
-    account.accessToken,
-    `channels.matrix.accounts.${normalizedAccountId}.accessToken`,
-  );
-  const accountPassword = clean(
-    account.password,
-    `channels.matrix.accounts.${normalizedAccountId}.password`,
-  );
-  const accountDeviceId = clean(
-    account.deviceId,
-    `channels.matrix.accounts.${normalizedAccountId}.deviceId`,
-  );
-  const accountDeviceName = clean(
-    account.deviceName,
-    `channels.matrix.accounts.${normalizedAccountId}.deviceName`,
-  );
-
-  const homeserver =
-    accountHomeserver ||
-    scopedEnv.homeserver ||
-    clean(matrix.homeserver, "channels.matrix.homeserver") ||
-    globalEnv.homeserver;
-  const userId =
-    accountUserId ||
-    scopedEnv.userId ||
-    clean(matrix.userId, "channels.matrix.userId") ||
-    globalEnv.userId;
+  const accountField = (field: MatrixConfigStringField) =>
+    readMatrixAccountConfigField(cfg, normalizedAccountId, account, field);
+  const homeserver = resolveMatrixStringField({
+    matrix,
+    field: "homeserver",
+    accountValue: accountField("homeserver"),
+    scopedEnvValue: scopedEnv.homeserver,
+    globalEnvValue: globalEnv.homeserver,
+  });
+  const userId = resolveMatrixStringField({
+    matrix,
+    field: "userId",
+    accountValue: accountField("userId"),
+    scopedEnvValue: scopedEnv.userId,
+    globalEnvValue: globalEnv.userId,
+  });
   const accessToken =
-    accountAccessToken ||
-    scopedEnv.accessToken ||
-    clean(matrix.accessToken, "channels.matrix.accessToken") ||
-    globalEnv.accessToken ||
-    undefined;
+    resolveMatrixStringField({
+      matrix,
+      field: "accessToken",
+      accountValue: accountField("accessToken"),
+      scopedEnvValue: scopedEnv.accessToken,
+      globalEnvValue: globalEnv.accessToken,
+    }) || undefined;
   const password =
-    accountPassword ||
-    scopedEnv.password ||
-    clean(matrix.password, "channels.matrix.password") ||
-    globalEnv.password ||
-    undefined;
+    resolveMatrixStringField({
+      matrix,
+      field: "password",
+      accountValue: accountField("password"),
+      scopedEnvValue: scopedEnv.password,
+      globalEnvValue: globalEnv.password,
+    }) || undefined;
   const deviceId =
-    accountDeviceId ||
-    scopedEnv.deviceId ||
-    clean(matrix.deviceId, "channels.matrix.deviceId") ||
-    globalEnv.deviceId ||
-    undefined;
+    resolveMatrixStringField({
+      matrix,
+      field: "deviceId",
+      accountValue: accountField("deviceId"),
+      scopedEnvValue: scopedEnv.deviceId,
+      globalEnvValue: globalEnv.deviceId,
+    }) || undefined;
   const deviceName =
-    accountDeviceName ||
-    scopedEnv.deviceName ||
-    clean(matrix.deviceName, "channels.matrix.deviceName") ||
-    globalEnv.deviceName ||
-    undefined;
+    resolveMatrixStringField({
+      matrix,
+      field: "deviceName",
+      accountValue: accountField("deviceName"),
+      scopedEnvValue: scopedEnv.deviceName,
+      globalEnvValue: globalEnv.deviceName,
+    }) || undefined;
 
-  const accountInitialSyncLimit =
-    typeof account.initialSyncLimit === "number"
-      ? Math.max(0, Math.floor(account.initialSyncLimit))
-      : undefined;
+  const accountInitialSyncLimit = clampMatrixInitialSyncLimit(account.initialSyncLimit);
   const initialSyncLimit =
-    accountInitialSyncLimit ??
-    (typeof matrix.initialSyncLimit === "number"
-      ? Math.max(0, Math.floor(matrix.initialSyncLimit))
-      : undefined);
+    accountInitialSyncLimit ?? clampMatrixInitialSyncLimit(matrix.initialSyncLimit);
   const encryption =
     typeof account.encryption === "boolean" ? account.encryption : (matrix.encryption ?? false);
 

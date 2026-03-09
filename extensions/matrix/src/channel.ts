@@ -34,7 +34,7 @@ import {
   resolveScopedMatrixEnvConfig,
 } from "./matrix/client.js";
 import { updateMatrixAccountConfig } from "./matrix/config-update.js";
-import { resolveMatrixConfigPath } from "./matrix/config-update.js";
+import { resolveMatrixConfigFieldPath, resolveMatrixConfigPath } from "./matrix/config-update.js";
 import { normalizeMatrixAllowList, normalizeMatrixUserId } from "./matrix/monitor/allowlist.js";
 import { probeMatrix } from "./matrix/probe.js";
 import { isSupportedMatrixAvatarSource } from "./matrix/profile.js";
@@ -137,12 +137,15 @@ export const matrixPlugin: ChannelPlugin<ResolvedMatrixAccount> = {
   },
   security: {
     resolveDmPolicy: ({ account, cfg }) => {
-      const prefix = `${resolveMatrixConfigPath(cfg as CoreConfig, account.accountId)}.dm`;
       return {
         policy: account.config.dm?.policy ?? "pairing",
         allowFrom: account.config.dm?.allowFrom ?? [],
-        policyPath: `${prefix}.policy`,
-        allowFromPath: `${prefix}.allowFrom`,
+        policyPath: resolveMatrixConfigFieldPath(cfg as CoreConfig, account.accountId, "dm.policy"),
+        allowFromPath: resolveMatrixConfigFieldPath(
+          cfg as CoreConfig,
+          account.accountId,
+          "dm.allowFrom",
+        ),
         approveHint: formatPairingApproveHint("matrix"),
         normalizeEntry: (raw) => normalizeMatrixUserId(raw),
       };
