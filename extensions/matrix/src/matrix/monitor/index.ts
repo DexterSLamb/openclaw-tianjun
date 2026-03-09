@@ -316,6 +316,7 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
     logger,
     logVerboseMessage,
     allowFrom,
+    groupAllowFrom,
     roomsConfig,
     mentionRegexes,
     groupPolicy,

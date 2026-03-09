@@ -24,12 +24,8 @@ import {
   sendReadReceiptMatrix,
   sendTypingMatrix,
 } from "../send.js";
+import { resolveMatrixMonitorAccessState } from "./access-state.js";
 import { resolveMatrixAckReactionConfig } from "./ack-config.js";
-import {
-  normalizeMatrixAllowList,
-  resolveMatrixAllowListMatch,
-  resolveMatrixAllowListMatches,
-} from "./allowlist.js";
 import { resolveMatrixLocation, type MatrixLocationPayload } from "./location.js";
 import { downloadMatrixMedia } from "./media.js";
 import { resolveMentions } from "./mentions.js";
@@ -55,6 +51,7 @@ export type MatrixMonitorHandlerParams = {
   logger: RuntimeLogger;
   logVerboseMessage: (message: string) => void;
   allowFrom: string[];
+  groupAllowFrom?: string[];
   roomsConfig?: Record<string, MatrixRoomConfig>;
   mentionRegexes: ReturnType<PluginRuntime["channel"]["mentions"]["buildMentionRegexes"]>;
   groupPolicy: "open" | "allowlist" | "disabled";
@@ -89,6 +86,7 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
     logger,
     logVerboseMessage,
     allowFrom,
+    groupAllowFrom = [],
     roomsConfig,
     mentionRegexes,
     groupPolicy,
@@ -290,22 +288,33 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
 
       const senderName = await getMemberDisplayName(roomId, senderId);
       const storeAllowFrom = await readStoreAllowFrom();
-      const effectiveAllowFrom = normalizeMatrixAllowList([...allowFrom, ...storeAllowFrom]);
-      const groupAllowFrom = cfg.channels?.["matrix"]?.groupAllowFrom ?? [];
-      const effectiveGroupAllowFrom = normalizeMatrixAllowList(groupAllowFrom);
-      const groupAllowConfigured = effectiveGroupAllowFrom.length > 0;
+      const roomUsers = roomConfig?.users ?? [];
+      const accessState = resolveMatrixMonitorAccessState({
+        allowFrom,
+        storeAllowFrom,
+        groupAllowFrom,
+        roomUsers,
+        senderId,
+        isRoom,
+      });
+      const {
+        effectiveAllowFrom,
+        effectiveGroupAllowFrom,
+        effectiveRoomUsers,
+        groupAllowConfigured,
+        directAllowMatch,
+        roomUserMatch,
+        groupAllowMatch,
+        commandAuthorizers,
+      } = accessState;
 
       if (isDirectMessage) {
         if (!dmEnabled || dmPolicy === "disabled") {
           return;
         }
         if (dmPolicy !== "open") {
-          const allowMatch = resolveMatrixAllowListMatch({
-            allowList: effectiveAllowFrom,
-            userId: senderId,
-          });
-          const allowMatchMeta = formatAllowlistMatchMeta(allowMatch);
-          if (!allowMatch.allowed) {
+          const allowMatchMeta = formatAllowlistMatchMeta(directAllowMatch);
+          if (!directAllowMatch.allowed) {
             if (!isReactionEvent && dmPolicy === "pairing") {
               const { code, created } = await core.channel.pairing.upsertPairingRequest({
                 channel: "matrix",
@@ -351,27 +360,21 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
         }
       }
 
-      const roomUsers = roomConfig?.users ?? [];
-      if (isRoom && roomUsers.length > 0) {
-        const userMatch = resolveMatrixAllowListMatch({
-          allowList: normalizeMatrixAllowList(roomUsers),
-          userId: senderId,
-        });
-        if (!userMatch.allowed) {
-          logVerboseMessage(
-            `matrix: blocked sender ${senderId} (room users allowlist, ${roomMatchMeta}, ${formatAllowlistMatchMeta(
-              userMatch,
-            )})`,
-          );
-          return;
-        }
+      if (isRoom && roomUserMatch && !roomUserMatch.allowed) {
+        logVerboseMessage(
+          `matrix: blocked sender ${senderId} (room users allowlist, ${roomMatchMeta}, ${formatAllowlistMatchMeta(
+            roomUserMatch,
+          )})`,
+        );
+        return;
       }
-      if (isRoom && groupPolicy === "allowlist" && roomUsers.length === 0 && groupAllowConfigured) {
-        const groupAllowMatch = resolveMatrixAllowListMatch({
-          allowList: effectiveGroupAllowFrom,
-          userId: senderId,
-        });
-        if (!groupAllowMatch.allowed) {
+      if (
+        isRoom &&
+        groupPolicy === "allowlist" &&
+        effectiveRoomUsers.length === 0 &&
+        groupAllowConfigured
+      ) {
+        if (groupAllowMatch && !groupAllowMatch.allowed) {
           logVerboseMessage(
             `matrix: blocked sender ${senderId} (groupAllowFrom, ${roomMatchMeta}, ${formatAllowlistMatchMeta(
               groupAllowMatch,
@@ -456,31 +459,10 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
         surface: "matrix",
       });
       const useAccessGroups = cfg.commands?.useAccessGroups !== false;
-      const senderAllowedForCommands = resolveMatrixAllowListMatches({
-        allowList: effectiveAllowFrom,
-        userId: senderId,
-      });
-      const senderAllowedForGroup = groupAllowConfigured
-        ? resolveMatrixAllowListMatches({
-            allowList: effectiveGroupAllowFrom,
-            userId: senderId,
-          })
-        : false;
-      const senderAllowedForRoomUsers =
-        isRoom && roomUsers.length > 0
-          ? resolveMatrixAllowListMatches({
-              allowList: normalizeMatrixAllowList(roomUsers),
-              userId: senderId,
-            })
-          : false;
       const hasControlCommandInMessage = core.channel.text.hasControlCommand(bodyText, cfg);
       const commandGate = resolveControlCommandGate({
         useAccessGroups,
-        authorizers: [
-          { configured: effectiveAllowFrom.length > 0, allowed: senderAllowedForCommands },
-          { configured: roomUsers.length > 0, allowed: senderAllowedForRoomUsers },
-          { configured: groupAllowConfigured, allowed: senderAllowedForGroup },
-        ],
+        authorizers: commandAuthorizers,
         allowTextCommands,
         hasControlCommand: hasControlCommandInMessage,
       });
