@@ -341,6 +341,7 @@ See [Groups](/channels/groups) for mention-gating and allowlist behavior.
   channels: {
     matrix: {
       enabled: true,
+      defaultAccount: "assistant",
       dm: { policy: "pairing" },
       accounts: {
         assistant: {
@@ -362,6 +363,9 @@ See [Groups](/channels/groups) for mention-gating and allowlist behavior.
 }
 ```
 
+Top-level `channels.matrix` values act as defaults for named accounts unless an account overrides them.
+Set `defaultAccount` when you want OpenClaw to prefer one named Matrix account for implicit routing, probing, and CLI operations.
+
 ## Target resolution
 
 Matrix accepts these target forms anywhere OpenClaw asks you for a room or user target:
@@ -378,6 +382,7 @@ Live directory lookup uses the logged-in Matrix account:
 ## Configuration reference
 
 - `enabled`: enable or disable the channel.
+- `defaultAccount`: preferred account ID when multiple Matrix accounts are configured.
 - `homeserver`: homeserver URL, for example `https://matrix.example.org`.
 - `userId`: full Matrix user ID, for example `@bot:example.org`.
 - `accessToken`: access token for token-based auth.
@@ -404,6 +409,7 @@ Live directory lookup uses the logged-in Matrix account:
 - `autoJoin`: invite auto-join policy (`always`, `allowlist`, `off`).
 - `autoJoinAllowlist`: rooms/aliases allowed when `autoJoin` is `allowlist`.
 - `dm`: DM policy block (`enabled`, `policy`, `allowFrom`).
+- `accounts`: named per-account overrides. Top-level `channels.matrix` values act as defaults for these entries.
 - `groups`: per-room policy map.
 - `rooms`: legacy alias for `groups`.
 - `actions`: per-action tool gating (`messages`, `reactions`, `pins`, `memberInfo`, `channelInfo`, `verification`).
