@@ -166,8 +166,11 @@ export function registerPairingCli(program: Command) {
       if (!opts.notify) {
         return;
       }
-      await notifyApproved(channel, approved.id, accountId || undefined).catch((err) => {
-        defaultRuntime.log(theme.warn(`Failed to notify requester: ${String(err)}`));
-      });
+      const approvedAccountId = String(approved.entry?.meta?.accountId ?? "").trim();
+      await notifyApproved(channel, approved.id, accountId || approvedAccountId || undefined).catch(
+        (err) => {
+          defaultRuntime.log(theme.warn(`Failed to notify requester: ${String(err)}`));
+        },
+      );
     });
 }

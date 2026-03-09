@@ -83,6 +83,7 @@ describe("matrix credentials storage", () => {
   it("migrates legacy matrix credential files on read", async () => {
     const stateDir = setupStateDir();
     const legacyPath = path.join(stateDir, "credentials", "matrix", "credentials.json");
+    const currentPath = resolveMatrixCredentialsPath({}, "ops");
     fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
     fs.writeFileSync(
       legacyPath,
@@ -94,23 +95,23 @@ describe("matrix credentials storage", () => {
       }),
     );
 
-    const loaded = loadMatrixCredentials({}, "default");
+    const loaded = loadMatrixCredentials({}, "ops");
 
     expect(loaded?.accessToken).toBe("legacy-token");
     expect(fs.existsSync(legacyPath)).toBe(false);
-    expect(fs.existsSync(resolveMatrixCredentialsPath({}, "default"))).toBe(true);
+    expect(fs.existsSync(currentPath)).toBe(true);
   });
 
   it("clears both current and legacy credential paths", () => {
     const stateDir = setupStateDir();
-    const currentPath = path.join(stateDir, "credentials", "matrix", "credentials.json");
+    const currentPath = resolveMatrixCredentialsPath({}, "ops");
     const legacyPath = path.join(stateDir, "credentials", "matrix", "credentials.json");
     fs.mkdirSync(path.dirname(currentPath), { recursive: true });
     fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
     fs.writeFileSync(currentPath, "{}");
     fs.writeFileSync(legacyPath, "{}");
 
-    clearMatrixCredentials({}, "default");
+    clearMatrixCredentials({}, "ops");
 
     expect(fs.existsSync(currentPath)).toBe(false);
     expect(fs.existsSync(legacyPath)).toBe(false);

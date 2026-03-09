@@ -12,6 +12,14 @@ type DirectRoomTrackerOptions = {
 
 const DM_CACHE_TTL_MS = 30_000;
 
+function isMatrixNotFoundError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) {
+    return false;
+  }
+  const value = err as { errcode?: string; statusCode?: number };
+  return value.errcode === "M_NOT_FOUND" || value.statusCode === 404;
+}
+
 export function createDirectRoomTracker(client: MatrixClient, opts: DirectRoomTrackerOptions = {}) {
   const log = opts.log ?? (() => {});
   let lastDmUpdateMs = 0;
@@ -83,18 +91,31 @@ export function createDirectRoomTracker(client: MatrixClient, opts: DirectRoomTr
         return true;
       }
 
-      const memberCount = await resolveMemberCount(roomId);
-      if (memberCount === 2) {
-        log(`matrix: dm detected via member count room=${roomId} members=${memberCount}`);
-        return true;
-      }
-
       const selfUserId = params.selfUserId ?? (await ensureSelfUserId());
       const directViaState =
         (await hasDirectFlag(roomId, senderId)) || (await hasDirectFlag(roomId, selfUserId ?? ""));
       if (directViaState) {
         log(`matrix: dm detected via member state room=${roomId}`);
         return true;
+      }
+
+      const memberCount = await resolveMemberCount(roomId);
+      if (memberCount === 2) {
+        try {
+          const nameState = await client.getRoomStateEvent(roomId, "m.room.name", "");
+          if (!nameState?.name?.trim()) {
+            log(`matrix: dm detected via fallback (2 members, no room name) room=${roomId}`);
+            return true;
+          }
+        } catch (err: unknown) {
+          if (isMatrixNotFoundError(err)) {
+            log(`matrix: dm detected via fallback (2 members, no room name) room=${roomId}`);
+            return true;
+          }
+          log(
+            `matrix: dm fallback skipped (room name check failed: ${String(err)}) room=${roomId}`,
+          );
+        }
       }
 
       log(`matrix: dm check room=${roomId} result=group members=${memberCount ?? "unknown"}`);

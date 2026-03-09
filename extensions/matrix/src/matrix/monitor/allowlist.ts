@@ -1,7 +1,11 @@
-import type { AllowlistMatch } from "openclaw/plugin-sdk/matrix";
+import {
+  normalizeStringEntries,
+  resolveAllowlistMatchByCandidates,
+  type AllowlistMatch,
+} from "openclaw/plugin-sdk/matrix";
 
 function normalizeAllowList(list?: Array<string | number>) {
-  return (list ?? []).map((entry) => String(entry).trim()).filter(Boolean);
+  return normalizeStringEntries(list);
 }
 
 function normalizeMatrixUser(raw?: string | null): string {
@@ -83,19 +87,7 @@ export function resolveMatrixAllowListMatch(params: {
     { value: userId ? `matrix:${userId}` : "", source: "prefixed-id" },
     { value: userId ? `user:${userId}` : "", source: "prefixed-user" },
   ];
-  for (const candidate of candidates) {
-    if (!candidate.value) {
-      continue;
-    }
-    if (allowList.includes(candidate.value)) {
-      return {
-        allowed: true,
-        matchKey: candidate.value,
-        matchSource: candidate.source,
-      };
-    }
-  }
-  return { allowed: false };
+  return resolveAllowlistMatchByCandidates({ allowList, candidates });
 }
 
 export function resolveMatrixAllowListMatches(params: { allowList: string[]; userId?: string }) {

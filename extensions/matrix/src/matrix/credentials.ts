@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
+import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk/account-id";
 import {
   resolveMatrixCredentialsDir as resolveSharedMatrixCredentialsDir,
   resolveMatrixCredentialsPath as resolveSharedMatrixCredentialsPath,
@@ -16,11 +18,44 @@ export type MatrixStoredCredentials = {
   lastUsedAt?: string;
 };
 
+function resolveStateDir(env: NodeJS.ProcessEnv): string {
+  return getMatrixRuntime().state.resolveStateDir(env, os.homedir);
+}
+
+function resolveLegacyMatrixCredentialsPath(env: NodeJS.ProcessEnv): string | null {
+  return path.join(resolveMatrixCredentialsDir(env), "credentials.json");
+}
+
+function resolveLegacyMigrationSourcePath(
+  env: NodeJS.ProcessEnv,
+  accountId?: string | null,
+): string | null {
+  const normalized = normalizeAccountId(accountId);
+  if (normalized === DEFAULT_ACCOUNT_ID) {
+    return null;
+  }
+  const legacyPath = resolveLegacyMatrixCredentialsPath(env);
+  return legacyPath === resolveMatrixCredentialsPath(env, accountId) ? null : legacyPath;
+}
+
+function parseMatrixCredentialsFile(filePath: string): MatrixStoredCredentials | null {
+  const raw = fs.readFileSync(filePath, "utf-8");
+  const parsed = JSON.parse(raw) as Partial<MatrixStoredCredentials>;
+  if (
+    typeof parsed.homeserver !== "string" ||
+    typeof parsed.userId !== "string" ||
+    typeof parsed.accessToken !== "string"
+  ) {
+    return null;
+  }
+  return parsed as MatrixStoredCredentials;
+}
+
 export function resolveMatrixCredentialsDir(
   env: NodeJS.ProcessEnv = process.env,
   stateDir?: string,
 ): string {
-  const resolvedStateDir = stateDir ?? getMatrixRuntime().state.resolveStateDir(env, os.homedir);
+  const resolvedStateDir = stateDir ?? resolveStateDir(env);
   return resolveSharedMatrixCredentialsDir(resolvedStateDir);
 }
 
@@ -28,7 +63,7 @@ export function resolveMatrixCredentialsPath(
   env: NodeJS.ProcessEnv = process.env,
   accountId?: string | null,
 ): string {
-  const resolvedStateDir = getMatrixRuntime().state.resolveStateDir(env, os.homedir);
+  const resolvedStateDir = resolveStateDir(env);
   return resolveSharedMatrixCredentialsPath({ stateDir: resolvedStateDir, accountId });
 }
 
@@ -38,19 +73,28 @@ export function loadMatrixCredentials(
 ): MatrixStoredCredentials | null {
   const credPath = resolveMatrixCredentialsPath(env, accountId);
   try {
-    if (!fs.existsSync(credPath)) {
+    if (fs.existsSync(credPath)) {
+      return parseMatrixCredentialsFile(credPath);
+    }
+
+    const legacyPath = resolveLegacyMigrationSourcePath(env, accountId);
+    if (!legacyPath || !fs.existsSync(legacyPath)) {
       return null;
     }
-    const raw = fs.readFileSync(credPath, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<MatrixStoredCredentials>;
-    if (
-      typeof parsed.homeserver !== "string" ||
-      typeof parsed.userId !== "string" ||
-      typeof parsed.accessToken !== "string"
-    ) {
+
+    const parsed = parseMatrixCredentialsFile(legacyPath);
+    if (!parsed) {
       return null;
     }
-    return parsed as MatrixStoredCredentials;
+
+    try {
+      fs.mkdirSync(path.dirname(credPath), { recursive: true });
+      fs.renameSync(legacyPath, credPath);
+    } catch {
+      // Keep returning the legacy credentials even if migration fails.
+    }
+
+    return parsed;
   } catch {
     return null;
   }
@@ -93,13 +137,21 @@ export function clearMatrixCredentials(
   env: NodeJS.ProcessEnv = process.env,
   accountId?: string | null,
 ): void {
-  const credPath = resolveMatrixCredentialsPath(env, accountId);
-  try {
-    if (fs.existsSync(credPath)) {
-      fs.unlinkSync(credPath);
+  const paths = [
+    resolveMatrixCredentialsPath(env, accountId),
+    resolveLegacyMigrationSourcePath(env, accountId),
+  ];
+  for (const filePath of paths) {
+    if (!filePath) {
+      continue;
     }
-  } catch {
-    // ignore
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch {
+      // ignore
+    }
   }
 }
 
