@@ -24,6 +24,12 @@ You do not need to rename config keys or reinstall the plugin under a new name.
 
 When the gateway starts, and when you run [`openclaw doctor --fix`](/gateway/doctor), OpenClaw tries to repair old Matrix state automatically.
 
+When you use `openclaw update`, the exact trigger depends on how OpenClaw is installed:
+
+- source installs run `openclaw doctor --fix` during the update flow, then restart the gateway by default
+- package-manager installs update the package, run a non-interactive doctor pass, then rely on the default gateway restart so startup can finish Matrix migration
+- if you use `openclaw update --no-restart`, startup-backed Matrix migration is deferred until you later run `openclaw doctor --fix` and restart the gateway
+
 Automatic migration covers:
 
 - reusing your cached Matrix credentials
@@ -32,6 +38,11 @@ Automatic migration covers:
 - moving the oldest flat Matrix crypto store into the current account-scoped location when the target account can be resolved safely
 - extracting a previously saved Matrix room-key backup decryption key from the old rust crypto store, when that key exists locally
 - restoring backed-up room keys into the new crypto store on the next Matrix startup
+
+About multi-account upgrades:
+
+- the oldest flat Matrix store (`~/.openclaw/matrix/bot-storage.json` and `~/.openclaw/matrix/crypto/`) came from a single-store layout, so OpenClaw can only migrate it into one resolved Matrix account target
+- already account-scoped legacy Matrix stores are detected and prepared per configured Matrix account
 
 ## What the migration cannot do automatically
 
@@ -46,11 +57,17 @@ OpenClaw cannot automatically recover:
 - custom plugin path installs that now point at a missing directory
 - a missing recovery key when the old store had backed-up keys but did not keep the decryption key locally
 
+Current warning scope:
+
+- stale custom Matrix plugin path installs are surfaced by `openclaw doctor` today
+- gateway startup does not currently emit a separate Matrix-specific custom-path warning
+
 If your old installation had local-only encrypted history that was never backed up, some older encrypted messages may remain unreadable after the upgrade.
 
 ## Recommended upgrade flow
 
 1. Update OpenClaw and the Matrix plugin normally.
+   Prefer plain `openclaw update` without `--no-restart` so startup can finish the Matrix migration immediately.
 2. Run:
 
    ```bash
