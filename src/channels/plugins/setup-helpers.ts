@@ -209,6 +209,8 @@ const COMMON_SINGLE_ACCOUNT_KEYS_TO_MOVE = new Set([
 
 const SINGLE_ACCOUNT_KEYS_TO_MOVE_BY_CHANNEL: Record<string, ReadonlySet<string>> = {
   matrix: new Set([
+    "deviceId",
+    "avatarUrl",
     "initialSyncLimit",
     "encryption",
     "allowlistOnly",

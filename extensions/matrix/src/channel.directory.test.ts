@@ -1,6 +1,7 @@
 import type { PluginRuntime, RuntimeEnv } from "openclaw/plugin-sdk/matrix";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { matrixPlugin } from "./channel.js";
+import { resolveMatrixConfigForAccount } from "./matrix/client/config.js";
 import { setMatrixRuntime } from "./runtime.js";
 import type { CoreConfig } from "./types.js";
 
@@ -192,6 +193,8 @@ describe("matrix directory", () => {
         matrix: {
           homeserver: "https://default.example.org",
           accessToken: "default-token",
+          deviceId: "DEFAULTDEVICE",
+          avatarUrl: "mxc://server/avatar",
           encryption: true,
           threadReplies: "inbound",
           groups: {
@@ -212,9 +215,13 @@ describe("matrix directory", () => {
     }) as CoreConfig;
 
     expect(updated.channels?.["matrix"]?.accessToken).toBeUndefined();
+    expect(updated.channels?.["matrix"]?.deviceId).toBeUndefined();
+    expect(updated.channels?.["matrix"]?.avatarUrl).toBeUndefined();
     expect(updated.channels?.["matrix"]?.accounts?.default).toMatchObject({
       accessToken: "default-token",
       homeserver: "https://default.example.org",
+      deviceId: "DEFAULTDEVICE",
+      avatarUrl: "mxc://server/avatar",
       encryption: true,
       threadReplies: "inbound",
       groups: {
@@ -226,6 +233,12 @@ describe("matrix directory", () => {
       homeserver: "https://matrix.example.org",
       userId: "@ops:example.org",
       accessToken: "ops-token",
+    });
+    expect(resolveMatrixConfigForAccount(updated, "ops", {})).toMatchObject({
+      homeserver: "https://matrix.example.org",
+      userId: "@ops:example.org",
+      accessToken: "ops-token",
+      deviceId: undefined,
     });
   });
 
