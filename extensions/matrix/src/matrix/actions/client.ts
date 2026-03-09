@@ -1,18 +1,8 @@
-import { getMatrixRuntime } from "../../runtime.js";
-import type { CoreConfig } from "../../types.js";
-import { getActiveMatrixClient } from "../active-client.js";
-import {
-  createMatrixClient,
-  isBunRuntime,
-  resolveMatrixAuth,
-  resolveMatrixAuthContext,
-} from "../client.js";
+import { ensureMatrixNodeRuntime, resolveRuntimeMatrixClient } from "../client-bootstrap.js";
 import type { MatrixActionClient, MatrixActionClientOpts } from "./types.js";
 
 export function ensureNodeRuntime() {
-  if (isBunRuntime()) {
-    throw new Error("Matrix support requires Node (bun runtime not supported)");
-  }
+  ensureMatrixNodeRuntime();
 }
 
 async function ensureActionClientReadiness(
@@ -32,44 +22,16 @@ async function ensureActionClientReadiness(
 export async function resolveActionClient(
   opts: MatrixActionClientOpts = {},
 ): Promise<MatrixActionClient> {
-  ensureNodeRuntime();
-  if (opts.client) {
-    await ensureActionClientReadiness(opts.client, opts.readiness, {
-      createdForOneOff: false,
-    });
-    return { client: opts.client, stopOnDone: false };
-  }
-  const cfg = getMatrixRuntime().config.loadConfig() as CoreConfig;
-  const authContext = resolveMatrixAuthContext({
-    cfg,
+  return await resolveRuntimeMatrixClient({
+    client: opts.client,
+    timeoutMs: opts.timeoutMs,
     accountId: opts.accountId,
+    onResolved: async (client, context) => {
+      await ensureActionClientReadiness(client, opts.readiness, {
+        createdForOneOff: context.createdForOneOff,
+      });
+    },
   });
-  const active = getActiveMatrixClient(authContext.accountId);
-  if (active) {
-    await ensureActionClientReadiness(active, opts.readiness, {
-      createdForOneOff: false,
-    });
-    return { client: active, stopOnDone: false };
-  }
-  const auth = await resolveMatrixAuth({
-    cfg,
-    accountId: authContext.accountId,
-  });
-  const client = await createMatrixClient({
-    homeserver: auth.homeserver,
-    userId: auth.userId,
-    accessToken: auth.accessToken,
-    password: auth.password,
-    deviceId: auth.deviceId,
-    encryption: auth.encryption,
-    localTimeoutMs: opts.timeoutMs,
-    accountId: auth.accountId,
-    autoBootstrapCrypto: false,
-  });
-  await ensureActionClientReadiness(client, opts.readiness, {
-    createdForOneOff: true,
-  });
-  return { client, stopOnDone: true };
 }
 
 export type MatrixActionClientStopMode = "stop" | "persist";
