@@ -19,18 +19,14 @@ import {
   resolveSharedMatrixClient,
   stopSharedClientForAccount,
 } from "../client.js";
-import { updateMatrixAccountConfig } from "../config-update.js";
-import { summarizeMatrixDeviceHealth } from "../device-health.js";
-import { syncMatrixOwnProfile } from "../profile.js";
 import { createMatrixThreadBindingManager } from "../thread-bindings.js";
 import { registerMatrixAutoJoin } from "./auto-join.js";
 import { resolveMatrixMonitorConfig } from "./config.js";
 import { createDirectRoomTracker } from "./direct.js";
 import { registerMatrixMonitorEvents } from "./events.js";
 import { createMatrixRoomMessageHandler } from "./handler.js";
-import { maybeRestoreLegacyMatrixBackup } from "./legacy-crypto-restore.js";
 import { createMatrixRoomInfoResolver } from "./room-info.js";
-import { ensureMatrixStartupVerification } from "./startup-verification.js";
+import { runMatrixStartupMaintenance } from "./startup.js";
 
 export type MonitorMatrixOpts = {
   runtime?: RuntimeEnv;
@@ -235,127 +231,19 @@ export async function monitorMatrixProvider(opts: MonitorMatrixOpts = {}): Promi
   // Shared client is already started via resolveSharedMatrixClient.
   logger.info(`matrix: logged in as ${auth.userId}`);
 
-  try {
-    const profileSync = await syncMatrixOwnProfile({
-      client,
-      userId: auth.userId,
-      displayName: accountConfig.name,
-      avatarUrl: accountConfig.avatarUrl,
-      loadAvatarFromUrl: async (url, maxBytes) => await core.media.loadWebMedia(url, maxBytes),
-    });
-    if (profileSync.displayNameUpdated) {
-      logger.info(`matrix: profile display name updated for ${auth.userId}`);
-    }
-    if (profileSync.avatarUpdated) {
-      logger.info(`matrix: profile avatar updated for ${auth.userId}`);
-    }
-    if (
-      profileSync.convertedAvatarFromHttp &&
-      profileSync.resolvedAvatarUrl &&
-      accountConfig.avatarUrl !== profileSync.resolvedAvatarUrl
-    ) {
-      const latestCfg = core.config.loadConfig() as CoreConfig;
-      const updatedCfg = updateMatrixAccountConfig(latestCfg, account.accountId, {
-        avatarUrl: profileSync.resolvedAvatarUrl,
-      });
-      await core.config.writeConfigFile(updatedCfg as never);
-      logVerboseMessage(
-        `matrix: persisted converted avatar URL for account ${account.accountId} (${profileSync.resolvedAvatarUrl})`,
-      );
-    }
-  } catch (err) {
-    logger.warn("matrix: failed to sync profile from config", { error: String(err) });
-  }
-
-  // If E2EE is enabled, report device verification status and request self-verification
-  // when configured and the device is still unverified.
-  if (auth.encryption && client.crypto) {
-    try {
-      const deviceHealth = summarizeMatrixDeviceHealth(await client.listOwnDevices());
-      if (deviceHealth.staleOpenClawDevices.length > 0) {
-        logger.warn(
-          `matrix: stale OpenClaw devices detected for ${auth.userId}: ${deviceHealth.staleOpenClawDevices.map((device) => device.deviceId).join(", ")}. Run 'openclaw matrix devices prune-stale --account ${effectiveAccountId}' to keep encrypted-room trust healthy.`,
-        );
-      }
-    } catch (err) {
-      logger.debug?.("Failed to inspect matrix device hygiene (non-fatal)", {
-        error: String(err),
-      });
-    }
-
-    try {
-      const startupVerification = await ensureMatrixStartupVerification({
-        client,
-        auth,
-        accountConfig,
-        env: process.env,
-      });
-      if (startupVerification.kind === "verified") {
-        logger.info("matrix: device is verified by its owner and ready for encrypted rooms");
-      } else if (
-        startupVerification.kind === "disabled" ||
-        startupVerification.kind === "cooldown" ||
-        startupVerification.kind === "pending" ||
-        startupVerification.kind === "request-failed"
-      ) {
-        logger.info(
-          "matrix: device not verified — run 'openclaw matrix verify device <key>' to enable E2EE",
-        );
-        if (startupVerification.kind === "pending") {
-          logger.info(
-            "matrix: startup verification request is already pending; finish it in another Matrix client",
-          );
-        } else if (startupVerification.kind === "cooldown") {
-          logVerboseMessage(
-            `matrix: skipped startup verification request due to cooldown (retryAfterMs=${startupVerification.retryAfterMs ?? 0})`,
-          );
-        } else if (startupVerification.kind === "request-failed") {
-          logger.debug?.("Matrix startup verification request failed (non-fatal)", {
-            error: startupVerification.error ?? "unknown",
-          });
-        }
-      } else if (startupVerification.kind === "requested") {
-        logger.info(
-          "matrix: device not verified — requested verification in another Matrix client",
-        );
-      }
-    } catch (err) {
-      logger.debug?.("Failed to resolve matrix verification status (non-fatal)", {
-        error: String(err),
-      });
-    }
-
-    try {
-      const legacyCryptoRestore = await maybeRestoreLegacyMatrixBackup({
-        client,
-        auth,
-        env: process.env,
-      });
-      if (legacyCryptoRestore.kind === "restored") {
-        logger.info(
-          `matrix: restored ${legacyCryptoRestore.imported}/${legacyCryptoRestore.total} room key(s) from legacy encrypted-state backup`,
-        );
-        if (legacyCryptoRestore.localOnlyKeys > 0) {
-          logger.warn(
-            `matrix: ${legacyCryptoRestore.localOnlyKeys} legacy local-only room key(s) were never backed up and could not be restored automatically`,
-          );
-        }
-      } else if (legacyCryptoRestore.kind === "failed") {
-        logger.warn(
-          `matrix: failed restoring room keys from legacy encrypted-state backup: ${legacyCryptoRestore.error}`,
-        );
-        if (legacyCryptoRestore.localOnlyKeys > 0) {
-          logger.warn(
-            `matrix: ${legacyCryptoRestore.localOnlyKeys} legacy local-only room key(s) were never backed up and may remain unavailable until manually recovered`,
-          );
-        }
-      }
-    } catch (err) {
-      logger.warn("matrix: failed restoring legacy encrypted-state backup", {
-        error: String(err),
-      });
-    }
-  }
+  await runMatrixStartupMaintenance({
+    client,
+    auth,
+    accountId: account.accountId,
+    effectiveAccountId,
+    accountConfig,
+    logger,
+    logVerboseMessage,
+    loadConfig: () => core.config.loadConfig() as CoreConfig,
+    writeConfigFile: async (nextCfg) => await core.config.writeConfigFile(nextCfg),
+    loadWebMedia: async (url, maxBytes) => await core.media.loadWebMedia(url, maxBytes),
+    env: process.env,
+  });
 
   await new Promise<void>((resolve) => {
     const onAbort = () => {
