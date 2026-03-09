@@ -159,6 +159,55 @@ describe("MatrixCryptoBootstrapper", () => {
     );
   });
 
+  it("recreates secret storage and retries cross-signing when explicit bootstrap hits a stale server key", async () => {
+    const deps = createBootstrapperDeps();
+    const bootstrapCrossSigning = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error("getSecretStorageKey callback returned falsey"))
+      .mockResolvedValueOnce(undefined);
+    const crypto = createCryptoApi({
+      bootstrapCrossSigning,
+      isCrossSigningReady: vi.fn(async () => true),
+      userHasCrossSigningKeys: vi.fn(async () => true),
+      getDeviceVerificationStatus: vi.fn(async () => ({
+        isVerified: () => true,
+        localVerified: true,
+        crossSigningVerified: true,
+        signedByOwner: true,
+      })),
+    });
+    const bootstrapper = new MatrixCryptoBootstrapper(
+      deps as unknown as MatrixCryptoBootstrapperDeps<MatrixRawEvent>,
+    );
+
+    await bootstrapper.bootstrap(crypto, {
+      strict: true,
+      allowSecretStorageRecreateWithoutRecoveryKey: true,
+      allowAutomaticCrossSigningReset: false,
+    });
+
+    expect(deps.recoveryKeyStore.bootstrapSecretStorageWithRecoveryKey).toHaveBeenCalledWith(
+      crypto,
+      {
+        allowSecretStorageRecreateWithoutRecoveryKey: true,
+        forceNewSecretStorage: true,
+      },
+    );
+    expect(bootstrapCrossSigning).toHaveBeenCalledTimes(2);
+    expect(bootstrapCrossSigning).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        authUploadDeviceSigningKeys: expect.any(Function),
+      }),
+    );
+    expect(bootstrapCrossSigning).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        authUploadDeviceSigningKeys: expect.any(Function),
+      }),
+    );
+  });
+
   it("fails in strict mode when cross-signing keys are still unpublished", async () => {
     const deps = createBootstrapperDeps();
     const crypto = createCryptoApi({

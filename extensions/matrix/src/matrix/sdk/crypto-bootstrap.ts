@@ -58,6 +58,8 @@ export class MatrixCryptoBootstrapper<TRawEvent extends MatrixRawEvent> {
     const crossSigning = await this.bootstrapCrossSigning(crypto, {
       forceResetCrossSigning: options.forceResetCrossSigning === true,
       allowAutomaticCrossSigningReset: options.allowAutomaticCrossSigningReset !== false,
+      allowSecretStorageRecreateWithoutRecoveryKey:
+        options.allowSecretStorageRecreateWithoutRecoveryKey === true,
       strict,
     });
     await this.bootstrapSecretStorage(crypto, {
@@ -105,6 +107,7 @@ export class MatrixCryptoBootstrapper<TRawEvent extends MatrixRawEvent> {
     options: {
       forceResetCrossSigning: boolean;
       allowAutomaticCrossSigningReset: boolean;
+      allowSecretStorageRecreateWithoutRecoveryKey: boolean;
       strict: boolean;
     },
   ): Promise<{ ready: boolean; published: boolean }> {
@@ -171,30 +174,47 @@ export class MatrixCryptoBootstrapper<TRawEvent extends MatrixRawEvent> {
         authUploadDeviceSigningKeys,
       });
     } catch (err) {
-      if (!options.allowAutomaticCrossSigningReset) {
+      const shouldRepairSecretStorage =
+        options.allowSecretStorageRecreateWithoutRecoveryKey &&
+        err instanceof Error &&
+        err.message.includes("getSecretStorageKey callback returned falsey");
+      if (shouldRepairSecretStorage) {
+        LogService.warn(
+          "MatrixClientLite",
+          "Cross-signing bootstrap could not access secret storage; recreating secret storage during explicit bootstrap and retrying.",
+        );
+        await this.deps.recoveryKeyStore.bootstrapSecretStorageWithRecoveryKey(crypto, {
+          allowSecretStorageRecreateWithoutRecoveryKey: true,
+          forceNewSecretStorage: true,
+        });
+        await crypto.bootstrapCrossSigning({
+          authUploadDeviceSigningKeys,
+        });
+      } else if (!options.allowAutomaticCrossSigningReset) {
         LogService.warn(
           "MatrixClientLite",
           "Initial cross-signing bootstrap failed and automatic reset is disabled:",
           err,
         );
         return { ready: false, published: false };
-      }
-      LogService.warn(
-        "MatrixClientLite",
-        "Initial cross-signing bootstrap failed, trying reset:",
-        err,
-      );
-      try {
-        await crypto.bootstrapCrossSigning({
-          setupNewCrossSigning: true,
-          authUploadDeviceSigningKeys,
-        });
-      } catch (resetErr) {
-        LogService.warn("MatrixClientLite", "Failed to bootstrap cross-signing:", resetErr);
-        if (options.strict) {
-          throw resetErr instanceof Error ? resetErr : new Error(String(resetErr));
+      } else {
+        LogService.warn(
+          "MatrixClientLite",
+          "Initial cross-signing bootstrap failed, trying reset:",
+          err,
+        );
+        try {
+          await crypto.bootstrapCrossSigning({
+            setupNewCrossSigning: true,
+            authUploadDeviceSigningKeys,
+          });
+        } catch (resetErr) {
+          LogService.warn("MatrixClientLite", "Failed to bootstrap cross-signing:", resetErr);
+          if (options.strict) {
+            throw resetErr instanceof Error ? resetErr : new Error(String(resetErr));
+          }
+          return { ready: false, published: false };
         }
-        return { ready: false, published: false };
       }
     }
 

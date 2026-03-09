@@ -131,6 +131,7 @@ export class MatrixRecoveryKeyStore {
     options: {
       setupNewKeyBackup?: boolean;
       allowSecretStorageRecreateWithoutRecoveryKey?: boolean;
+      forceNewSecretStorage?: boolean;
     } = {},
   ): Promise<void> {
     let status: MatrixSecretStorageStatus | null = null;
@@ -185,6 +186,7 @@ export class MatrixRecoveryKeyStore {
     };
 
     const shouldRecreateSecretStorage =
+      options.forceNewSecretStorage === true ||
       !hasDefaultSecretStorageKey ||
       (!recoveryKey && status?.ready === false) ||
       hasKnownInvalidSecrets;
