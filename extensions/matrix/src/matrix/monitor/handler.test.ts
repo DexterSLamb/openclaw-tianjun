@@ -314,6 +314,68 @@ describe("matrix monitor handler pairing account scope", () => {
     );
   });
 
+  it("routes reaction notifications for bound thread messages to the bound session", async () => {
+    registerSessionBindingAdapter({
+      channel: "matrix",
+      accountId: "ops",
+      listBySession: () => [],
+      resolveByConversation: (ref) =>
+        ref.conversationId === "$root"
+          ? {
+              bindingId: "ops:!room:example.org:$root",
+              targetSessionKey: "agent:bound:session-1",
+              targetKind: "session",
+              conversation: {
+                channel: "matrix",
+                accountId: "ops",
+                conversationId: "$root",
+                parentConversationId: "!room:example.org",
+              },
+              status: "active",
+              boundAt: Date.now(),
+              metadata: {
+                boundBy: "user-1",
+              },
+            }
+          : null,
+      touch: vi.fn(),
+    });
+
+    const { handler, enqueueSystemEvent } = createMatrixHandlerTestHarness({
+      client: {
+        getEvent: async () =>
+          createMatrixTextMessageEvent({
+            eventId: "$reply1",
+            sender: "@bot:example.org",
+            body: "follow up",
+            relatesTo: {
+              rel_type: "m.thread",
+              event_id: "$root",
+              "m.in_reply_to": { event_id: "$root" },
+            },
+          }),
+      },
+      isDirectMessage: false,
+    });
+
+    await handler(
+      "!room:example.org",
+      createMatrixReactionEvent({
+        eventId: "$reaction-thread",
+        targetEventId: "$reply1",
+        key: "🎯",
+      }),
+    );
+
+    expect(enqueueSystemEvent).toHaveBeenCalledWith(
+      "Matrix reaction added: 🎯 by sender on msg $reply1",
+      {
+        sessionKey: "agent:bound:session-1",
+        contextKey: "matrix:reaction:add:!room:example.org:$reply1:@user:example.org:🎯",
+      },
+    );
+  });
+
   it("ignores reactions that do not target bot-authored messages", async () => {
     const { handler, enqueueSystemEvent, resolveAgentRoute } = createReactionHarness({
       targetSender: "@other:example.org",
