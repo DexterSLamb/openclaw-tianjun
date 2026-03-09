@@ -5,6 +5,7 @@ import {
   type ChannelSetupInput,
 } from "openclaw/plugin-sdk/matrix";
 import { matrixPlugin } from "./channel.js";
+import { resolveMatrixAccount, resolveMatrixAccountConfig } from "./matrix/accounts.js";
 import { updateMatrixOwnProfile } from "./matrix/actions/profile.js";
 import {
   bootstrapMatrixVerification,
@@ -86,6 +87,13 @@ type MatrixCliAccountAddResult = {
   accountId: string;
   configPath: string;
   useEnv: boolean;
+  verificationBootstrap: {
+    attempted: boolean;
+    success: boolean;
+    recoveryKeyCreatedAt: string | null;
+    backupVersion: string | null;
+    error?: string;
+  };
   profile: {
     attempted: boolean;
     displayNameUpdated: boolean;
@@ -132,6 +140,7 @@ async function addMatrixAccount(params: {
       accountId: params.account,
       input,
     }) ?? normalizeAccountId(params.account?.trim() || params.name?.trim());
+  const existingAccount = resolveMatrixAccount({ cfg, accountId });
 
   const validationError = setup.validateInput?.({
     cfg,
@@ -148,6 +157,36 @@ async function addMatrixAccount(params: {
     input,
   }) as CoreConfig;
   await runtime.config.writeConfigFile(updated as never);
+  const accountConfig = resolveMatrixAccountConfig({ cfg: updated, accountId });
+
+  let verificationBootstrap: MatrixCliAccountAddResult["verificationBootstrap"] = {
+    attempted: false,
+    success: false,
+    recoveryKeyCreatedAt: null,
+    backupVersion: null,
+  };
+  if (existingAccount.configured !== true && accountConfig.encryption === true) {
+    try {
+      const bootstrap = await bootstrapMatrixVerification({ accountId });
+      verificationBootstrap = {
+        attempted: true,
+        success: bootstrap.success === true,
+        recoveryKeyCreatedAt: bootstrap.verification.recoveryKeyCreatedAt,
+        backupVersion: bootstrap.verification.backupVersion,
+        ...(bootstrap.success
+          ? {}
+          : { error: bootstrap.error ?? "Matrix verification bootstrap failed" }),
+      };
+    } catch (err) {
+      verificationBootstrap = {
+        attempted: true,
+        success: false,
+        recoveryKeyCreatedAt: null,
+        backupVersion: null,
+        error: toErrorMessage(err),
+      };
+    }
+  }
 
   const desiredDisplayName = input.name?.trim();
   const desiredAvatarUrl = input.avatarUrl?.trim();
@@ -197,6 +236,7 @@ async function addMatrixAccount(params: {
     accountId,
     configPath: resolveMatrixConfigPath(updated, accountId),
     useEnv: input.useEnv === true,
+    verificationBootstrap,
     profile,
   };
 }
@@ -581,6 +621,22 @@ export function registerMatrixCli(params: { program: Command }): void {
             console.log(
               `Credentials source: ${result.useEnv ? "MATRIX_* / MATRIX_<ACCOUNT_ID>_* env vars" : "inline config"}`,
             );
+            if (result.verificationBootstrap.attempted) {
+              if (result.verificationBootstrap.success) {
+                console.log("Matrix verification bootstrap: complete");
+                printTimestamp(
+                  "Recovery key created at",
+                  result.verificationBootstrap.recoveryKeyCreatedAt,
+                );
+                if (result.verificationBootstrap.backupVersion) {
+                  console.log(`Backup version: ${result.verificationBootstrap.backupVersion}`);
+                }
+              } else {
+                console.error(
+                  `Matrix verification bootstrap warning: ${result.verificationBootstrap.error}`,
+                );
+              }
+            }
             if (result.profile.attempted) {
               if (result.profile.error) {
                 console.error(`Profile sync warning: ${result.profile.error}`);

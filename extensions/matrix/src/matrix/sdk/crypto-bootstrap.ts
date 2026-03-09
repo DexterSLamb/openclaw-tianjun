@@ -27,6 +27,7 @@ export type MatrixCryptoBootstrapperDeps<TRawEvent extends MatrixRawEvent> = {
 export type MatrixCryptoBootstrapOptions = {
   forceResetCrossSigning?: boolean;
   allowAutomaticCrossSigningReset?: boolean;
+  allowSecretStorageRecreateWithoutRecoveryKey?: boolean;
   strict?: boolean;
 };
 
@@ -49,13 +50,21 @@ export class MatrixCryptoBootstrapper<TRawEvent extends MatrixRawEvent> {
     // Register verification listeners before expensive bootstrap work so incoming requests
     // are not missed during startup.
     this.registerVerificationRequestHandler(crypto);
-    await this.bootstrapSecretStorage(crypto, strict);
+    await this.bootstrapSecretStorage(crypto, {
+      strict,
+      allowSecretStorageRecreateWithoutRecoveryKey:
+        options.allowSecretStorageRecreateWithoutRecoveryKey === true,
+    });
     const crossSigning = await this.bootstrapCrossSigning(crypto, {
       forceResetCrossSigning: options.forceResetCrossSigning === true,
       allowAutomaticCrossSigningReset: options.allowAutomaticCrossSigningReset !== false,
       strict,
     });
-    await this.bootstrapSecretStorage(crypto, strict);
+    await this.bootstrapSecretStorage(crypto, {
+      strict,
+      allowSecretStorageRecreateWithoutRecoveryKey:
+        options.allowSecretStorageRecreateWithoutRecoveryKey === true,
+    });
     const ownDeviceVerified = await this.ensureOwnDeviceTrust(crypto, strict);
     return {
       crossSigningReady: crossSigning.ready,
@@ -219,14 +228,20 @@ export class MatrixCryptoBootstrapper<TRawEvent extends MatrixRawEvent> {
 
   private async bootstrapSecretStorage(
     crypto: MatrixCryptoBootstrapApi,
-    strict = false,
+    options: {
+      strict: boolean;
+      allowSecretStorageRecreateWithoutRecoveryKey: boolean;
+    },
   ): Promise<void> {
     try {
-      await this.deps.recoveryKeyStore.bootstrapSecretStorageWithRecoveryKey(crypto);
+      await this.deps.recoveryKeyStore.bootstrapSecretStorageWithRecoveryKey(crypto, {
+        allowSecretStorageRecreateWithoutRecoveryKey:
+          options.allowSecretStorageRecreateWithoutRecoveryKey,
+      });
       LogService.info("MatrixClientLite", "Secret storage bootstrap complete");
     } catch (err) {
       LogService.warn("MatrixClientLite", "Failed to bootstrap secret storage:", err);
-      if (strict) {
+      if (options.strict) {
         throw err instanceof Error ? err : new Error(String(err));
       }
     }

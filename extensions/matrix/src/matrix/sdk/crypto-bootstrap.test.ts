@@ -55,6 +55,9 @@ describe("MatrixCryptoBootstrapper", () => {
     );
     expect(deps.recoveryKeyStore.bootstrapSecretStorageWithRecoveryKey).toHaveBeenCalledWith(
       crypto,
+      {
+        allowSecretStorageRecreateWithoutRecoveryKey: false,
+      },
     );
     expect(deps.recoveryKeyStore.bootstrapSecretStorageWithRecoveryKey).toHaveBeenCalledTimes(2);
     expect(deps.decryptBridge.bindCryptoRetrySignals).toHaveBeenCalledWith(crypto);
@@ -126,6 +129,33 @@ describe("MatrixCryptoBootstrapper", () => {
       expect.objectContaining({
         authUploadDeviceSigningKeys: expect.any(Function),
       }),
+    );
+  });
+
+  it("passes explicit secret-storage repair allowance only when requested", async () => {
+    const deps = createBootstrapperDeps();
+    const crypto = createCryptoApi({
+      getDeviceVerificationStatus: vi.fn(async () => ({
+        isVerified: () => true,
+        localVerified: true,
+        crossSigningVerified: true,
+        signedByOwner: true,
+      })),
+    });
+    const bootstrapper = new MatrixCryptoBootstrapper(
+      deps as unknown as MatrixCryptoBootstrapperDeps<MatrixRawEvent>,
+    );
+
+    await bootstrapper.bootstrap(crypto, {
+      strict: true,
+      allowSecretStorageRecreateWithoutRecoveryKey: true,
+    });
+
+    expect(deps.recoveryKeyStore.bootstrapSecretStorageWithRecoveryKey).toHaveBeenCalledWith(
+      crypto,
+      {
+        allowSecretStorageRecreateWithoutRecoveryKey: true,
+      },
     );
   });
 

@@ -128,7 +128,10 @@ export class MatrixRecoveryKeyStore {
 
   async bootstrapSecretStorageWithRecoveryKey(
     crypto: MatrixCryptoBootstrapApi,
-    options: { setupNewKeyBackup?: boolean } = {},
+    options: {
+      setupNewKeyBackup?: boolean;
+      allowSecretStorageRecreateWithoutRecoveryKey?: boolean;
+    } = {},
   ): Promise<void> {
     let status: MatrixSecretStorageStatus | null = null;
     if (typeof crypto.getSecretStorageStatus === "function") {
@@ -204,7 +207,29 @@ export class MatrixRecoveryKeyStore {
       secretStorageOptions.createSecretStorageKey = ensureRecoveryKey;
     }
 
-    await crypto.bootstrapSecretStorage(secretStorageOptions);
+    try {
+      await crypto.bootstrapSecretStorage(secretStorageOptions);
+    } catch (err) {
+      const shouldRecreateWithoutRecoveryKey =
+        options.allowSecretStorageRecreateWithoutRecoveryKey === true &&
+        !recoveryKey &&
+        hasDefaultSecretStorageKey &&
+        err instanceof Error &&
+        err.message.includes("getSecretStorageKey callback returned falsey");
+      if (!shouldRecreateWithoutRecoveryKey) {
+        throw err;
+      }
+
+      LogService.warn(
+        "MatrixClientLite",
+        "Secret storage exists on the server but no local recovery key is available; recreating secret storage and generating a new recovery key during explicit bootstrap.",
+      );
+      await crypto.bootstrapSecretStorage({
+        setupNewSecretStorage: true,
+        setupNewKeyBackup: options.setupNewKeyBackup === true,
+        createSecretStorageKey: ensureRecoveryKey,
+      });
+    }
 
     if (generatedRecoveryKey && this.recoveryKeyPath) {
       LogService.warn(

@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const bootstrapMatrixVerificationMock = vi.fn();
 const getMatrixRoomKeyBackupStatusMock = vi.fn();
 const getMatrixVerificationStatusMock = vi.fn();
+const resolveMatrixAccountConfigMock = vi.fn();
+const resolveMatrixAccountMock = vi.fn();
 const matrixSetupApplyAccountConfigMock = vi.fn();
 const matrixSetupValidateInputMock = vi.fn();
 const matrixRuntimeLoadConfigMock = vi.fn();
@@ -28,6 +30,11 @@ vi.mock("./matrix/client/logging.js", () => ({
 
 vi.mock("./matrix/actions/profile.js", () => ({
   updateMatrixOwnProfile: (...args: unknown[]) => updateMatrixOwnProfileMock(...args),
+}));
+
+vi.mock("./matrix/accounts.js", () => ({
+  resolveMatrixAccount: (...args: unknown[]) => resolveMatrixAccountMock(...args),
+  resolveMatrixAccountConfig: (...args: unknown[]) => resolveMatrixAccountConfigMock(...args),
 }));
 
 vi.mock("./channel.js", () => ({
@@ -72,6 +79,22 @@ describe("matrix CLI verification commands", () => {
     matrixSetupApplyAccountConfigMock.mockImplementation(({ cfg }: { cfg: unknown }) => cfg);
     matrixRuntimeLoadConfigMock.mockReturnValue({});
     matrixRuntimeWriteConfigFileMock.mockResolvedValue(undefined);
+    resolveMatrixAccountMock.mockReturnValue({
+      configured: false,
+    });
+    resolveMatrixAccountConfigMock.mockReturnValue({
+      encryption: false,
+    });
+    bootstrapMatrixVerificationMock.mockResolvedValue({
+      success: true,
+      verification: {
+        recoveryKeyCreatedAt: null,
+        backupVersion: null,
+      },
+      crossSigning: {},
+      pendingVerifications: 0,
+      cryptoBootstrap: {},
+    });
     updateMatrixOwnProfileMock.mockResolvedValue({
       skipped: false,
       displayNameUpdated: true,
@@ -204,6 +227,76 @@ describe("matrix CLI verification commands", () => {
     expect(console.log).toHaveBeenCalledWith(
       "Bind this account to an agent: openclaw agents bind --agent <id> --bind matrix:ops",
     );
+  });
+
+  it("bootstraps verification for newly added encrypted accounts", async () => {
+    resolveMatrixAccountConfigMock.mockReturnValue({
+      encryption: true,
+    });
+    bootstrapMatrixVerificationMock.mockResolvedValue({
+      success: true,
+      verification: {
+        recoveryKeyCreatedAt: "2026-03-09T06:00:00.000Z",
+        backupVersion: "7",
+      },
+      crossSigning: {},
+      pendingVerifications: 0,
+      cryptoBootstrap: {},
+    });
+    const program = buildProgram();
+
+    await program.parseAsync(
+      [
+        "matrix",
+        "account",
+        "add",
+        "--account",
+        "ops",
+        "--homeserver",
+        "https://matrix.example.org",
+        "--user-id",
+        "@ops:example.org",
+        "--password",
+        "secret",
+      ],
+      { from: "user" },
+    );
+
+    expect(bootstrapMatrixVerificationMock).toHaveBeenCalledWith({ accountId: "ops" });
+    expect(console.log).toHaveBeenCalledWith("Matrix verification bootstrap: complete");
+    expect(console.log).toHaveBeenCalledWith(
+      `Recovery key created at: ${formatExpectedLocalTimestamp("2026-03-09T06:00:00.000Z")}`,
+    );
+    expect(console.log).toHaveBeenCalledWith("Backup version: 7");
+  });
+
+  it("does not bootstrap verification when updating an already configured account", async () => {
+    resolveMatrixAccountMock.mockReturnValue({
+      configured: true,
+    });
+    resolveMatrixAccountConfigMock.mockReturnValue({
+      encryption: true,
+    });
+    const program = buildProgram();
+
+    await program.parseAsync(
+      [
+        "matrix",
+        "account",
+        "add",
+        "--account",
+        "ops",
+        "--homeserver",
+        "https://matrix.example.org",
+        "--user-id",
+        "@ops:example.org",
+        "--password",
+        "secret",
+      ],
+      { from: "user" },
+    );
+
+    expect(bootstrapMatrixVerificationMock).not.toHaveBeenCalled();
   });
 
   it("uses --name as fallback account id and prints account-scoped config path", async () => {

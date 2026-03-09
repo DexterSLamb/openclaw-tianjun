@@ -175,6 +175,58 @@ describe("MatrixRecoveryKeyStore", () => {
     });
   });
 
+  it("recreates secret storage during explicit bootstrap when the server key exists but no local recovery key is available", async () => {
+    const recoveryKeyPath = createTempRecoveryKeyPath();
+    const store = new MatrixRecoveryKeyStore(recoveryKeyPath);
+    const generated = {
+      keyId: "REPAIRED",
+      keyInfo: { name: "repaired" },
+      privateKey: new Uint8Array([7, 7, 8, 9]),
+      encodedPrivateKey: "encoded-repaired-key",
+    };
+    const createRecoveryKeyFromPassphrase = vi.fn(async () => generated);
+    const bootstrapSecretStorage = vi.fn(
+      async (opts?: {
+        setupNewSecretStorage?: boolean;
+        createSecretStorageKey?: () => Promise<unknown>;
+      }) => {
+        if (opts?.setupNewSecretStorage) {
+          await opts.createSecretStorageKey?.();
+          return;
+        }
+        throw new Error("getSecretStorageKey callback returned falsey");
+      },
+    );
+    const crypto = {
+      on: vi.fn(),
+      bootstrapCrossSigning: vi.fn(async () => {}),
+      bootstrapSecretStorage,
+      createRecoveryKeyFromPassphrase,
+      getSecretStorageStatus: vi.fn(async () => ({
+        ready: true,
+        defaultKeyId: "LEGACY",
+        secretStorageKeyValidityMap: { LEGACY: true },
+      })),
+      requestOwnUserVerification: vi.fn(async () => null),
+    } as unknown as MatrixCryptoBootstrapApi;
+
+    await store.bootstrapSecretStorageWithRecoveryKey(crypto, {
+      allowSecretStorageRecreateWithoutRecoveryKey: true,
+    });
+
+    expect(createRecoveryKeyFromPassphrase).toHaveBeenCalledTimes(1);
+    expect(bootstrapSecretStorage).toHaveBeenCalledTimes(2);
+    expect(bootstrapSecretStorage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        setupNewSecretStorage: true,
+      }),
+    );
+    expect(store.getRecoveryKeySummary()).toMatchObject({
+      keyId: "REPAIRED",
+      encodedPrivateKey: "encoded-repaired-key",
+    });
+  });
+
   it("stores an encoded recovery key and decodes its private key material", () => {
     const recoveryKeyPath = createTempRecoveryKeyPath();
     const store = new MatrixRecoveryKeyStore(recoveryKeyPath);

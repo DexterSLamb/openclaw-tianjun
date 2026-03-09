@@ -946,6 +946,7 @@ export class MatrixClient {
 
       bootstrapSummary = await this.cryptoBootstrapper.bootstrap(crypto, {
         forceResetCrossSigning: params?.forceResetCrossSigning === true,
+        allowSecretStorageRecreateWithoutRecoveryKey: true,
         strict: true,
       });
       await this.ensureRoomKeyBackupEnabled(crypto);
