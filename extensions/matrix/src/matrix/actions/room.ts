@@ -1,5 +1,5 @@
 import { resolveMatrixRoomId } from "../send.js";
-import { withResolvedActionClient } from "./client.js";
+import { withResolvedActionClient, withResolvedRoomAction } from "./client.js";
 import { EventType, type MatrixActionClientOpts } from "./types.js";
 
 export async function getMatrixMemberInfo(
@@ -25,8 +25,7 @@ export async function getMatrixMemberInfo(
 }
 
 export async function getMatrixRoomInfo(roomId: string, opts: MatrixActionClientOpts = {}) {
-  return await withResolvedActionClient(opts, async (client) => {
-    const resolvedRoom = await resolveMatrixRoomId(client, roomId);
+  return await withResolvedRoomAction(roomId, opts, async (client, resolvedRoom) => {
     let name: string | null = null;
     let topic: string | null = null;
     let canonicalAlias: string | null = null;

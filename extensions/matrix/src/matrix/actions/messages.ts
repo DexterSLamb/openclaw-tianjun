@@ -1,7 +1,7 @@
 import { fetchMatrixPollMessageSummary, resolveMatrixPollRootEventId } from "../poll-summary.js";
 import { isPollEventType } from "../poll-types.js";
-import { resolveMatrixRoomId, sendMessageMatrix } from "../send.js";
-import { withResolvedActionClient } from "./client.js";
+import { sendMessageMatrix } from "../send.js";
+import { withResolvedActionClient, withResolvedRoomAction } from "./client.js";
 import { resolveMatrixActionLimit } from "./limits.js";
 import { summarizeMatrixRawEvent } from "./summary.js";
 import {
@@ -43,8 +43,7 @@ export async function editMatrixMessage(
   if (!trimmed) {
     throw new Error("Matrix edit requires content");
   }
-  return await withResolvedActionClient(opts, async (client) => {
-    const resolvedRoom = await resolveMatrixRoomId(client, roomId);
+  return await withResolvedRoomAction(roomId, opts, async (client, resolvedRoom) => {
     const newContent = {
       msgtype: MsgType.Text,
       body: trimmed,
@@ -68,8 +67,7 @@ export async function deleteMatrixMessage(
   messageId: string,
   opts: MatrixActionClientOpts & { reason?: string } = {},
 ) {
-  await withResolvedActionClient(opts, async (client) => {
-    const resolvedRoom = await resolveMatrixRoomId(client, roomId);
+  await withResolvedRoomAction(roomId, opts, async (client, resolvedRoom) => {
     await client.redactEvent(resolvedRoom, messageId, opts.reason);
   });
 }
@@ -86,8 +84,7 @@ export async function readMatrixMessages(
   nextBatch?: string | null;
   prevBatch?: string | null;
 }> {
-  return await withResolvedActionClient(opts, async (client) => {
-    const resolvedRoom = await resolveMatrixRoomId(client, roomId);
+  return await withResolvedRoomAction(roomId, opts, async (client, resolvedRoom) => {
     const limit = resolveMatrixActionLimit(opts.limit, 20);
     const token = opts.before?.trim() || opts.after?.trim() || undefined;
     const dir = opts.after ? "f" : "b";

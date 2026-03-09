@@ -3,8 +3,7 @@ import {
   selectOwnMatrixReactionEventIds,
   summarizeMatrixReactionEvents,
 } from "../reaction-common.js";
-import { resolveMatrixRoomId } from "../send.js";
-import { withResolvedActionClient } from "./client.js";
+import { withResolvedRoomAction } from "./client.js";
 import { resolveMatrixActionLimit } from "./limits.js";
 import {
   type MatrixActionClientOpts,
@@ -32,8 +31,7 @@ export async function listMatrixReactions(
   messageId: string,
   opts: MatrixActionClientOpts & { limit?: number } = {},
 ): Promise<MatrixReactionSummary[]> {
-  return await withResolvedActionClient(opts, async (client) => {
-    const resolvedRoom = await resolveMatrixRoomId(client, roomId);
+  return await withResolvedRoomAction(roomId, opts, async (client, resolvedRoom) => {
     const limit = resolveMatrixActionLimit(opts.limit, 100);
     const chunk = await listMatrixReactionEvents(client, resolvedRoom, messageId, limit);
     return summarizeMatrixReactionEvents(chunk);
@@ -45,8 +43,7 @@ export async function removeMatrixReactions(
   messageId: string,
   opts: MatrixActionClientOpts & { emoji?: string } = {},
 ): Promise<{ removed: number }> {
-  return await withResolvedActionClient(opts, async (client) => {
-    const resolvedRoom = await resolveMatrixRoomId(client, roomId);
+  return await withResolvedRoomAction(roomId, opts, async (client, resolvedRoom) => {
     const chunk = await listMatrixReactionEvents(client, resolvedRoom, messageId, 200);
     const userId = await client.getUserId();
     if (!userId) {

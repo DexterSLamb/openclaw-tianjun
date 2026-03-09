@@ -4,8 +4,7 @@ import {
   parsePollStart,
   type PollStartContent,
 } from "../poll-types.js";
-import { resolveMatrixRoomId } from "../send.js";
-import { withResolvedActionClient } from "./client.js";
+import { withResolvedRoomAction } from "./client.js";
 import type { MatrixActionClientOpts } from "./types.js";
 
 function normalizeOptionIndexes(indexes: number[]): number[] {
@@ -80,8 +79,7 @@ export async function voteMatrixPoll(
     optionIndexes?: number[];
   } = {},
 ) {
-  return await withResolvedActionClient(opts, async (client) => {
-    const resolvedRoom = await resolveMatrixRoomId(client, roomId);
+  return await withResolvedRoomAction(roomId, opts, async (client, resolvedRoom) => {
     const pollEvent = await client.getEvent(resolvedRoom, pollId);
     const eventType = typeof pollEvent.type === "string" ? pollEvent.type : "";
     if (!isPollStartType(eventType)) {
