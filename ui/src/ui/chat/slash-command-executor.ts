@@ -354,10 +354,10 @@ function resolveKillTargets(
     const isMatch =
       (normalizedTarget === "all" && belongsToCurrentSession) ||
       normalizedKey === normalizedTarget ||
-      (parsed?.agentId ?? "") === normalizedTarget ||
-      normalizedKey.endsWith(`:subagent:${normalizedTarget}`) ||
-      normalizedKey === `subagent:${normalizedTarget}` ||
-      (belongsToCurrentSession && normalizedKey.endsWith(`:subagent:${normalizedTarget}`));
+      (belongsToCurrentSession &&
+        ((parsed?.agentId ?? "") === normalizedTarget ||
+          normalizedKey.endsWith(`:subagent:${normalizedTarget}`) ||
+          normalizedKey === `subagent:${normalizedTarget}`));
     if (isMatch) {
       keys.add(key);
     }

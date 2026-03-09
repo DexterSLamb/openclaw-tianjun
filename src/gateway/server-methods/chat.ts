@@ -352,6 +352,14 @@ function sanitizeUsage(raw: unknown): Record<string, number> | undefined {
     }
   }
 
+  // Preserve nested usage.cost when present
+  if ("cost" in u && u.cost != null && typeof u.cost === "object") {
+    const sanitizedCost = sanitizeCost(u.cost);
+    if (sanitizedCost) {
+      (out as Record<string, unknown>).cost = sanitizedCost;
+    }
+  }
+
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
