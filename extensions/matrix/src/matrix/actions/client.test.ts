@@ -5,6 +5,8 @@ import {
   primeMatrixClientResolverMocks,
 } from "../client-resolver.test-helpers.js";
 
+const resolveMatrixRoomIdMock = vi.fn();
+
 const {
   loadConfigMock,
   getMatrixRuntimeMock,
@@ -30,14 +32,29 @@ vi.mock("../client.js", () => ({
   resolveMatrixAuthContext: resolveMatrixAuthContextMock,
 }));
 
+vi.mock("../send.js", () => ({
+  resolveMatrixRoomId: (...args: unknown[]) => resolveMatrixRoomIdMock(...args),
+}));
+
 let resolveActionClient: typeof import("./client.js").resolveActionClient;
+let withResolvedActionClient: typeof import("./client.js").withResolvedActionClient;
+let withResolvedRoomAction: typeof import("./client.js").withResolvedRoomAction;
+let withStartedActionClient: typeof import("./client.js").withStartedActionClient;
 
 describe("resolveActionClient", () => {
   beforeEach(async () => {
     vi.resetModules();
     primeMatrixClientResolverMocks();
+    resolveMatrixRoomIdMock
+      .mockReset()
+      .mockImplementation(async (_client, roomId: string) => roomId);
 
-    ({ resolveActionClient } = await import("./client.js"));
+    ({
+      resolveActionClient,
+      withResolvedActionClient,
+      withResolvedRoomAction,
+      withStartedActionClient,
+    } = await import("./client.js"));
   });
 
   afterEach(() => {
@@ -161,5 +178,66 @@ describe("resolveActionClient", () => {
         homeserver: "https://ops.example.org",
       }),
     );
+  });
+
+  it("stops one-off action clients after wrapped calls succeed", async () => {
+    const oneOffClient = createMockMatrixClient();
+    createMatrixClientMock.mockResolvedValue(oneOffClient);
+
+    const result = await withResolvedActionClient({ accountId: "default" }, async (client) => {
+      expect(client).toBe(oneOffClient);
+      return "ok";
+    });
+
+    expect(result).toBe("ok");
+    expect(oneOffClient.stop).toHaveBeenCalledTimes(1);
+    expect(oneOffClient.stopAndPersist).not.toHaveBeenCalled();
+  });
+
+  it("still stops one-off action clients when the wrapped call throws", async () => {
+    const oneOffClient = createMockMatrixClient();
+    createMatrixClientMock.mockResolvedValue(oneOffClient);
+
+    await expect(
+      withResolvedActionClient({ accountId: "default" }, async () => {
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+
+    expect(oneOffClient.stop).toHaveBeenCalledTimes(1);
+    expect(oneOffClient.stopAndPersist).not.toHaveBeenCalled();
+  });
+
+  it("persists one-off action clients after started wrappers complete", async () => {
+    const oneOffClient = createMockMatrixClient();
+    createMatrixClientMock.mockResolvedValue(oneOffClient);
+
+    await withStartedActionClient({ accountId: "default" }, async (client) => {
+      expect(client).toBe(oneOffClient);
+      return undefined;
+    });
+
+    expect(oneOffClient.start).toHaveBeenCalledTimes(1);
+    expect(oneOffClient.stop).not.toHaveBeenCalled();
+    expect(oneOffClient.stopAndPersist).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves room ids before running wrapped room actions", async () => {
+    const oneOffClient = createMockMatrixClient();
+    createMatrixClientMock.mockResolvedValue(oneOffClient);
+    resolveMatrixRoomIdMock.mockResolvedValue("!room:example.org");
+
+    const result = await withResolvedRoomAction(
+      "room:#ops:example.org",
+      { accountId: "default" },
+      async (client, resolvedRoom) => {
+        expect(client).toBe(oneOffClient);
+        return resolvedRoom;
+      },
+    );
+
+    expect(resolveMatrixRoomIdMock).toHaveBeenCalledWith(oneOffClient, "room:#ops:example.org");
+    expect(result).toBe("!room:example.org");
+    expect(oneOffClient.stop).toHaveBeenCalledTimes(1);
   });
 });

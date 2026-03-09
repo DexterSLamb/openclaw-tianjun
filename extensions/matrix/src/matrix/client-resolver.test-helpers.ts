@@ -15,6 +15,8 @@ export function createMockMatrixClient(): MatrixClient {
   return {
     prepareForOneOff: vi.fn(async () => undefined),
     start: vi.fn(async () => undefined),
+    stop: vi.fn(() => undefined),
+    stopAndPersist: vi.fn(async () => undefined),
   } as unknown as MatrixClient;
 }
 

@@ -30,6 +30,7 @@ vi.mock("../../runtime.js", () => ({
 }));
 
 let resolveMatrixClient: typeof import("./client.js").resolveMatrixClient;
+let withResolvedMatrixClient: typeof import("./client.js").withResolvedMatrixClient;
 
 describe("resolveMatrixClient", () => {
   beforeEach(async () => {
@@ -38,7 +39,7 @@ describe("resolveMatrixClient", () => {
       resolved: {},
     });
 
-    ({ resolveMatrixClient } = await import("./client.js"));
+    ({ resolveMatrixClient, withResolvedMatrixClient } = await import("./client.js"));
   });
 
   afterEach(() => {
@@ -103,5 +104,31 @@ describe("resolveMatrixClient", () => {
         accountId: "ops",
       }),
     );
+  });
+
+  it("stops one-off matrix clients after wrapped sends succeed", async () => {
+    const oneOffClient = createMockMatrixClient();
+    createMatrixClientMock.mockResolvedValue(oneOffClient);
+
+    const result = await withResolvedMatrixClient({ accountId: "default" }, async (client) => {
+      expect(client).toBe(oneOffClient);
+      return "ok";
+    });
+
+    expect(result).toBe("ok");
+    expect(oneOffClient.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("still stops one-off matrix clients when wrapped sends fail", async () => {
+    const oneOffClient = createMockMatrixClient();
+    createMatrixClientMock.mockResolvedValue(oneOffClient);
+
+    await expect(
+      withResolvedMatrixClient({ accountId: "default" }, async () => {
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+
+    expect(oneOffClient.stop).toHaveBeenCalledTimes(1);
   });
 });
