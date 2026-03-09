@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const withResolvedActionClientMock = vi.fn();
+const withStartedActionClientMock = vi.fn();
 
 vi.mock("./client.js", () => ({
-  withResolvedActionClient: (...args: unknown[]) => withResolvedActionClientMock(...args),
+  withStartedActionClient: (...args: unknown[]) => withStartedActionClientMock(...args),
 }));
 
 let listMatrixOwnDevices: typeof import("./devices.js").listMatrixOwnDevices;
@@ -17,7 +17,7 @@ describe("matrix device actions", () => {
   });
 
   it("lists own devices on a started client", async () => {
-    withResolvedActionClientMock.mockImplementation(async (_opts, run) => {
+    withStartedActionClientMock.mockImplementation(async (_opts, run) => {
       return await run({
         listOwnDevices: vi.fn(async () => [
           {
@@ -33,10 +33,9 @@ describe("matrix device actions", () => {
 
     const result = await listMatrixOwnDevices({ accountId: "poe" });
 
-    expect(withResolvedActionClientMock).toHaveBeenCalledWith(
-      { accountId: "poe", readiness: "started" },
+    expect(withStartedActionClientMock).toHaveBeenCalledWith(
+      { accountId: "poe" },
       expect.any(Function),
-      "persist",
     );
     expect(result).toEqual([
       expect.objectContaining({
@@ -60,7 +59,7 @@ describe("matrix device actions", () => {
         },
       ],
     }));
-    withResolvedActionClientMock.mockImplementation(async (_opts, run) => {
+    withStartedActionClientMock.mockImplementation(async (_opts, run) => {
       return await run({
         listOwnDevices: vi.fn(async () => [
           {

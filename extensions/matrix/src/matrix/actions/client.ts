@@ -58,3 +58,10 @@ export async function withResolvedActionClient<T>(
     await stopActionClient(resolved, mode);
   }
 }
+
+export async function withStartedActionClient<T>(
+  opts: MatrixActionClientOpts,
+  run: (client: MatrixActionClient["client"]) => Promise<T>,
+): Promise<T> {
+  return await withResolvedActionClient({ ...opts, readiness: "started" }, run, "persist");
+}

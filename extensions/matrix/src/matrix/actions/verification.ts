@@ -1,7 +1,7 @@
 import { getMatrixRuntime } from "../../runtime.js";
 import type { CoreConfig } from "../../types.js";
 import { formatMatrixEncryptionUnavailableError } from "../encryption-guidance.js";
-import { withResolvedActionClient } from "./client.js";
+import { withStartedActionClient } from "./client.js";
 import type { MatrixActionClientOpts } from "./types.js";
 
 function requireCrypto(
@@ -24,14 +24,10 @@ function resolveVerificationId(input: string): string {
 }
 
 export async function listMatrixVerifications(opts: MatrixActionClientOpts = {}) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
-    async (client) => {
-      const crypto = requireCrypto(client, opts);
-      return await crypto.listVerifications();
-    },
-    "persist",
-  );
+  return await withStartedActionClient(opts, async (client) => {
+    const crypto = requireCrypto(client, opts);
+    return await crypto.listVerifications();
+  });
 }
 
 export async function requestMatrixVerification(
@@ -42,79 +38,59 @@ export async function requestMatrixVerification(
     roomId?: string;
   } = {},
 ) {
-  return await withResolvedActionClient(
-    { ...params, readiness: "started" },
-    async (client) => {
-      const crypto = requireCrypto(client, params);
-      const ownUser = params.ownUser ?? (!params.userId && !params.deviceId && !params.roomId);
-      return await crypto.requestVerification({
-        ownUser,
-        userId: params.userId?.trim() || undefined,
-        deviceId: params.deviceId?.trim() || undefined,
-        roomId: params.roomId?.trim() || undefined,
-      });
-    },
-    "persist",
-  );
+  return await withStartedActionClient(params, async (client) => {
+    const crypto = requireCrypto(client, params);
+    const ownUser = params.ownUser ?? (!params.userId && !params.deviceId && !params.roomId);
+    return await crypto.requestVerification({
+      ownUser,
+      userId: params.userId?.trim() || undefined,
+      deviceId: params.deviceId?.trim() || undefined,
+      roomId: params.roomId?.trim() || undefined,
+    });
+  });
 }
 
 export async function acceptMatrixVerification(
   requestId: string,
   opts: MatrixActionClientOpts = {},
 ) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
-    async (client) => {
-      const crypto = requireCrypto(client, opts);
-      return await crypto.acceptVerification(resolveVerificationId(requestId));
-    },
-    "persist",
-  );
+  return await withStartedActionClient(opts, async (client) => {
+    const crypto = requireCrypto(client, opts);
+    return await crypto.acceptVerification(resolveVerificationId(requestId));
+  });
 }
 
 export async function cancelMatrixVerification(
   requestId: string,
   opts: MatrixActionClientOpts & { reason?: string; code?: string } = {},
 ) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
-    async (client) => {
-      const crypto = requireCrypto(client, opts);
-      return await crypto.cancelVerification(resolveVerificationId(requestId), {
-        reason: opts.reason?.trim() || undefined,
-        code: opts.code?.trim() || undefined,
-      });
-    },
-    "persist",
-  );
+  return await withStartedActionClient(opts, async (client) => {
+    const crypto = requireCrypto(client, opts);
+    return await crypto.cancelVerification(resolveVerificationId(requestId), {
+      reason: opts.reason?.trim() || undefined,
+      code: opts.code?.trim() || undefined,
+    });
+  });
 }
 
 export async function startMatrixVerification(
   requestId: string,
   opts: MatrixActionClientOpts & { method?: "sas" } = {},
 ) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
-    async (client) => {
-      const crypto = requireCrypto(client, opts);
-      return await crypto.startVerification(resolveVerificationId(requestId), opts.method ?? "sas");
-    },
-    "persist",
-  );
+  return await withStartedActionClient(opts, async (client) => {
+    const crypto = requireCrypto(client, opts);
+    return await crypto.startVerification(resolveVerificationId(requestId), opts.method ?? "sas");
+  });
 }
 
 export async function generateMatrixVerificationQr(
   requestId: string,
   opts: MatrixActionClientOpts = {},
 ) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
-    async (client) => {
-      const crypto = requireCrypto(client, opts);
-      return await crypto.generateVerificationQr(resolveVerificationId(requestId));
-    },
-    "persist",
-  );
+  return await withStartedActionClient(opts, async (client) => {
+    const crypto = requireCrypto(client, opts);
+    return await crypto.generateVerificationQr(resolveVerificationId(requestId));
+  });
 }
 
 export async function scanMatrixVerificationQr(
@@ -122,125 +98,96 @@ export async function scanMatrixVerificationQr(
   qrDataBase64: string,
   opts: MatrixActionClientOpts = {},
 ) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
-    async (client) => {
-      const crypto = requireCrypto(client, opts);
-      const payload = qrDataBase64.trim();
-      if (!payload) {
-        throw new Error("Matrix QR data is required");
-      }
-      return await crypto.scanVerificationQr(resolveVerificationId(requestId), payload);
-    },
-    "persist",
-  );
+  return await withStartedActionClient(opts, async (client) => {
+    const crypto = requireCrypto(client, opts);
+    const payload = qrDataBase64.trim();
+    if (!payload) {
+      throw new Error("Matrix QR data is required");
+    }
+    return await crypto.scanVerificationQr(resolveVerificationId(requestId), payload);
+  });
 }
 
 export async function getMatrixVerificationSas(
   requestId: string,
   opts: MatrixActionClientOpts = {},
 ) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
-    async (client) => {
-      const crypto = requireCrypto(client, opts);
-      return await crypto.getVerificationSas(resolveVerificationId(requestId));
-    },
-    "persist",
-  );
+  return await withStartedActionClient(opts, async (client) => {
+    const crypto = requireCrypto(client, opts);
+    return await crypto.getVerificationSas(resolveVerificationId(requestId));
+  });
 }
 
 export async function confirmMatrixVerificationSas(
   requestId: string,
   opts: MatrixActionClientOpts = {},
 ) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
-    async (client) => {
-      const crypto = requireCrypto(client, opts);
-      return await crypto.confirmVerificationSas(resolveVerificationId(requestId));
-    },
-    "persist",
-  );
+  return await withStartedActionClient(opts, async (client) => {
+    const crypto = requireCrypto(client, opts);
+    return await crypto.confirmVerificationSas(resolveVerificationId(requestId));
+  });
 }
 
 export async function mismatchMatrixVerificationSas(
   requestId: string,
   opts: MatrixActionClientOpts = {},
 ) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
-    async (client) => {
-      const crypto = requireCrypto(client, opts);
-      return await crypto.mismatchVerificationSas(resolveVerificationId(requestId));
-    },
-    "persist",
-  );
+  return await withStartedActionClient(opts, async (client) => {
+    const crypto = requireCrypto(client, opts);
+    return await crypto.mismatchVerificationSas(resolveVerificationId(requestId));
+  });
 }
 
 export async function confirmMatrixVerificationReciprocateQr(
   requestId: string,
   opts: MatrixActionClientOpts = {},
 ) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
-    async (client) => {
-      const crypto = requireCrypto(client, opts);
-      return await crypto.confirmVerificationReciprocateQr(resolveVerificationId(requestId));
-    },
-    "persist",
-  );
+  return await withStartedActionClient(opts, async (client) => {
+    const crypto = requireCrypto(client, opts);
+    return await crypto.confirmVerificationReciprocateQr(resolveVerificationId(requestId));
+  });
 }
 
 export async function getMatrixEncryptionStatus(
   opts: MatrixActionClientOpts & { includeRecoveryKey?: boolean } = {},
 ) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
-    async (client) => {
-      const crypto = requireCrypto(client, opts);
-      const recoveryKey = await crypto.getRecoveryKey();
-      return {
-        encryptionEnabled: true,
-        recoveryKeyStored: Boolean(recoveryKey),
-        recoveryKeyCreatedAt: recoveryKey?.createdAt ?? null,
-        ...(opts.includeRecoveryKey ? { recoveryKey: recoveryKey?.encodedPrivateKey ?? null } : {}),
-        pendingVerifications: (await crypto.listVerifications()).length,
-      };
-    },
-    "persist",
-  );
+  return await withStartedActionClient(opts, async (client) => {
+    const crypto = requireCrypto(client, opts);
+    const recoveryKey = await crypto.getRecoveryKey();
+    return {
+      encryptionEnabled: true,
+      recoveryKeyStored: Boolean(recoveryKey),
+      recoveryKeyCreatedAt: recoveryKey?.createdAt ?? null,
+      ...(opts.includeRecoveryKey ? { recoveryKey: recoveryKey?.encodedPrivateKey ?? null } : {}),
+      pendingVerifications: (await crypto.listVerifications()).length,
+    };
+  });
 }
 
 export async function getMatrixVerificationStatus(
   opts: MatrixActionClientOpts & { includeRecoveryKey?: boolean } = {},
 ) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
-    async (client) => {
-      const status = await client.getOwnDeviceVerificationStatus();
-      const payload = {
-        ...status,
-        pendingVerifications: client.crypto ? (await client.crypto.listVerifications()).length : 0,
-      };
-      if (!opts.includeRecoveryKey) {
-        return payload;
-      }
-      const recoveryKey = client.crypto ? await client.crypto.getRecoveryKey() : null;
-      return {
-        ...payload,
-        recoveryKey: recoveryKey?.encodedPrivateKey ?? null,
-      };
-    },
-    "persist",
-  );
+  return await withStartedActionClient(opts, async (client) => {
+    const status = await client.getOwnDeviceVerificationStatus();
+    const payload = {
+      ...status,
+      pendingVerifications: client.crypto ? (await client.crypto.listVerifications()).length : 0,
+    };
+    if (!opts.includeRecoveryKey) {
+      return payload;
+    }
+    const recoveryKey = client.crypto ? await client.crypto.getRecoveryKey() : null;
+    return {
+      ...payload,
+      recoveryKey: recoveryKey?.encodedPrivateKey ?? null,
+    };
+  });
 }
 
 export async function getMatrixRoomKeyBackupStatus(opts: MatrixActionClientOpts = {}) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
+  return await withStartedActionClient(
+    opts,
     async (client) => await client.getRoomKeyBackupStatus(),
-    "persist",
   );
 }
 
@@ -248,10 +195,9 @@ export async function verifyMatrixRecoveryKey(
   recoveryKey: string,
   opts: MatrixActionClientOpts = {},
 ) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
+  return await withStartedActionClient(
+    opts,
     async (client) => await client.verifyWithRecoveryKey(recoveryKey),
-    "persist",
   );
 }
 
@@ -260,13 +206,12 @@ export async function restoreMatrixRoomKeyBackup(
     recoveryKey?: string;
   } = {},
 ) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
+  return await withStartedActionClient(
+    opts,
     async (client) =>
       await client.restoreRoomKeyBackup({
         recoveryKey: opts.recoveryKey?.trim() || undefined,
       }),
-    "persist",
   );
 }
 
@@ -276,13 +221,12 @@ export async function bootstrapMatrixVerification(
     forceResetCrossSigning?: boolean;
   } = {},
 ) {
-  return await withResolvedActionClient(
-    { ...opts, readiness: "started" },
+  return await withStartedActionClient(
+    opts,
     async (client) =>
       await client.bootstrapOwnDeviceVerification({
         recoveryKey: opts.recoveryKey?.trim() || undefined,
         forceResetCrossSigning: opts.forceResetCrossSigning === true,
       }),
-    "persist",
   );
 }

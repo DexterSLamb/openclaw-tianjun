@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const withResolvedActionClientMock = vi.fn();
+const withStartedActionClientMock = vi.fn();
 const loadConfigMock = vi.fn(() => ({
   channels: {
     matrix: {},
@@ -16,7 +16,7 @@ vi.mock("../../runtime.js", () => ({
 }));
 
 vi.mock("./client.js", () => ({
-  withResolvedActionClient: (...args: unknown[]) => withResolvedActionClientMock(...args),
+  withStartedActionClient: (...args: unknown[]) => withStartedActionClientMock(...args),
 }));
 
 let listMatrixVerifications: typeof import("./verification.js").listMatrixVerifications;
@@ -45,7 +45,7 @@ describe("matrix verification actions", () => {
         },
       },
     });
-    withResolvedActionClientMock.mockImplementation(async (_opts, run) => {
+    withStartedActionClientMock.mockImplementation(async (_opts, run) => {
       return await run({ crypto: null });
     });
 
@@ -67,7 +67,7 @@ describe("matrix verification actions", () => {
         },
       },
     });
-    withResolvedActionClientMock.mockImplementation(async (_opts, run) => {
+    withStartedActionClientMock.mockImplementation(async (_opts, run) => {
       return await run({ crypto: null });
     });
 
