@@ -3,11 +3,8 @@ import {
   createTypingCallbacks,
   ensureConfiguredAcpRouteReady,
   formatAllowlistMatchMeta,
-  getSessionBindingService,
   logInboundDrop,
   logTypingFailure,
-  resolveAgentIdFromSessionKey,
-  resolveConfiguredAcpRoute,
   resolveControlCommandGate,
   type PluginRuntime,
   type ReplyPayload,
@@ -32,6 +29,7 @@ import { resolveMentions } from "./mentions.js";
 import { handleInboundMatrixReaction } from "./reaction-events.js";
 import { deliverMatrixReplies } from "./replies.js";
 import { resolveMatrixRoomConfig } from "./rooms.js";
+import { resolveMatrixInboundRoute } from "./route.js";
 import { createMatrixThreadContextResolver } from "./thread-context.js";
 import { resolveMatrixThreadRootId, resolveMatrixThreadTarget } from "./threads.js";
 import type { MatrixRawEvent, RoomMessageEventContent } from "./types.js";
@@ -512,38 +510,18 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
         ? await resolveThreadContext({ roomId, threadRootId })
         : undefined;
 
-      const baseRoute = core.channel.routing.resolveAgentRoute({
+      const { route, configuredBinding } = resolveMatrixInboundRoute({
         cfg,
-        channel: "matrix",
         accountId,
-        peer: {
-          kind: isDirectMessage ? "direct" : "channel",
-          id: isDirectMessage ? senderId : roomId,
-        },
+        roomId,
+        senderId,
+        isDirectMessage,
+        messageId,
+        threadRootId,
+        eventTs: eventTs ?? undefined,
+        resolveAgentRoute: core.channel.routing.resolveAgentRoute,
       });
-      const bindingConversationId =
-        threadRootId && threadRootId !== messageId ? threadRootId : roomId;
-      const bindingParentConversationId = bindingConversationId === roomId ? undefined : roomId;
-      const sessionBindingService = getSessionBindingService();
-      const runtimeBinding = sessionBindingService.resolveByConversation({
-        channel: "matrix",
-        accountId,
-        conversationId: bindingConversationId,
-        parentConversationId: bindingParentConversationId,
-      });
-      const configuredRoute =
-        runtimeBinding == null
-          ? resolveConfiguredAcpRoute({
-              cfg,
-              route: baseRoute,
-              channel: "matrix",
-              accountId,
-              conversationId: bindingConversationId,
-              parentConversationId: bindingParentConversationId,
-            })
-          : null;
-      const configuredBinding = configuredRoute?.configuredBinding ?? null;
-      if (!runtimeBinding && configuredBinding) {
+      if (configuredBinding) {
         const ensured = await ensureConfiguredAcpRouteReady({
           cfg,
           configuredBinding,
@@ -557,19 +535,6 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
           });
           return;
         }
-      }
-      const boundSessionKey = runtimeBinding?.targetSessionKey?.trim();
-      const route =
-        runtimeBinding && boundSessionKey
-          ? {
-              ...baseRoute,
-              sessionKey: boundSessionKey,
-              agentId: resolveAgentIdFromSessionKey(boundSessionKey) || baseRoute.agentId,
-              matchedBy: "binding.channel" as const,
-            }
-          : (configuredRoute?.route ?? baseRoute);
-      if (runtimeBinding) {
-        sessionBindingService.touch(runtimeBinding.bindingId, eventTs);
       }
       const envelopeFrom = isDirectMessage ? senderName : (roomName ?? roomId);
       const textWithId = `${bodyText}\n[matrix event id: ${messageId} room: ${roomId}]`;
