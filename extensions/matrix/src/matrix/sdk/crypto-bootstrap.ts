@@ -26,6 +26,7 @@ export type MatrixCryptoBootstrapperDeps<TRawEvent extends MatrixRawEvent> = {
 
 export type MatrixCryptoBootstrapOptions = {
   forceResetCrossSigning?: boolean;
+  allowAutomaticCrossSigningReset?: boolean;
   strict?: boolean;
 };
 
@@ -51,6 +52,7 @@ export class MatrixCryptoBootstrapper<TRawEvent extends MatrixRawEvent> {
     await this.bootstrapSecretStorage(crypto, strict);
     const crossSigning = await this.bootstrapCrossSigning(crypto, {
       forceResetCrossSigning: options.forceResetCrossSigning === true,
+      allowAutomaticCrossSigningReset: options.allowAutomaticCrossSigningReset !== false,
       strict,
     });
     await this.bootstrapSecretStorage(crypto, strict);
@@ -91,7 +93,11 @@ export class MatrixCryptoBootstrapper<TRawEvent extends MatrixRawEvent> {
 
   private async bootstrapCrossSigning(
     crypto: MatrixCryptoBootstrapApi,
-    options: { forceResetCrossSigning: boolean; strict: boolean },
+    options: {
+      forceResetCrossSigning: boolean;
+      allowAutomaticCrossSigningReset: boolean;
+      strict: boolean;
+    },
   ): Promise<{ ready: boolean; published: boolean }> {
     const userId = await this.deps.getUserId();
     const authUploadDeviceSigningKeys = this.createSigningKeysUiAuthCallback({
@@ -156,6 +162,14 @@ export class MatrixCryptoBootstrapper<TRawEvent extends MatrixRawEvent> {
         authUploadDeviceSigningKeys,
       });
     } catch (err) {
+      if (!options.allowAutomaticCrossSigningReset) {
+        LogService.warn(
+          "MatrixClientLite",
+          "Initial cross-signing bootstrap failed and automatic reset is disabled:",
+          err,
+        );
+        return { ready: false, published: false };
+      }
       LogService.warn(
         "MatrixClientLite",
         "Initial cross-signing bootstrap failed, trying reset:",
@@ -180,6 +194,10 @@ export class MatrixCryptoBootstrapper<TRawEvent extends MatrixRawEvent> {
     if (firstPassReady && firstPassPublished) {
       LogService.info("MatrixClientLite", "Cross-signing bootstrap complete");
       return { ready: true, published: true };
+    }
+
+    if (!options.allowAutomaticCrossSigningReset) {
+      return { ready: firstPassReady, published: firstPassPublished };
     }
 
     // Fallback: recover from broken local/server state by creating a fresh identity.

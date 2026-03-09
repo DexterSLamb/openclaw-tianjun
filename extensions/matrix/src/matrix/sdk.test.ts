@@ -842,6 +842,53 @@ describe("MatrixClient crypto bootstrapping", () => {
     });
   });
 
+  it("does not force-reset bootstrap when the device is already signed by its owner", async () => {
+    matrixJsClient.getCrypto = vi.fn(() => ({ on: vi.fn() }));
+    const client = new MatrixClient("https://matrix.example.org", "token", undefined, undefined, {
+      encryption: true,
+      password: "secret-password",
+    });
+    const bootstrapSpy = vi.fn().mockResolvedValue({
+      crossSigningReady: false,
+      crossSigningPublished: false,
+      ownDeviceVerified: true,
+    });
+    (
+      client as unknown as {
+        cryptoBootstrapper: { bootstrap: typeof bootstrapSpy };
+      }
+    ).cryptoBootstrapper.bootstrap = bootstrapSpy;
+    vi.spyOn(client, "getOwnDeviceVerificationStatus").mockResolvedValue({
+      encryptionEnabled: true,
+      userId: "@bot:example.org",
+      deviceId: "DEVICE123",
+      verified: true,
+      localVerified: true,
+      crossSigningVerified: false,
+      signedByOwner: true,
+      recoveryKeyStored: false,
+      recoveryKeyCreatedAt: null,
+      recoveryKeyId: null,
+      backupVersion: null,
+      backup: {
+        serverVersion: null,
+        activeVersion: null,
+        trusted: null,
+        matchesDecryptionKey: null,
+        decryptionKeyCached: false,
+        keyLoadAttempted: false,
+        keyLoadError: null,
+      },
+    });
+
+    await client.start();
+
+    expect(bootstrapSpy).toHaveBeenCalledTimes(1);
+    expect(bootstrapSpy.mock.calls[0]?.[1]).toEqual({
+      allowAutomaticCrossSigningReset: false,
+    });
+  });
+
   it("does not force-reset bootstrap when password is unavailable", async () => {
     matrixJsClient.getCrypto = vi.fn(() => ({ on: vi.fn() }));
     const client = new MatrixClient("https://matrix.example.org", "token", undefined, undefined, {

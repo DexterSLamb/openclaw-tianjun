@@ -309,9 +309,17 @@ export class MatrixClient {
     if (!crypto) {
       return;
     }
-    const initial = await this.cryptoBootstrapper.bootstrap(crypto);
+    const initial = await this.cryptoBootstrapper.bootstrap(crypto, {
+      allowAutomaticCrossSigningReset: false,
+    });
     if (!initial.crossSigningPublished || initial.ownDeviceVerified === false) {
-      if (this.password?.trim()) {
+      const status = await this.getOwnDeviceVerificationStatus();
+      if (status.signedByOwner) {
+        LogService.warn(
+          "MatrixClientLite",
+          "Cross-signing/bootstrap is incomplete for an already owner-signed device; skipping automatic reset and preserving the current identity. Restore the recovery key or run an explicit verification bootstrap if repair is needed.",
+        );
+      } else if (this.password?.trim()) {
         try {
           const repaired = await this.cryptoBootstrapper.bootstrap(crypto, {
             forceResetCrossSigning: true,
@@ -757,7 +765,9 @@ export class MatrixClient {
       return await fail(err instanceof Error ? err.message : String(err));
     }
 
-    await this.cryptoBootstrapper.bootstrap(crypto);
+    await this.cryptoBootstrapper.bootstrap(crypto, {
+      allowAutomaticCrossSigningReset: false,
+    });
     const status = await this.getOwnDeviceVerificationStatus();
     if (!status.verified) {
       return {

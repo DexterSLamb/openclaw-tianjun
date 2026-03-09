@@ -99,6 +99,36 @@ describe("MatrixCryptoBootstrapper", () => {
     );
   });
 
+  it("does not auto-reset cross-signing when automatic reset is disabled", async () => {
+    const deps = createBootstrapperDeps();
+    const bootstrapCrossSigning = vi.fn(async () => {});
+    const crypto = createCryptoApi({
+      bootstrapCrossSigning,
+      isCrossSigningReady: vi.fn(async () => false),
+      userHasCrossSigningKeys: vi.fn(async () => false),
+      getDeviceVerificationStatus: vi.fn(async () => ({
+        isVerified: () => true,
+        localVerified: true,
+        crossSigningVerified: false,
+        signedByOwner: true,
+      })),
+    });
+    const bootstrapper = new MatrixCryptoBootstrapper(
+      deps as unknown as MatrixCryptoBootstrapperDeps<MatrixRawEvent>,
+    );
+
+    await bootstrapper.bootstrap(crypto, {
+      allowAutomaticCrossSigningReset: false,
+    });
+
+    expect(bootstrapCrossSigning).toHaveBeenCalledTimes(1);
+    expect(bootstrapCrossSigning).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authUploadDeviceSigningKeys: expect.any(Function),
+      }),
+    );
+  });
+
   it("fails in strict mode when cross-signing keys are still unpublished", async () => {
     const deps = createBootstrapperDeps();
     const crypto = createCryptoApi({
