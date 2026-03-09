@@ -5,9 +5,7 @@ export function resolveMatrixBaseConfig(cfg: CoreConfig): MatrixConfig {
   return cfg.channels?.matrix ?? {};
 }
 
-export function resolveMatrixAccountsMap(
-  cfg: CoreConfig,
-): Readonly<Record<string, MatrixAccountConfig>> {
+function resolveMatrixAccountsMap(cfg: CoreConfig): Readonly<Record<string, MatrixAccountConfig>> {
   const accounts = resolveMatrixBaseConfig(cfg).accounts;
   if (!accounts || typeof accounts !== "object") {
     return {};

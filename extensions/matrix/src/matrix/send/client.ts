@@ -2,17 +2,12 @@ import { getMatrixRuntime } from "../../runtime.js";
 import type { CoreConfig } from "../../types.js";
 import { resolveMatrixAccountConfig } from "../accounts.js";
 import {
-  ensureMatrixNodeRuntime,
   resolveRuntimeMatrixClient,
   type ResolvedRuntimeMatrixClient,
 } from "../client-bootstrap.js";
 import type { MatrixClient } from "../sdk.js";
 
 const getCore = () => getMatrixRuntime();
-
-export function ensureNodeRuntime() {
-  ensureMatrixNodeRuntime();
-}
 
 export function resolveMediaMaxBytes(accountId?: string | null): number | undefined {
   const cfg = getCore().config.loadConfig() as CoreConfig;
@@ -41,7 +36,7 @@ export async function resolveMatrixClient(opts: {
   });
 }
 
-export function stopResolvedMatrixClient(resolved: ResolvedRuntimeMatrixClient): void {
+function stopResolvedMatrixClient(resolved: ResolvedRuntimeMatrixClient): void {
   if (resolved.stopOnDone) {
     resolved.client.stop();
   }

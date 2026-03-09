@@ -1,9 +1,5 @@
-import { ensureMatrixNodeRuntime, resolveRuntimeMatrixClient } from "../client-bootstrap.js";
+import { resolveRuntimeMatrixClient } from "../client-bootstrap.js";
 import type { MatrixActionClient, MatrixActionClientOpts } from "./types.js";
-
-export function ensureNodeRuntime() {
-  ensureMatrixNodeRuntime();
-}
 
 async function ensureActionClientReadiness(
   client: MatrixActionClient["client"],
@@ -34,7 +30,7 @@ export async function resolveActionClient(
   });
 }
 
-export type MatrixActionClientStopMode = "stop" | "persist";
+type MatrixActionClientStopMode = "stop" | "persist";
 
 export async function stopActionClient(
   resolved: MatrixActionClient,
