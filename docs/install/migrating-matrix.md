@@ -93,7 +93,13 @@ If your old installation had local-only encrypted history that was never backed 
    openclaw matrix verify device "<your-recovery-key>"
    ```
 
-7. If no server-side key backup exists yet, create one for future recoveries:
+7. If you are intentionally abandoning unrecoverable old history and want a fresh backup baseline for future messages, run:
+
+   ```bash
+   openclaw matrix verify backup reset --yes
+   ```
+
+8. If no server-side key backup exists yet, create one for future recoveries:
 
    ```bash
    openclaw matrix verify bootstrap
@@ -201,6 +207,8 @@ If the old store reports room keys that were never backed up, OpenClaw warns ins
 
 - Meaning: the stored key does not match the active Matrix backup.
 - What to do: rerun `openclaw matrix verify device "<your-recovery-key>"` with the correct key.
+
+If you accept losing unrecoverable old encrypted history, you can instead reset the current backup baseline with `openclaw matrix verify backup reset --yes`.
 
 `Backup trust chain is not verified on this device. Re-run 'openclaw matrix verify device <key>'.`
 

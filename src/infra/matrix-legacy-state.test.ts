@@ -119,4 +119,51 @@ describe("matrix legacy state migration", () => {
       expect(detection.selectionNote).toContain('account "work"');
     });
   });
+
+  it("migrates flat legacy Matrix state into the only configured non-default account", async () => {
+    await withTempHome(async (home) => {
+      const stateDir = path.join(home, ".openclaw");
+      writeFile(path.join(stateDir, "matrix", "bot-storage.json"), '{"next_batch":"s1"}');
+      writeFile(path.join(stateDir, "matrix", "crypto", "store.db"), "crypto");
+      writeFile(
+        path.join(stateDir, "credentials", "matrix", "credentials-ops.json"),
+        JSON.stringify(
+          {
+            homeserver: "https://matrix.example.org",
+            userId: "@ops-bot:example.org",
+            accessToken: "tok-ops",
+          },
+          null,
+          2,
+        ),
+      );
+
+      const cfg: OpenClawConfig = {
+        channels: {
+          matrix: {
+            accounts: {
+              ops: {
+                homeserver: "https://matrix.example.org",
+                userId: "@ops-bot:example.org",
+              },
+            },
+          },
+        },
+      };
+
+      const detection = detectLegacyMatrixState({ cfg, env: process.env });
+      expect(detection && "warning" in detection).toBe(false);
+      if (!detection || "warning" in detection) {
+        throw new Error("expected a migratable Matrix legacy state plan");
+      }
+
+      expect(detection.accountId).toBe("ops");
+
+      const result = await autoMigrateLegacyMatrixState({ cfg, env: process.env });
+      expect(result.migrated).toBe(true);
+      expect(result.warnings).toEqual([]);
+      expect(fs.existsSync(detection.targetStoragePath)).toBe(true);
+      expect(fs.existsSync(path.join(detection.targetCryptoPath, "store.db"))).toBe(true);
+    });
+  });
 });

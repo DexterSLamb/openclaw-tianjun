@@ -251,6 +251,12 @@ Verbose restore diagnostics:
 openclaw matrix verify backup restore --verbose
 ```
 
+Delete the current server backup and create a fresh backup baseline:
+
+```bash
+openclaw matrix verify backup reset --yes
+```
+
 All `verify` commands are concise by default (including quiet internal SDK logging) and show detailed diagnostics only with `--verbose`.
 Use `--json` for full machine-readable output when scripting.
 
@@ -290,6 +296,9 @@ It does all of the following in order:
 If the homeserver requires interactive auth to upload cross-signing keys, OpenClaw tries the upload without auth first, then with `m.login.dummy`, then with `m.login.password` when `channels.matrix.password` is configured.
 
 Use `--force-reset-cross-signing` only when you intentionally want to discard the current cross-signing identity and create a new one.
+
+If you intentionally want to discard the current room-key backup and start a new backup baseline for future messages, use `openclaw matrix verify backup reset --yes`.
+Do this only when you accept that unrecoverable old encrypted history will stay unavailable.
 
 ### Startup behavior
 

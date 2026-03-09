@@ -12,6 +12,7 @@ import {
   bootstrapMatrixVerification,
   getMatrixRoomKeyBackupStatus,
   getMatrixVerificationStatus,
+  resetMatrixRoomKeyBackup,
   restoreMatrixRoomKeyBackup,
   verifyMatrixRecoveryKey,
 } from "./matrix/actions/verification.js";
@@ -572,9 +573,15 @@ function buildVerificationGuidance(
     nextSteps.add(
       `Backup key mismatch on this device. Re-run '${formatMatrixCliCommand("verify device <key>", accountId)}' with the matching recovery key.`,
     );
+    nextSteps.add(
+      `If you want a fresh backup baseline and accept losing unrecoverable history, run '${formatMatrixCliCommand("verify backup reset --yes", accountId)}'.`,
+    );
   } else if (backupIssue.code === "untrusted-signature") {
     nextSteps.add(
       `Backup trust chain is not verified on this device. Re-run '${formatMatrixCliCommand("verify device <key>", accountId)}'.`,
+    );
+    nextSteps.add(
+      `If you want a fresh backup baseline and accept losing unrecoverable history, run '${formatMatrixCliCommand("verify backup reset --yes", accountId)}'.`,
     );
   } else if (backupIssue.code === "indeterminate") {
     nextSteps.add(
@@ -827,6 +834,47 @@ export function registerMatrixCli(params: { program: Command }): void {
         errorPrefix: "Backup status failed",
       });
     });
+
+  backup
+    .command("reset")
+    .description("Delete the current server backup and create a fresh room-key backup baseline")
+    .option("--account <id>", "Account ID (for multi-account setups)")
+    .option("--yes", "Confirm destructive backup reset", false)
+    .option("--verbose", "Show detailed diagnostics")
+    .option("--json", "Output as JSON")
+    .action(
+      async (options: { account?: string; yes?: boolean; verbose?: boolean; json?: boolean }) => {
+        const accountId = resolveMatrixCliAccountId(options.account);
+        await runMatrixCliCommand({
+          verbose: options.verbose === true,
+          json: options.json === true,
+          run: async () => {
+            if (options.yes !== true) {
+              throw new Error("Refusing to reset Matrix room-key backup without --yes");
+            }
+            return await resetMatrixRoomKeyBackup({ accountId });
+          },
+          onText: (result, verbose) => {
+            printAccountLabel(accountId);
+            console.log(`Reset success: ${result.success ? "yes" : "no"}`);
+            if (result.error) {
+              console.log(`Error: ${result.error}`);
+            }
+            console.log(`Previous backup version: ${result.previousVersion ?? "none"}`);
+            console.log(`Deleted backup version: ${result.deletedVersion ?? "none"}`);
+            console.log(`Current backup version: ${result.createdVersion ?? "none"}`);
+            printBackupSummary(result.backup);
+            if (verbose) {
+              printTimestamp("Reset at", result.resetAt);
+              printBackupStatus(result.backup);
+            }
+          },
+          shouldFail: (result) => !result.success,
+          errorPrefix: "Backup reset failed",
+          onJsonError: (message) => ({ success: false, error: message }),
+        });
+      },
+    );
 
   backup
     .command("restore")

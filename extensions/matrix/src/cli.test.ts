@@ -14,6 +14,7 @@ const matrixSetupApplyAccountConfigMock = vi.fn();
 const matrixSetupValidateInputMock = vi.fn();
 const matrixRuntimeLoadConfigMock = vi.fn();
 const matrixRuntimeWriteConfigFileMock = vi.fn();
+const resetMatrixRoomKeyBackupMock = vi.fn();
 const restoreMatrixRoomKeyBackupMock = vi.fn();
 const setMatrixSdkConsoleLoggingMock = vi.fn();
 const setMatrixSdkLogModeMock = vi.fn();
@@ -24,6 +25,7 @@ vi.mock("./matrix/actions/verification.js", () => ({
   bootstrapMatrixVerification: (...args: unknown[]) => bootstrapMatrixVerificationMock(...args),
   getMatrixRoomKeyBackupStatus: (...args: unknown[]) => getMatrixRoomKeyBackupStatusMock(...args),
   getMatrixVerificationStatus: (...args: unknown[]) => getMatrixVerificationStatusMock(...args),
+  resetMatrixRoomKeyBackup: (...args: unknown[]) => resetMatrixRoomKeyBackupMock(...args),
   restoreMatrixRoomKeyBackup: (...args: unknown[]) => restoreMatrixRoomKeyBackupMock(...args),
   verifyMatrixRecoveryKey: (...args: unknown[]) => verifyMatrixRecoveryKeyMock(...args),
 }));
@@ -118,6 +120,21 @@ describe("matrix CLI verification commands", () => {
       pendingVerifications: 0,
       cryptoBootstrap: {},
     });
+    resetMatrixRoomKeyBackupMock.mockResolvedValue({
+      success: true,
+      previousVersion: "1",
+      deletedVersion: "1",
+      createdVersion: "2",
+      backup: {
+        serverVersion: "2",
+        activeVersion: "2",
+        trusted: true,
+        matchesDecryptionKey: true,
+        decryptionKeyCached: true,
+        keyLoadAttempted: false,
+        keyLoadError: null,
+      },
+    });
     updateMatrixOwnProfileMock.mockResolvedValue({
       skipped: false,
       displayNameUpdated: true,
@@ -189,6 +206,32 @@ describe("matrix CLI verification commands", () => {
     const program = buildProgram();
 
     await program.parseAsync(["matrix", "verify", "backup", "restore", "--json"], {
+      from: "user",
+    });
+
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("sets non-zero exit code for backup reset failures in JSON mode", async () => {
+    resetMatrixRoomKeyBackupMock.mockResolvedValue({
+      success: false,
+      error: "reset failed",
+      previousVersion: "1",
+      deletedVersion: "1",
+      createdVersion: null,
+      backup: {
+        serverVersion: null,
+        activeVersion: null,
+        trusted: null,
+        matchesDecryptionKey: null,
+        decryptionKeyCached: null,
+        keyLoadAttempted: false,
+        keyLoadError: null,
+      },
+    });
+    const program = buildProgram();
+
+    await program.parseAsync(["matrix", "verify", "backup", "reset", "--yes", "--json"], {
       from: "user",
     });
 
@@ -730,6 +773,65 @@ describe("matrix CLI verification commands", () => {
     expect(console.log).toHaveBeenCalledWith(
       "Backup issue: backup decryption key could not be loaded from secret storage (secret storage key is not available)",
     );
+  });
+
+  it("includes backup reset guidance when the backup key does not match this device", async () => {
+    getMatrixVerificationStatusMock.mockResolvedValue({
+      encryptionEnabled: true,
+      verified: true,
+      localVerified: true,
+      crossSigningVerified: true,
+      signedByOwner: true,
+      userId: "@bot:example.org",
+      deviceId: "DEVICE123",
+      backupVersion: "21868",
+      backup: {
+        serverVersion: "21868",
+        activeVersion: "21868",
+        trusted: true,
+        matchesDecryptionKey: false,
+        decryptionKeyCached: true,
+        keyLoadAttempted: false,
+        keyLoadError: null,
+      },
+      recoveryKeyStored: true,
+      recoveryKeyCreatedAt: "2026-03-09T14:40:00.000Z",
+      pendingVerifications: 0,
+    });
+    const program = buildProgram();
+
+    await program.parseAsync(["matrix", "verify", "status"], { from: "user" });
+
+    expect(console.log).toHaveBeenCalledWith(
+      "- If you want a fresh backup baseline and accept losing unrecoverable history, run 'openclaw matrix verify backup reset --yes'.",
+    );
+  });
+
+  it("requires --yes before resetting the Matrix room-key backup", async () => {
+    const program = buildProgram();
+
+    await program.parseAsync(["matrix", "verify", "backup", "reset"], { from: "user" });
+
+    expect(process.exitCode).toBe(1);
+    expect(resetMatrixRoomKeyBackupMock).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith(
+      "Backup reset failed: Refusing to reset Matrix room-key backup without --yes",
+    );
+  });
+
+  it("resets the Matrix room-key backup when confirmed", async () => {
+    const program = buildProgram();
+
+    await program.parseAsync(["matrix", "verify", "backup", "reset", "--yes"], {
+      from: "user",
+    });
+
+    expect(resetMatrixRoomKeyBackupMock).toHaveBeenCalledWith({ accountId: "default" });
+    expect(console.log).toHaveBeenCalledWith("Reset success: yes");
+    expect(console.log).toHaveBeenCalledWith("Previous backup version: 1");
+    expect(console.log).toHaveBeenCalledWith("Deleted backup version: 1");
+    expect(console.log).toHaveBeenCalledWith("Current backup version: 2");
+    expect(console.log).toHaveBeenCalledWith("Backup: active and trusted on this device");
   });
 
   it("prints resolved account-aware guidance when a named Matrix account is selected implicitly", async () => {

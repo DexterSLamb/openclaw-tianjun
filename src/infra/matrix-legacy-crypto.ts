@@ -5,11 +5,12 @@ import path from "node:path";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import { writeJsonFileAtomically } from "../plugin-sdk/json-store.js";
+import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../routing/session-key.js";
 import {
-  DEFAULT_ACCOUNT_ID,
-  normalizeAccountId,
-  normalizeOptionalAccountId,
-} from "../routing/session-key.js";
+  resolveConfiguredMatrixAccountIds,
+  resolveMatrixChannelConfig,
+  resolveMatrixDefaultOrOnlyAccountId,
+} from "./matrix-account-selection.js";
 import {
   resolveMatrixAccountStorageRoot,
   resolveMatrixCredentialsPath,
@@ -150,23 +151,12 @@ function loadStoredMatrixCredentials(
   }
 }
 
-function resolveMatrixChannelConfig(cfg: OpenClawConfig): Record<string, unknown> | null {
-  return isRecord(cfg.channels?.matrix) ? cfg.channels.matrix : null;
+function resolveMatrixAccountIds(cfg: OpenClawConfig): string[] {
+  return resolveConfiguredMatrixAccountIds(cfg);
 }
 
-function resolveMatrixAccountIds(cfg: OpenClawConfig): string[] {
-  const channel = resolveMatrixChannelConfig(cfg);
-  if (!channel) {
-    return [];
-  }
-  const accounts = isRecord(channel.accounts) ? channel.accounts : null;
-  if (!accounts) {
-    return [DEFAULT_ACCOUNT_ID];
-  }
-  const ids = Object.keys(accounts).map((accountId) => normalizeAccountId(accountId));
-  return Array.from(new Set(ids.length > 0 ? ids : [DEFAULT_ACCOUNT_ID])).toSorted((a, b) =>
-    a.localeCompare(b),
-  );
+function resolveMatrixFlatStoreTargetAccountId(cfg: OpenClawConfig): string {
+  return resolveMatrixDefaultOrOnlyAccountId(cfg);
 }
 
 function resolveMatrixAccountConfig(
@@ -205,14 +195,7 @@ function resolveLegacyMatrixFlatStorePlan(params: {
     };
   }
 
-  const accounts = isRecord(channel.accounts) ? channel.accounts : null;
-  const configuredDefault = normalizeOptionalAccountId(
-    typeof channel.defaultAccount === "string" ? channel.defaultAccount : undefined,
-  );
-  const accountId =
-    configuredDefault && accounts && isRecord(accounts[configuredDefault])
-      ? configuredDefault
-      : DEFAULT_ACCOUNT_ID;
+  const accountId = resolveMatrixFlatStoreTargetAccountId(params.cfg);
   const stored = loadStoredMatrixCredentials(params.env, accountId);
   const account = resolveMatrixAccountConfig(params.cfg, accountId);
   const homeserver = typeof account.homeserver === "string" ? account.homeserver.trim() : "";

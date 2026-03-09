@@ -84,6 +84,16 @@ export type MatrixRoomKeyBackupRestoreResult = {
   backup: MatrixRoomKeyBackupStatus;
 };
 
+export type MatrixRoomKeyBackupResetResult = {
+  success: boolean;
+  error?: string;
+  previousVersion: string | null;
+  deletedVersion: string | null;
+  createdVersion: string | null;
+  resetAt?: string;
+  backup: MatrixRoomKeyBackupStatus;
+};
+
 export type MatrixRecoveryKeyVerificationResult = MatrixOwnDeviceVerificationStatus & {
   success: boolean;
   verifiedAt?: string;
@@ -124,6 +134,17 @@ export type MatrixOwnDeviceDeleteResult = {
 function normalizeOptionalString(value: string | null | undefined): string | null {
   const normalized = value?.trim();
   return normalized ? normalized : null;
+}
+
+function isMatrixNotFoundError(err: unknown): boolean {
+  const errObj = err as { statusCode?: number; body?: { errcode?: string } };
+  if (errObj?.statusCode === 404 || errObj?.body?.errcode === "M_NOT_FOUND") {
+    return true;
+  }
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    message.includes("m_not_found") || message.includes("[404]") || message.includes("not found")
+  );
 }
 
 export class MatrixClient {
@@ -893,6 +914,92 @@ export class MatrixClient {
         total: typeof restore.total === "number" ? restore.total : 0,
         loadedFromSecretStorage,
         restoredAt: new Date().toISOString(),
+        backup,
+      };
+    } catch (err) {
+      return await fail(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async resetRoomKeyBackup(): Promise<MatrixRoomKeyBackupResetResult> {
+    let previousVersion: string | null = null;
+    let deletedVersion: string | null = null;
+    const fail = async (error: string): Promise<MatrixRoomKeyBackupResetResult> => {
+      const backup = await this.getRoomKeyBackupStatus();
+      return {
+        success: false,
+        error,
+        previousVersion,
+        deletedVersion,
+        createdVersion: backup.serverVersion,
+        backup,
+      };
+    };
+
+    if (!this.encryptionEnabled) {
+      return await fail("Matrix encryption is disabled for this client");
+    }
+
+    await this.ensureStartedForCryptoControlPlane();
+    const crypto = this.client.getCrypto() as MatrixCryptoBootstrapApi | undefined;
+    if (!crypto) {
+      return await fail("Matrix crypto is not available (start client with encryption enabled)");
+    }
+
+    previousVersion = await this.resolveRoomKeyBackupVersion();
+
+    try {
+      if (previousVersion) {
+        try {
+          await this.doRequest(
+            "DELETE",
+            `/_matrix/client/v3/room_keys/version/${encodeURIComponent(previousVersion)}`,
+          );
+        } catch (err) {
+          if (!isMatrixNotFoundError(err)) {
+            throw err;
+          }
+        }
+        deletedVersion = previousVersion;
+      }
+
+      await this.recoveryKeyStore.bootstrapSecretStorageWithRecoveryKey(crypto, {
+        setupNewKeyBackup: true,
+      });
+      await this.enableTrustedRoomKeyBackupIfPossible(crypto);
+
+      const backup = await this.getRoomKeyBackupStatus();
+      const createdVersion = backup.serverVersion;
+      if (!createdVersion) {
+        return await fail("Matrix room key backup is still missing after reset.");
+      }
+      if (backup.activeVersion !== createdVersion) {
+        return await fail(
+          "Matrix room key backup was recreated on the server but is not active on this device.",
+        );
+      }
+      if (backup.decryptionKeyCached === false) {
+        return await fail(
+          "Matrix room key backup was recreated but its decryption key is not cached on this device.",
+        );
+      }
+      if (backup.matchesDecryptionKey === false) {
+        return await fail(
+          "Matrix room key backup was recreated but this device does not have the matching backup decryption key.",
+        );
+      }
+      if (backup.trusted === false) {
+        return await fail(
+          "Matrix room key backup was recreated but is not trusted on this device.",
+        );
+      }
+
+      return {
+        success: true,
+        previousVersion,
+        deletedVersion,
+        createdVersion,
+        resetAt: new Date().toISOString(),
         backup,
       };
     } catch (err) {

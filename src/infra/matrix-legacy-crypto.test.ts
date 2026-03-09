@@ -119,4 +119,80 @@ describe("matrix legacy encrypted-state migration", () => {
       expect(state.restoreStatus).toBe("manual-action-required");
     });
   });
+
+  it("prepares flat legacy crypto for the only configured non-default Matrix account", async () => {
+    await withTempHome(async (home) => {
+      const stateDir = path.join(home, ".openclaw");
+      writeFile(
+        path.join(stateDir, "matrix", "crypto", "bot-sdk.json"),
+        JSON.stringify({ deviceId: "DEVICEOPS" }),
+      );
+      writeFile(
+        path.join(stateDir, "credentials", "matrix", "credentials-ops.json"),
+        JSON.stringify(
+          {
+            homeserver: "https://matrix.example.org",
+            userId: "@ops-bot:example.org",
+            accessToken: "tok-ops",
+            deviceId: "DEVICEOPS",
+          },
+          null,
+          2,
+        ),
+      );
+
+      const cfg: OpenClawConfig = {
+        channels: {
+          matrix: {
+            accounts: {
+              ops: {
+                homeserver: "https://matrix.example.org",
+                userId: "@ops-bot:example.org",
+              },
+            },
+          },
+        },
+      };
+      const { rootDir } = resolveMatrixAccountStorageRoot({
+        stateDir,
+        homeserver: "https://matrix.example.org",
+        userId: "@ops-bot:example.org",
+        accessToken: "tok-ops",
+        accountId: "ops",
+      });
+
+      const detection = detectLegacyMatrixCrypto({ cfg, env: process.env });
+      expect(detection.warnings).toEqual([]);
+      expect(detection.plans).toHaveLength(1);
+      expect(detection.plans[0]?.accountId).toBe("ops");
+
+      const result = await autoPrepareLegacyMatrixCrypto({
+        cfg,
+        env: process.env,
+        deps: {
+          inspectLegacyStore: async () => ({
+            deviceId: "DEVICEOPS",
+            roomKeyCounts: { total: 6, backedUp: 6 },
+            backupVersion: "21868",
+            decryptionKeyBase64: "YWJjZA==",
+          }),
+        },
+      });
+
+      expect(result.migrated).toBe(true);
+      expect(result.warnings).toEqual([]);
+      const recovery = JSON.parse(
+        fs.readFileSync(path.join(rootDir, "recovery-key.json"), "utf8"),
+      ) as {
+        privateKeyBase64: string;
+      };
+      expect(recovery.privateKeyBase64).toBe("YWJjZA==");
+      const state = JSON.parse(
+        fs.readFileSync(path.join(rootDir, "legacy-crypto-migration.json"), "utf8"),
+      ) as {
+        accountId: string;
+      };
+      expect(state.accountId).toBe("ops");
+    });
+  });
 });

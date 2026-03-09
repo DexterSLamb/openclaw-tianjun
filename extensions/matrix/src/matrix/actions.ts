@@ -28,6 +28,7 @@ export {
   listMatrixVerifications,
   mismatchMatrixVerificationSas,
   requestMatrixVerification,
+  resetMatrixRoomKeyBackup,
   restoreMatrixRoomKeyBackup,
   scanMatrixVerificationQr,
   startMatrixVerification,

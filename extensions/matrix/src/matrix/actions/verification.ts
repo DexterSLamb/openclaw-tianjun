@@ -215,6 +215,10 @@ export async function restoreMatrixRoomKeyBackup(
   );
 }
 
+export async function resetMatrixRoomKeyBackup(opts: MatrixActionClientOpts = {}) {
+  return await withStartedActionClient(opts, async (client) => await client.resetRoomKeyBackup());
+}
+
 export async function bootstrapMatrixVerification(
   opts: MatrixActionClientOpts & {
     recoveryKey?: string;

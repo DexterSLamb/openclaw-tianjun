@@ -3,11 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
+import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../routing/session-key.js";
 import {
-  DEFAULT_ACCOUNT_ID,
-  normalizeAccountId,
-  normalizeOptionalAccountId,
-} from "../routing/session-key.js";
+  resolveMatrixChannelConfig,
+  resolveMatrixDefaultOrOnlyAccountId,
+} from "./matrix-account-selection.js";
 import {
   resolveMatrixAccountStorageRoot,
   resolveMatrixCredentialsPath as resolveSharedMatrixCredentialsPath,
@@ -86,10 +86,6 @@ function loadStoredMatrixCredentials(
   }
 }
 
-function resolveMatrixChannelConfig(cfg: OpenClawConfig): Record<string, unknown> | null {
-  return isRecord(cfg.channels?.matrix) ? cfg.channels.matrix : null;
-}
-
 function resolveMatrixAccountConfig(
   cfg: OpenClawConfig,
   accountId: string,
@@ -111,22 +107,7 @@ function resolveMatrixAccountConfig(
 }
 
 function resolveMatrixTargetAccountId(cfg: OpenClawConfig): string {
-  const channel = resolveMatrixChannelConfig(cfg);
-  if (!channel) {
-    return DEFAULT_ACCOUNT_ID;
-  }
-
-  const accounts = isRecord(channel.accounts) ? channel.accounts : null;
-  const configuredDefault = normalizeOptionalAccountId(
-    typeof channel.defaultAccount === "string" ? channel.defaultAccount : undefined,
-  );
-  if (configuredDefault && accounts && isRecord(accounts[configuredDefault])) {
-    return configuredDefault;
-  }
-  if (accounts && isRecord(accounts[DEFAULT_ACCOUNT_ID])) {
-    return DEFAULT_ACCOUNT_ID;
-  }
-  return DEFAULT_ACCOUNT_ID;
+  return resolveMatrixDefaultOrOnlyAccountId(cfg);
 }
 
 function resolveMatrixFlatStoreSelectionNote(params: {

@@ -1342,6 +1342,90 @@ describe("MatrixClient crypto bootstrapping", () => {
     expect(result.backup.matchesDecryptionKey).toBe(false);
   });
 
+  it("resets the current room-key backup and creates a fresh trusted version", async () => {
+    const checkKeyBackupAndEnable = vi.fn(async () => {});
+    const bootstrapSecretStorage = vi.fn(async () => {});
+    matrixJsClient.getCrypto = vi.fn(() => ({
+      on: vi.fn(),
+      bootstrapSecretStorage,
+      checkKeyBackupAndEnable,
+      getActiveSessionBackupVersion: vi.fn(async () => "21869"),
+      getSessionBackupPrivateKey: vi.fn(async () => new Uint8Array([1])),
+      getKeyBackupInfo: vi.fn(async () => ({
+        algorithm: "m.megolm_backup.v1.curve25519-aes-sha2",
+        auth_data: {},
+        version: "21869",
+      })),
+      isKeyBackupTrusted: vi.fn(async () => ({
+        trusted: true,
+        matchesDecryptionKey: true,
+      })),
+    }));
+
+    const client = new MatrixClient("https://matrix.example.org", "token", undefined, undefined, {
+      encryption: true,
+    });
+    vi.spyOn(client, "doRequest").mockImplementation(async (method, endpoint) => {
+      if (method === "GET" && String(endpoint).includes("/room_keys/version")) {
+        return { version: "21868" };
+      }
+      if (method === "DELETE" && String(endpoint).includes("/room_keys/version/21868")) {
+        return {};
+      }
+      return {};
+    });
+
+    const result = await client.resetRoomKeyBackup();
+
+    expect(result.success).toBe(true);
+    expect(result.previousVersion).toBe("21868");
+    expect(result.deletedVersion).toBe("21868");
+    expect(result.createdVersion).toBe("21869");
+    expect(bootstrapSecretStorage).toHaveBeenCalledWith(
+      expect.objectContaining({ setupNewKeyBackup: true }),
+    );
+    expect(checkKeyBackupAndEnable).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails reset when the recreated backup still does not match the local decryption key", async () => {
+    matrixJsClient.getCrypto = vi.fn(() => ({
+      on: vi.fn(),
+      bootstrapSecretStorage: vi.fn(async () => {}),
+      checkKeyBackupAndEnable: vi.fn(async () => {}),
+      getActiveSessionBackupVersion: vi.fn(async () => "21868"),
+      getSessionBackupPrivateKey: vi.fn(async () => new Uint8Array([1])),
+      getKeyBackupInfo: vi.fn(async () => ({
+        algorithm: "m.megolm_backup.v1.curve25519-aes-sha2",
+        auth_data: {},
+        version: "21868",
+      })),
+      isKeyBackupTrusted: vi.fn(async () => ({
+        trusted: true,
+        matchesDecryptionKey: false,
+      })),
+    }));
+
+    const client = new MatrixClient("https://matrix.example.org", "token", undefined, undefined, {
+      encryption: true,
+    });
+    vi.spyOn(client, "doRequest").mockImplementation(async (method, endpoint) => {
+      if (method === "GET" && String(endpoint).includes("/room_keys/version")) {
+        return { version: "21868" };
+      }
+      if (method === "DELETE" && String(endpoint).includes("/room_keys/version/21868")) {
+        return {};
+      }
+      return {};
+    });
+
+    const result = await client.resetRoomKeyBackup();
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("does not have the matching backup decryption key");
+    expect(result.createdVersion).toBe("21868");
+    expect(result.backup.matchesDecryptionKey).toBe(false);
+  });
+
   it("reports bootstrap failure when cross-signing keys are not published", async () => {
     matrixJsClient.getUserId = vi.fn(() => "@bot:example.org");
     matrixJsClient.getDeviceId = vi.fn(() => "DEVICE123");
