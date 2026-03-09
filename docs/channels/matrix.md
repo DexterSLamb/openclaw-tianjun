@@ -191,6 +191,12 @@ Verbose status (full diagnostics):
 openclaw matrix verify status --verbose
 ```
 
+Include the stored recovery key in machine-readable output:
+
+```bash
+openclaw matrix verify status --include-recovery-key --json
+```
+
 Bootstrap cross-signing and verification state:
 
 ```bash
@@ -201,6 +207,12 @@ Verbose bootstrap diagnostics:
 
 ```bash
 openclaw matrix verify bootstrap --verbose
+```
+
+Force a fresh cross-signing identity reset before bootstrapping:
+
+```bash
+openclaw matrix verify bootstrap --force-reset-cross-signing
 ```
 
 Verify this device with a recovery key:
@@ -253,12 +265,46 @@ openclaw matrix devices list --account assistant
 
 When encryption is disabled or unavailable for a named account, Matrix warnings and verification errors point at that account's config key, for example `channels.matrix.accounts.assistant.encryption`.
 
+### What "verified" means
+
+OpenClaw treats this Matrix device as verified only when it is verified by your own cross-signing identity.
+In practice, `openclaw matrix verify status --verbose` exposes three trust signals:
+
+- `Locally trusted`: this device is trusted by the current client only
+- `Cross-signing verified`: the SDK reports the device as verified through cross-signing
+- `Signed by owner`: the device is signed by your own self-signing key
+
+`Verified by owner` becomes `yes` only when cross-signing verification or owner-signing is present.
+Local trust by itself is not enough for OpenClaw to treat the device as fully verified.
+
+### What bootstrap does
+
+`openclaw matrix verify bootstrap` is the repair and setup command for encrypted Matrix accounts.
+It does all of the following in order:
+
+- bootstraps secret storage, reusing an existing recovery key when possible
+- bootstraps cross-signing and uploads missing public cross-signing keys
+- attempts to mark and cross-sign the current device
+- creates a new server-side room-key backup if one does not already exist
+
+If the homeserver requires interactive auth to upload cross-signing keys, OpenClaw tries the upload without auth first, then with `m.login.dummy`, then with `m.login.password` when `channels.matrix.password` is configured.
+
+Use `--force-reset-cross-signing` only when you intentionally want to discard the current cross-signing identity and create a new one.
+
+### Startup behavior
+
 When `encryption: true`, Matrix defaults `startupVerification` to `"if-unverified"`.
 On startup, if this device is still unverified, Matrix will request self-verification in another Matrix client,
 skip duplicate requests while one is already pending, and apply a local cooldown before retrying after restarts.
 Failed request attempts retry sooner than successful request creation by default.
 Set `startupVerification: "off"` to disable automatic startup requests, or tune `startupVerificationCooldownHours`
 if you want a shorter or longer retry window.
+
+Startup also performs a conservative crypto bootstrap pass automatically.
+That pass tries to reuse the current secret storage and cross-signing identity first, and avoids resetting cross-signing unless you run an explicit bootstrap repair flow.
+
+If startup finds broken bootstrap state and `channels.matrix.password` is configured, OpenClaw can attempt a stricter repair path.
+If the current device is already owner-signed, OpenClaw preserves that identity instead of resetting it automatically.
 
 Upgrading from the previous public Matrix plugin:
 
@@ -285,9 +331,28 @@ That includes:
 - verification start and completion notices
 - SAS details (emoji and decimal) when available
 
-Inbound SAS requests are auto-confirmed by the bot device, so once the user confirms "They match"
-in their Matrix client, verification completes without requiring a manual OpenClaw tool step.
+Incoming verification requests from another Matrix client are tracked and auto-accepted by OpenClaw.
+When SAS emoji verification becomes available, OpenClaw starts that SAS flow automatically for inbound requests and confirms its own side.
+You still need to confirm "They match" in your Matrix client to complete the verification.
+
+OpenClaw does not auto-accept self-initiated duplicate flows blindly. Startup skips creating a new request when a self-verification request is already pending.
+
 Verification protocol/system notices are not forwarded to the agent chat pipeline, so they do not produce `NO_REPLY`.
+
+### Device hygiene
+
+Old OpenClaw-managed Matrix devices can accumulate on the account and make encrypted-room trust harder to reason about.
+List them with:
+
+```bash
+openclaw matrix devices list
+```
+
+Remove stale OpenClaw-managed devices with:
+
+```bash
+openclaw matrix devices prune-stale
+```
 
 ## Threads
 
