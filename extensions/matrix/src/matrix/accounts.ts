@@ -7,7 +7,7 @@ import { hasConfiguredSecretInput } from "../secret-input.js";
 import type { CoreConfig, MatrixConfig } from "../types.js";
 import {
   findMatrixAccountConfig,
-  resolveMatrixAccountsMap,
+  listNormalizedMatrixAccountIds,
   resolveMatrixBaseConfig,
 } from "./account-config.js";
 import { resolveMatrixConfigForAccount } from "./client.js";
@@ -39,23 +39,8 @@ export type ResolvedMatrixAccount = {
   config: MatrixConfig;
 };
 
-function listConfiguredAccountIds(cfg: CoreConfig): string[] {
-  const accounts = resolveMatrixAccountsMap(cfg);
-  if (Object.keys(accounts).length === 0) {
-    return [];
-  }
-  // Normalize and de-duplicate keys so listing and resolution use the same semantics
-  return [
-    ...new Set(
-      Object.keys(accounts)
-        .filter(Boolean)
-        .map((id) => normalizeAccountId(id)),
-    ),
-  ];
-}
-
 export function listMatrixAccountIds(cfg: CoreConfig): string[] {
-  const ids = listConfiguredAccountIds(cfg);
+  const ids = listNormalizedMatrixAccountIds(cfg);
   if (ids.length === 0) {
     // Fall back to default if no accounts configured (legacy top-level config)
     return [DEFAULT_ACCOUNT_ID];
@@ -73,10 +58,6 @@ export function resolveDefaultMatrixAccountId(cfg: CoreConfig): string {
     return DEFAULT_ACCOUNT_ID;
   }
   return ids[0] ?? DEFAULT_ACCOUNT_ID;
-}
-
-function resolveAccountConfig(cfg: CoreConfig, accountId: string): MatrixConfig | undefined {
-  return findMatrixAccountConfig(cfg, accountId);
 }
 
 export function resolveMatrixAccount(params: {
@@ -120,17 +101,11 @@ export function resolveMatrixAccountConfig(params: {
 }): MatrixConfig {
   const accountId = normalizeAccountId(params.accountId);
   const matrixBase = resolveMatrixBaseConfig(params.cfg);
-  const accountConfig = resolveAccountConfig(params.cfg, accountId);
+  const accountConfig = findMatrixAccountConfig(params.cfg, accountId);
   if (!accountConfig) {
     return matrixBase;
   }
   // Merge account-specific config with top-level defaults so settings like
   // groupPolicy and blockStreaming inherit when not overridden.
   return mergeAccountConfig(matrixBase, accountConfig);
-}
-
-export function listEnabledMatrixAccounts(cfg: CoreConfig): ResolvedMatrixAccount[] {
-  return listMatrixAccountIds(cfg)
-    .map((accountId) => resolveMatrixAccount({ cfg, accountId }))
-    .filter((account) => account.enabled);
 }

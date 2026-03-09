@@ -15,6 +15,16 @@ export function resolveMatrixAccountsMap(
   return accounts;
 }
 
+export function listNormalizedMatrixAccountIds(cfg: CoreConfig): string[] {
+  return [
+    ...new Set(
+      Object.keys(resolveMatrixAccountsMap(cfg))
+        .filter(Boolean)
+        .map((accountId) => normalizeAccountId(accountId)),
+    ),
+  ];
+}
+
 export function findMatrixAccountConfig(
   cfg: CoreConfig,
   accountId: string,

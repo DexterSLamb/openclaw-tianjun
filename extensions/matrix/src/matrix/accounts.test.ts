@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoreConfig } from "../types.js";
-import { resolveMatrixAccount } from "./accounts.js";
+import {
+  listMatrixAccountIds,
+  resolveDefaultMatrixAccountId,
+  resolveMatrixAccount,
+} from "./accounts.js";
 
 vi.mock("./credentials.js", () => ({
   loadMatrixCredentials: () => null,
@@ -78,5 +82,32 @@ describe("resolveMatrixAccount", () => {
 
     const account = resolveMatrixAccount({ cfg });
     expect(account.configured).toBe(true);
+  });
+
+  it("normalizes and de-duplicates configured account ids", () => {
+    const cfg: CoreConfig = {
+      channels: {
+        matrix: {
+          defaultAccount: "Main Bot",
+          accounts: {
+            "Main Bot": {
+              homeserver: "https://matrix.example.org",
+              accessToken: "main-token",
+            },
+            "main-bot": {
+              homeserver: "https://matrix.example.org",
+              accessToken: "duplicate-token",
+            },
+            OPS: {
+              homeserver: "https://matrix.example.org",
+              accessToken: "ops-token",
+            },
+          },
+        },
+      },
+    };
+
+    expect(listMatrixAccountIds(cfg)).toEqual(["main-bot", "ops"]);
+    expect(resolveDefaultMatrixAccountId(cfg)).toBe("main-bot");
   });
 });

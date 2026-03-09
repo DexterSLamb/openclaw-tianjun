@@ -8,7 +8,7 @@ import { normalizeResolvedSecretInputString } from "../../secret-input.js";
 import type { CoreConfig } from "../../types.js";
 import {
   findMatrixAccountConfig,
-  resolveMatrixAccountsMap,
+  listNormalizedMatrixAccountIds,
   resolveMatrixBaseConfig,
 } from "../account-config.js";
 import { MatrixClient } from "../sdk.js";
@@ -236,17 +236,6 @@ export function resolveMatrixConfigForAccount(
     initialSyncLimit,
     encryption,
   };
-}
-
-function listNormalizedMatrixAccountIds(cfg: CoreConfig): string[] {
-  const accounts = resolveMatrixAccountsMap(cfg);
-  return [
-    ...new Set(
-      Object.keys(accounts)
-        .filter(Boolean)
-        .map((accountId) => normalizeAccountId(accountId)),
-    ),
-  ];
 }
 
 function hasMatrixAuthInputs(config: MatrixResolvedConfig): boolean {
