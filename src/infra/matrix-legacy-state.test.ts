@@ -120,6 +120,48 @@ describe("matrix legacy state migration", () => {
     });
   });
 
+  it("uses scoped Matrix env vars when resolving a flat-store migration target", async () => {
+    await withTempHome(
+      async (home) => {
+        const stateDir = path.join(home, ".openclaw");
+        writeFile(path.join(stateDir, "matrix", "bot-storage.json"), '{"next_batch":"s1"}');
+        writeFile(path.join(stateDir, "matrix", "crypto", "store.db"), "crypto");
+
+        const cfg: OpenClawConfig = {
+          channels: {
+            matrix: {
+              accounts: {
+                ops: {},
+              },
+            },
+          },
+        };
+
+        const detection = detectLegacyMatrixState({ cfg, env: process.env });
+        expect(detection && "warning" in detection).toBe(false);
+        if (!detection || "warning" in detection) {
+          throw new Error("expected scoped Matrix env vars to resolve a legacy state plan");
+        }
+
+        expect(detection.accountId).toBe("ops");
+        expect(detection.targetRootDir).toContain("matrix.example.org__ops-bot_example.org");
+
+        const result = await autoMigrateLegacyMatrixState({ cfg, env: process.env });
+        expect(result.migrated).toBe(true);
+        expect(result.warnings).toEqual([]);
+        expect(fs.existsSync(detection.targetStoragePath)).toBe(true);
+        expect(fs.existsSync(path.join(detection.targetCryptoPath, "store.db"))).toBe(true);
+      },
+      {
+        env: {
+          MATRIX_OPS_HOMESERVER: "https://matrix.example.org",
+          MATRIX_OPS_USER_ID: "@ops-bot:example.org",
+          MATRIX_OPS_ACCESS_TOKEN: "tok-ops-env",
+        },
+      },
+    );
+  });
+
   it("migrates flat legacy Matrix state into the only configured non-default account", async () => {
     await withTempHome(async (home) => {
       const stateDir = path.join(home, ".openclaw");

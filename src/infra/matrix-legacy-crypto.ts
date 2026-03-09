@@ -5,24 +5,21 @@ import path from "node:path";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import { writeJsonFileAtomically } from "../plugin-sdk/json-store.js";
-import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../routing/session-key.js";
+import { DEFAULT_ACCOUNT_ID } from "../routing/session-key.js";
 import {
   resolveConfiguredMatrixAccountIds,
   resolveMatrixChannelConfig,
   resolveMatrixDefaultOrOnlyAccountId,
 } from "./matrix-account-selection.js";
 import {
+  credentialsMatchResolvedIdentity,
+  loadStoredMatrixCredentials,
+  resolveMatrixMigrationConfigFields,
+} from "./matrix-migration-config.js";
+import {
   resolveMatrixAccountStorageRoot,
-  resolveMatrixCredentialsPath,
   resolveMatrixLegacyFlatStoragePaths,
 } from "./matrix-storage-paths.js";
-
-type MatrixStoredCredentials = {
-  homeserver: string;
-  userId: string;
-  accessToken: string;
-  deviceId?: string;
-};
 
 type MatrixLegacyCryptoCounts = {
   total: number;
@@ -99,10 +96,6 @@ type MatrixStoredRecoveryKey = {
   };
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function isLegacyBotSdkCryptoStore(cryptoRootDir: string): boolean {
   return (
     fs.existsSync(path.join(cryptoRootDir, "bot-sdk.json")) ||
@@ -117,64 +110,12 @@ function isLegacyBotSdkCryptoStore(cryptoRootDir: string): boolean {
   );
 }
 
-function loadStoredMatrixCredentials(
-  env: NodeJS.ProcessEnv,
-  accountId: string,
-): MatrixStoredCredentials | null {
-  const stateDir = resolveStateDir(env, os.homedir);
-  const credentialsPath = resolveMatrixCredentialsPath({
-    stateDir,
-    accountId: normalizeAccountId(accountId),
-  });
-  try {
-    if (!fs.existsSync(credentialsPath)) {
-      return null;
-    }
-    const parsed = JSON.parse(
-      fs.readFileSync(credentialsPath, "utf8"),
-    ) as Partial<MatrixStoredCredentials>;
-    if (
-      typeof parsed.homeserver !== "string" ||
-      typeof parsed.userId !== "string" ||
-      typeof parsed.accessToken !== "string"
-    ) {
-      return null;
-    }
-    return {
-      homeserver: parsed.homeserver,
-      userId: parsed.userId,
-      accessToken: parsed.accessToken,
-      deviceId: typeof parsed.deviceId === "string" ? parsed.deviceId : undefined,
-    };
-  } catch {
-    return null;
-  }
-}
-
 function resolveMatrixAccountIds(cfg: OpenClawConfig): string[] {
   return resolveConfiguredMatrixAccountIds(cfg);
 }
 
 function resolveMatrixFlatStoreTargetAccountId(cfg: OpenClawConfig): string {
   return resolveMatrixDefaultOrOnlyAccountId(cfg);
-}
-
-function resolveMatrixAccountConfig(
-  cfg: OpenClawConfig,
-  accountId: string,
-): Record<string, unknown> {
-  const channel = resolveMatrixChannelConfig(cfg);
-  if (!channel) {
-    return {};
-  }
-  const accounts = isRecord(channel.accounts) ? channel.accounts : null;
-  const accountEntry = accounts && isRecord(accounts[accountId]) ? accounts[accountId] : null;
-  const merged = {
-    ...channel,
-    ...accountEntry,
-  };
-  delete merged.accounts;
-  return merged;
 }
 
 function resolveLegacyMatrixFlatStorePlan(params: {
@@ -197,14 +138,20 @@ function resolveLegacyMatrixFlatStorePlan(params: {
 
   const accountId = resolveMatrixFlatStoreTargetAccountId(params.cfg);
   const stored = loadStoredMatrixCredentials(params.env, accountId);
-  const account = resolveMatrixAccountConfig(params.cfg, accountId);
-  const homeserver = typeof account.homeserver === "string" ? account.homeserver.trim() : "";
-  const userId =
-    (typeof account.userId === "string" ? account.userId.trim() : "") || stored?.userId || "";
-  const accessToken =
-    (typeof account.accessToken === "string" ? account.accessToken.trim() : "") ||
-    stored?.accessToken ||
-    "";
+  const resolved = resolveMatrixMigrationConfigFields({
+    cfg: params.cfg,
+    env: params.env,
+    accountId,
+  });
+  const matchingStored = credentialsMatchResolvedIdentity(stored, {
+    homeserver: resolved.homeserver,
+    userId: resolved.userId,
+  })
+    ? stored
+    : null;
+  const homeserver = resolved.homeserver;
+  const userId = resolved.userId || matchingStored?.userId || "";
+  const accessToken = resolved.accessToken || matchingStored?.accessToken || "";
 
   if (!homeserver || !userId || !accessToken) {
     return {
@@ -274,18 +221,21 @@ function resolveMatrixLegacyCryptoPlans(params: {
 
   const stateDir = resolveStateDir(params.env, os.homedir);
   for (const accountId of resolveMatrixAccountIds(params.cfg)) {
-    const account = resolveMatrixAccountConfig(params.cfg, accountId);
     const stored = loadStoredMatrixCredentials(params.env, accountId);
-    const homeserver =
-      (typeof account.homeserver === "string" ? account.homeserver.trim() : "") ||
-      stored?.homeserver ||
-      "";
-    const userId =
-      (typeof account.userId === "string" ? account.userId.trim() : "") || stored?.userId || "";
-    const accessToken =
-      (typeof account.accessToken === "string" ? account.accessToken.trim() : "") ||
-      stored?.accessToken ||
-      "";
+    const resolved = resolveMatrixMigrationConfigFields({
+      cfg: params.cfg,
+      env: params.env,
+      accountId,
+    });
+    const matchingStored = credentialsMatchResolvedIdentity(stored, {
+      homeserver: resolved.homeserver,
+      userId: resolved.userId,
+    })
+      ? stored
+      : null;
+    const homeserver = resolved.homeserver;
+    const userId = resolved.userId || matchingStored?.userId || "";
+    const accessToken = resolved.accessToken || matchingStored?.accessToken || "";
     if (!homeserver || !userId || !accessToken) {
       continue;
     }

@@ -195,4 +195,67 @@ describe("matrix legacy encrypted-state migration", () => {
       expect(state.accountId).toBe("ops");
     });
   });
+
+  it("uses scoped Matrix env vars when resolving flat legacy crypto migration", async () => {
+    await withTempHome(
+      async (home) => {
+        const stateDir = path.join(home, ".openclaw");
+        writeFile(
+          path.join(stateDir, "matrix", "crypto", "bot-sdk.json"),
+          JSON.stringify({ deviceId: "DEVICEOPS" }),
+        );
+
+        const cfg: OpenClawConfig = {
+          channels: {
+            matrix: {
+              accounts: {
+                ops: {},
+              },
+            },
+          },
+        };
+        const { rootDir } = resolveMatrixAccountStorageRoot({
+          stateDir,
+          homeserver: "https://matrix.example.org",
+          userId: "@ops-bot:example.org",
+          accessToken: "tok-ops-env",
+          accountId: "ops",
+        });
+
+        const detection = detectLegacyMatrixCrypto({ cfg, env: process.env });
+        expect(detection.warnings).toEqual([]);
+        expect(detection.plans).toHaveLength(1);
+        expect(detection.plans[0]?.accountId).toBe("ops");
+
+        const result = await autoPrepareLegacyMatrixCrypto({
+          cfg,
+          env: process.env,
+          deps: {
+            inspectLegacyStore: async () => ({
+              deviceId: "DEVICEOPS",
+              roomKeyCounts: { total: 4, backedUp: 4 },
+              backupVersion: "9001",
+              decryptionKeyBase64: "YWJjZA==",
+            }),
+          },
+        });
+
+        expect(result.migrated).toBe(true);
+        expect(result.warnings).toEqual([]);
+        const recovery = JSON.parse(
+          fs.readFileSync(path.join(rootDir, "recovery-key.json"), "utf8"),
+        ) as {
+          privateKeyBase64: string;
+        };
+        expect(recovery.privateKeyBase64).toBe("YWJjZA==");
+      },
+      {
+        env: {
+          MATRIX_OPS_HOMESERVER: "https://matrix.example.org",
+          MATRIX_OPS_USER_ID: "@ops-bot:example.org",
+          MATRIX_OPS_ACCESS_TOKEN: "tok-ops-env",
+        },
+      },
+    );
+  });
 });

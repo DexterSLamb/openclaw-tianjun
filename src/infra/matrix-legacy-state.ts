@@ -9,16 +9,14 @@ import {
   resolveMatrixDefaultOrOnlyAccountId,
 } from "./matrix-account-selection.js";
 import {
+  credentialsMatchResolvedIdentity,
+  loadStoredMatrixCredentials,
+  resolveMatrixMigrationConfigFields,
+} from "./matrix-migration-config.js";
+import {
   resolveMatrixAccountStorageRoot,
-  resolveMatrixCredentialsPath as resolveSharedMatrixCredentialsPath,
   resolveMatrixLegacyFlatStoragePaths,
 } from "./matrix-storage-paths.js";
-
-type MatrixStoredCredentials = {
-  homeserver: string;
-  userId: string;
-  accessToken: string;
-};
 
 export type MatrixLegacyStateMigrationResult = {
   migrated: boolean;
@@ -47,63 +45,6 @@ function resolveLegacyMatrixPaths(env: NodeJS.ProcessEnv): {
 } {
   const stateDir = resolveStateDir(env, os.homedir);
   return resolveMatrixLegacyFlatStoragePaths(stateDir);
-}
-
-function resolveMatrixCredentialsPath(env: NodeJS.ProcessEnv, accountId: string): string {
-  const stateDir = resolveStateDir(env, os.homedir);
-  return resolveSharedMatrixCredentialsPath({
-    stateDir,
-    accountId: normalizeAccountId(accountId),
-  });
-}
-
-function loadStoredMatrixCredentials(
-  env: NodeJS.ProcessEnv,
-  accountId: string,
-): MatrixStoredCredentials | null {
-  const credentialsPath = resolveMatrixCredentialsPath(env, accountId);
-  try {
-    if (!fs.existsSync(credentialsPath)) {
-      return null;
-    }
-    const parsed = JSON.parse(
-      fs.readFileSync(credentialsPath, "utf-8"),
-    ) as Partial<MatrixStoredCredentials>;
-    if (
-      typeof parsed.homeserver !== "string" ||
-      typeof parsed.userId !== "string" ||
-      typeof parsed.accessToken !== "string"
-    ) {
-      return null;
-    }
-    return {
-      homeserver: parsed.homeserver,
-      userId: parsed.userId,
-      accessToken: parsed.accessToken,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function resolveMatrixAccountConfig(
-  cfg: OpenClawConfig,
-  accountId: string,
-): Record<string, unknown> {
-  const channel = resolveMatrixChannelConfig(cfg);
-  if (!channel) {
-    return {};
-  }
-
-  const accounts = isRecord(channel.accounts) ? channel.accounts : null;
-  const accountEntry = accounts && isRecord(accounts[accountId]) ? accounts[accountId] : null;
-
-  const merged = {
-    ...channel,
-    ...accountEntry,
-  };
-  delete merged.accounts;
-  return merged;
 }
 
 function resolveMatrixTargetAccountId(cfg: OpenClawConfig): string {
@@ -155,25 +96,22 @@ function resolveMatrixMigrationPlan(params: {
   }
 
   const accountId = resolveMatrixTargetAccountId(params.cfg);
-  const account = resolveMatrixAccountConfig(params.cfg, accountId);
   const stored = loadStoredMatrixCredentials(params.env, accountId);
   const selectionNote = resolveMatrixFlatStoreSelectionNote({ channel, accountId });
-
-  const homeserver = typeof account.homeserver === "string" ? account.homeserver.trim() : "";
-  const configUserId = typeof account.userId === "string" ? account.userId.trim() : "";
-  const configAccessToken =
-    typeof account.accessToken === "string" ? account.accessToken.trim() : "";
-
-  const storedMatchesHomeserver =
-    stored && homeserver ? stored.homeserver === homeserver : Boolean(stored);
-  const storedMatchesUser =
-    stored && configUserId ? stored.userId === configUserId : Boolean(stored);
-
-  const userId =
-    configUserId || (storedMatchesHomeserver && storedMatchesUser ? (stored?.userId ?? "") : "");
-  const accessToken =
-    configAccessToken ||
-    (storedMatchesHomeserver && storedMatchesUser ? (stored?.accessToken ?? "") : "");
+  const resolved = resolveMatrixMigrationConfigFields({
+    cfg: params.cfg,
+    env: params.env,
+    accountId,
+  });
+  const matchingStored = credentialsMatchResolvedIdentity(stored, {
+    homeserver: resolved.homeserver,
+    userId: resolved.userId,
+  })
+    ? stored
+    : null;
+  const homeserver = resolved.homeserver;
+  const userId = resolved.userId || matchingStored?.userId || "";
+  const accessToken = resolved.accessToken || matchingStored?.accessToken || "";
 
   if (!homeserver || !userId || !accessToken) {
     return {
