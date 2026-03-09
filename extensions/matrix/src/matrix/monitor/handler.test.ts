@@ -3,8 +3,12 @@ import {
   __testing as sessionBindingTesting,
   registerSessionBindingAdapter,
 } from "../../../../../src/infra/outbound/session-binding-service.js";
-import { createMatrixRoomMessageHandler } from "./handler.js";
-import { EventType, type MatrixRawEvent } from "./types.js";
+import {
+  createMatrixHandlerTestHarness,
+  createMatrixReactionEvent,
+  createMatrixTextMessageEvent,
+} from "./handler.test-helpers.js";
+import type { MatrixRawEvent } from "./types.js";
 
 const sendMessageMatrixMock = vi.hoisted(() =>
   vi.fn(async (..._args: unknown[]) => ({ messageId: "evt", roomId: "!room" })),
@@ -30,149 +34,47 @@ function createReactionHarness(params?: {
   isDirectMessage?: boolean;
   senderName?: string;
 }) {
-  const readAllowFromStore = vi.fn(async () => params?.storeAllowFrom ?? []);
-  const upsertPairingRequest = vi.fn(async () => ({ code: "ABCDEFGH", created: false }));
-  const resolveAgentRoute = vi.fn(() => ({
-    agentId: "ops",
-    channel: "matrix",
-    accountId: "ops",
-    sessionKey: "agent:ops:main",
-    mainSessionKey: "agent:ops:main",
-    matchedBy: "binding.account",
-  }));
-  const enqueueSystemEvent = vi.fn();
-
-  const handler = createMatrixRoomMessageHandler({
+  return createMatrixHandlerTestHarness({
+    cfg: params?.cfg,
+    dmPolicy: params?.dmPolicy,
+    allowFrom: params?.allowFrom,
+    readAllowFromStore: vi.fn(async () => params?.storeAllowFrom ?? []),
     client: {
-      getUserId: async () => "@bot:example.org",
       getEvent: async () => ({ sender: params?.targetSender ?? "@bot:example.org" }),
-    } as never,
-    core: {
-      channel: {
-        pairing: {
-          readAllowFromStore,
-          upsertPairingRequest,
-          buildPairingReply: () => "pairing",
-        },
-        commands: {
-          shouldHandleTextCommands: () => false,
-        },
-        text: {
-          hasControlCommand: () => false,
-        },
-        routing: {
-          resolveAgentRoute,
-        },
-      },
-      system: {
-        enqueueSystemEvent,
-      },
-    } as never,
-    cfg: (params?.cfg ?? {}) as never,
-    accountId: "ops",
-    runtime: {
-      error: () => {},
-    } as never,
-    logger: {
-      info: () => {},
-      warn: () => {},
-    } as never,
-    logVerboseMessage: () => {},
-    allowFrom: params?.allowFrom ?? [],
-    mentionRegexes: [],
-    groupPolicy: "open",
-    replyToMode: "off",
-    threadReplies: "inbound",
-    dmEnabled: true,
-    dmPolicy: params?.dmPolicy ?? "open",
-    textLimit: 8_000,
-    mediaMaxBytes: 10_000_000,
-    startupMs: 0,
-    startupGraceMs: 0,
-    directTracker: {
-      isDirectMessage: async () => params?.isDirectMessage ?? true,
     },
-    getRoomInfo: async () => ({ altAliases: [] }),
+    isDirectMessage: params?.isDirectMessage,
     getMemberDisplayName: async () => params?.senderName ?? "sender",
   });
-
-  return {
-    handler,
-    enqueueSystemEvent,
-    readAllowFromStore,
-    resolveAgentRoute,
-    upsertPairingRequest,
-  };
 }
 
 describe("matrix monitor handler pairing account scope", () => {
   it("caches account-scoped allowFrom store reads on hot path", async () => {
     const readAllowFromStore = vi.fn(async () => [] as string[]);
-    const upsertPairingRequest = vi.fn(async () => ({ code: "ABCDEFGH", created: false }));
     sendMessageMatrixMock.mockClear();
 
-    const handler = createMatrixRoomMessageHandler({
-      client: {
-        getUserId: async () => "@bot:example.org",
-      } as never,
-      core: {
-        channel: {
-          pairing: {
-            readAllowFromStore,
-            upsertPairingRequest,
-            buildPairingReply: () => "pairing",
-          },
-        },
-      } as never,
-      cfg: {} as never,
-      accountId: "ops",
-      runtime: {} as never,
-      logger: {
-        info: () => {},
-        warn: () => {},
-      } as never,
-      logVerboseMessage: () => {},
-      allowFrom: [],
-      mentionRegexes: [],
-      groupPolicy: "open",
-      replyToMode: "off",
-      threadReplies: "inbound",
-      dmEnabled: true,
+    const { handler } = createMatrixHandlerTestHarness({
+      readAllowFromStore,
       dmPolicy: "pairing",
-      textLimit: 8_000,
-      mediaMaxBytes: 10_000_000,
-      startupMs: 0,
-      startupGraceMs: 0,
-      directTracker: {
-        isDirectMessage: async () => true,
-      },
-      getRoomInfo: async () => ({ altAliases: [] }),
-      getMemberDisplayName: async () => "sender",
+      buildPairingReply: () => "pairing",
     });
 
-    await handler("!room:example.org", {
-      type: EventType.RoomMessage,
-      sender: "@user:example.org",
-      event_id: "$event1",
-      origin_server_ts: Date.now(),
-      content: {
-        msgtype: "m.text",
+    await handler(
+      "!room:example.org",
+      createMatrixTextMessageEvent({
+        eventId: "$event1",
         body: "hello",
-        "m.mentions": { room: true },
-      },
-    } as MatrixRawEvent);
+        mentions: { room: true },
+      }),
+    );
 
-    await handler("!room:example.org", {
-      type: EventType.RoomMessage,
-      sender: "@user:example.org",
-      event_id: "$event2",
-      origin_server_ts: Date.now(),
-      content: {
-        msgtype: "m.text",
+    await handler(
+      "!room:example.org",
+      createMatrixTextMessageEvent({
+        eventId: "$event2",
         body: "hello again",
-        "m.mentions": { room: true },
-      },
-    } as MatrixRawEvent);
+        mentions: { room: true },
+      }),
+    );
 
     expect(readAllowFromStore).toHaveBeenCalledTimes(1);
   });
@@ -182,60 +84,22 @@ describe("matrix monitor handler pairing account scope", () => {
     vi.setSystemTime(new Date("2026-03-01T10:00:00.000Z"));
     try {
       const readAllowFromStore = vi.fn(async () => [] as string[]);
-      const upsertPairingRequest = vi.fn(async () => ({ code: "ABCDEFGH", created: false }));
       sendMessageMatrixMock.mockClear();
 
-      const handler = createMatrixRoomMessageHandler({
-        client: {
-          getUserId: async () => "@bot:example.org",
-        } as never,
-        core: {
-          channel: {
-            pairing: {
-              readAllowFromStore,
-              upsertPairingRequest,
-              buildPairingReply: () => "Pairing code: ABCDEFGH",
-            },
-          },
-        } as never,
-        cfg: {} as never,
-        accountId: "ops",
-        runtime: {} as never,
-        logger: {
-          info: () => {},
-          warn: () => {},
-        } as never,
-        logVerboseMessage: () => {},
-        allowFrom: [],
-        mentionRegexes: [],
-        groupPolicy: "open",
-        replyToMode: "off",
-        threadReplies: "inbound",
-        dmEnabled: true,
+      const { handler } = createMatrixHandlerTestHarness({
+        readAllowFromStore,
         dmPolicy: "pairing",
-        textLimit: 8_000,
-        mediaMaxBytes: 10_000_000,
-        startupMs: 0,
-        startupGraceMs: 0,
-        directTracker: {
-          isDirectMessage: async () => true,
-        },
-        getRoomInfo: async () => ({ altAliases: [] }),
+        buildPairingReply: () => "Pairing code: ABCDEFGH",
+        isDirectMessage: true,
         getMemberDisplayName: async () => "sender",
       });
 
       const makeEvent = (id: string): MatrixRawEvent =>
-        ({
-          type: EventType.RoomMessage,
-          sender: "@user:example.org",
-          event_id: id,
-          origin_server_ts: Date.now(),
-          content: {
-            msgtype: "m.text",
-            body: "hello",
-            "m.mentions": { room: true },
-          },
-        }) as MatrixRawEvent;
+        createMatrixTextMessageEvent({
+          eventId: id,
+          body: "hello",
+          mentions: { room: true },
+        });
 
       await handler("!room:example.org", makeEvent("$event1"));
       await handler("!room:example.org", makeEvent("$event2"));
@@ -256,55 +120,22 @@ describe("matrix monitor handler pairing account scope", () => {
     const readAllowFromStore = vi.fn(async () => [] as string[]);
     const upsertPairingRequest = vi.fn(async () => ({ code: "ABCDEFGH", created: false }));
 
-    const handler = createMatrixRoomMessageHandler({
-      client: {
-        getUserId: async () => "@bot:example.org",
-      } as never,
-      core: {
-        channel: {
-          pairing: {
-            readAllowFromStore,
-            upsertPairingRequest,
-          },
-        },
-      } as never,
-      cfg: {} as never,
-      accountId: "ops",
-      runtime: {} as never,
-      logger: {
-        info: () => {},
-        warn: () => {},
-      } as never,
-      logVerboseMessage: () => {},
-      allowFrom: [],
-      mentionRegexes: [],
-      groupPolicy: "open",
-      replyToMode: "off",
-      threadReplies: "inbound",
-      dmEnabled: true,
+    const { handler } = createMatrixHandlerTestHarness({
+      readAllowFromStore,
+      upsertPairingRequest,
       dmPolicy: "pairing",
-      textLimit: 8_000,
-      mediaMaxBytes: 10_000_000,
-      startupMs: 0,
-      startupGraceMs: 0,
-      directTracker: {
-        isDirectMessage: async () => true,
-      },
-      getRoomInfo: async () => ({ altAliases: [] }),
+      isDirectMessage: true,
       getMemberDisplayName: async () => "sender",
     });
 
-    await handler("!room:example.org", {
-      type: EventType.RoomMessage,
-      sender: "@user:example.org",
-      event_id: "$event1",
-      origin_server_ts: Date.now(),
-      content: {
-        msgtype: "m.text",
+    await handler(
+      "!room:example.org",
+      createMatrixTextMessageEvent({
+        eventId: "$event1",
         body: "hello",
-        "m.mentions": { room: true },
-      },
-    } as MatrixRawEvent);
+        mentions: { room: true },
+      }),
+    );
 
     expect(readAllowFromStore).toHaveBeenCalledWith({
       channel: "matrix",
@@ -329,66 +160,20 @@ describe("matrix monitor handler pairing account scope", () => {
       matchedBy: "binding.account",
     }));
 
-    const handler = createMatrixRoomMessageHandler({
-      client: {
-        getUserId: async () => "@bot:example.org",
-      } as never,
-      core: {
-        channel: {
-          pairing: {
-            readAllowFromStore: async () => [] as string[],
-            upsertPairingRequest: async () => ({ code: "ABCDEFGH", created: false }),
-          },
-          commands: {
-            shouldHandleTextCommands: () => false,
-          },
-          text: {
-            hasControlCommand: () => false,
-          },
-          routing: {
-            resolveAgentRoute,
-          },
-        },
-      } as never,
-      cfg: {} as never,
-      accountId: "ops",
-      runtime: {
-        error: () => {},
-      } as never,
-      logger: {
-        info: () => {},
-        warn: () => {},
-      } as never,
-      logVerboseMessage: () => {},
-      allowFrom: [],
-      mentionRegexes: [],
-      groupPolicy: "open",
-      replyToMode: "off",
-      threadReplies: "inbound",
-      dmEnabled: true,
-      dmPolicy: "open",
-      textLimit: 8_000,
-      mediaMaxBytes: 10_000_000,
-      startupMs: 0,
-      startupGraceMs: 0,
-      directTracker: {
-        isDirectMessage: async () => true,
-      },
-      getRoomInfo: async () => ({ altAliases: [] }),
+    const { handler } = createMatrixHandlerTestHarness({
+      resolveAgentRoute,
+      isDirectMessage: true,
       getMemberDisplayName: async () => "sender",
     });
 
-    await handler("!room:example.org", {
-      type: EventType.RoomMessage,
-      sender: "@user:example.org",
-      event_id: "$event2",
-      origin_server_ts: Date.now(),
-      content: {
-        msgtype: "m.text",
+    await handler(
+      "!room:example.org",
+      createMatrixTextMessageEvent({
+        eventId: "$event2",
         body: "hello",
-        "m.mentions": { room: true },
-      },
-    } as MatrixRawEvent);
+        mentions: { room: true },
+      }),
+    );
 
     expect(resolveAgentRoute).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -399,116 +184,34 @@ describe("matrix monitor handler pairing account scope", () => {
   });
 
   it("records thread starter context for inbound thread replies", async () => {
-    const recordInboundSession = vi.fn(async () => {});
-    const finalizeInboundContext = vi.fn((ctx) => ctx);
-
-    const handler = createMatrixRoomMessageHandler({
-      client: {
-        getUserId: async () => "@bot:example.org",
-        getEvent: async () => ({
-          event_id: "$root",
-          sender: "@alice:example.org",
-          type: EventType.RoomMessage,
-          origin_server_ts: Date.now(),
-          content: {
-            msgtype: "m.text",
-            body: "Root topic",
-          },
-        }),
-      } as never,
-      core: {
-        channel: {
-          pairing: {
-            readAllowFromStore: async () => [] as string[],
-            upsertPairingRequest: async () => ({ code: "ABCDEFGH", created: false }),
-          },
-          commands: {
-            shouldHandleTextCommands: () => false,
-          },
-          text: {
-            hasControlCommand: () => false,
-            resolveMarkdownTableMode: () => "preserve",
-          },
-          routing: {
-            resolveAgentRoute: () => ({
-              agentId: "ops",
-              channel: "matrix",
-              accountId: "ops",
-              sessionKey: "agent:ops:main",
-              mainSessionKey: "agent:ops:main",
-              matchedBy: "binding.account",
+    const { handler, finalizeInboundContext, recordInboundSession } =
+      createMatrixHandlerTestHarness({
+        client: {
+          getEvent: async () =>
+            createMatrixTextMessageEvent({
+              eventId: "$root",
+              sender: "@alice:example.org",
+              body: "Root topic",
             }),
-          },
-          session: {
-            resolveStorePath: () => "/tmp/session-store",
-            readSessionUpdatedAt: () => undefined,
-            recordInboundSession,
-          },
-          reply: {
-            resolveEnvelopeFormatOptions: () => ({}),
-            formatAgentEnvelope: ({ body }: { body: string }) => body,
-            finalizeInboundContext,
-            createReplyDispatcherWithTyping: () => ({
-              dispatcher: {},
-              replyOptions: {},
-              markDispatchIdle: () => {},
-            }),
-            resolveHumanDelayConfig: () => undefined,
-            dispatchReplyFromConfig: async () => ({
-              queuedFinal: false,
-              counts: { final: 0, block: 0, tool: 0 },
-            }),
-          },
-          reactions: {
-            shouldAckReaction: () => false,
-          },
         },
-      } as never,
-      cfg: {} as never,
-      accountId: "ops",
-      runtime: {
-        error: () => {},
-      } as never,
-      logger: {
-        info: () => {},
-        warn: () => {},
-      } as never,
-      logVerboseMessage: () => {},
-      allowFrom: [],
-      mentionRegexes: [],
-      groupPolicy: "open",
-      replyToMode: "off",
-      threadReplies: "inbound",
-      dmEnabled: true,
-      dmPolicy: "open",
-      textLimit: 8_000,
-      mediaMaxBytes: 10_000_000,
-      startupMs: 0,
-      startupGraceMs: 0,
-      directTracker: {
-        isDirectMessage: async () => false,
-      },
-      getRoomInfo: async () => ({ altAliases: [] }),
-      getMemberDisplayName: async (_roomId, userId) =>
-        userId === "@alice:example.org" ? "Alice" : "sender",
-    });
+        isDirectMessage: false,
+        getMemberDisplayName: async (_roomId, userId) =>
+          userId === "@alice:example.org" ? "Alice" : "sender",
+      });
 
-    await handler("!room:example.org", {
-      type: EventType.RoomMessage,
-      sender: "@user:example.org",
-      event_id: "$reply1",
-      origin_server_ts: Date.now(),
-      content: {
-        msgtype: "m.text",
+    await handler(
+      "!room:example.org",
+      createMatrixTextMessageEvent({
+        eventId: "$reply1",
         body: "follow up",
-        "m.relates_to": {
+        relatesTo: {
           rel_type: "m.thread",
           event_id: "$root",
           "m.in_reply_to": { event_id: "$root" },
         },
-        "m.mentions": { room: true },
-      },
-    } as MatrixRawEvent);
+        mentions: { room: true },
+      }),
+    );
 
     expect(finalizeInboundContext).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -549,114 +252,33 @@ describe("matrix monitor handler pairing account scope", () => {
           : null,
       touch: vi.fn(),
     });
-    const recordInboundSession = vi.fn(async () => {});
-
-    const handler = createMatrixRoomMessageHandler({
+    const { handler, recordInboundSession } = createMatrixHandlerTestHarness({
       client: {
-        getUserId: async () => "@bot:example.org",
-        getEvent: async () => ({
-          event_id: "$root",
-          sender: "@alice:example.org",
-          type: EventType.RoomMessage,
-          origin_server_ts: Date.now(),
-          content: {
-            msgtype: "m.text",
+        getEvent: async () =>
+          createMatrixTextMessageEvent({
+            eventId: "$root",
+            sender: "@alice:example.org",
             body: "Root topic",
-          },
-        }),
-      } as never,
-      core: {
-        channel: {
-          pairing: {
-            readAllowFromStore: async () => [] as string[],
-            upsertPairingRequest: async () => ({ code: "ABCDEFGH", created: false }),
-          },
-          commands: {
-            shouldHandleTextCommands: () => false,
-          },
-          text: {
-            hasControlCommand: () => false,
-            resolveMarkdownTableMode: () => "preserve",
-          },
-          routing: {
-            resolveAgentRoute: () => ({
-              agentId: "ops",
-              channel: "matrix",
-              accountId: "ops",
-              sessionKey: "agent:ops:main",
-              mainSessionKey: "agent:ops:main",
-              matchedBy: "binding.account",
-            }),
-          },
-          session: {
-            resolveStorePath: () => "/tmp/session-store",
-            readSessionUpdatedAt: () => undefined,
-            recordInboundSession,
-          },
-          reply: {
-            resolveEnvelopeFormatOptions: () => ({}),
-            formatAgentEnvelope: ({ body }: { body: string }) => body,
-            finalizeInboundContext: (ctx: unknown) => ctx,
-            createReplyDispatcherWithTyping: () => ({
-              dispatcher: {},
-              replyOptions: {},
-              markDispatchIdle: () => {},
-            }),
-            resolveHumanDelayConfig: () => undefined,
-            dispatchReplyFromConfig: async () => ({
-              queuedFinal: false,
-              counts: { final: 0, block: 0, tool: 0 },
-            }),
-          },
-          reactions: {
-            shouldAckReaction: () => false,
-          },
-        },
-      } as never,
-      cfg: {} as never,
-      accountId: "ops",
-      runtime: {
-        error: () => {},
-      } as never,
-      logger: {
-        info: () => {},
-        warn: () => {},
-      } as never,
-      logVerboseMessage: () => {},
-      allowFrom: [],
-      mentionRegexes: [],
-      groupPolicy: "open",
-      replyToMode: "off",
-      threadReplies: "inbound",
-      dmEnabled: true,
-      dmPolicy: "open",
-      textLimit: 8_000,
-      mediaMaxBytes: 10_000_000,
-      startupMs: 0,
-      startupGraceMs: 0,
-      directTracker: {
-        isDirectMessage: async () => false,
+          }),
       },
-      getRoomInfo: async () => ({ altAliases: [] }),
+      isDirectMessage: false,
+      finalizeInboundContext: (ctx: unknown) => ctx,
       getMemberDisplayName: async () => "sender",
     });
 
-    await handler("!room:example", {
-      type: EventType.RoomMessage,
-      sender: "@user:example.org",
-      event_id: "$reply1",
-      origin_server_ts: Date.now(),
-      content: {
-        msgtype: "m.text",
+    await handler(
+      "!room:example",
+      createMatrixTextMessageEvent({
+        eventId: "$reply1",
         body: "follow up",
-        "m.relates_to": {
+        relatesTo: {
           rel_type: "m.thread",
           event_id: "$root",
           "m.in_reply_to": { event_id: "$root" },
         },
-        "m.mentions": { room: true },
-      },
-    } as MatrixRawEvent);
+        mentions: { room: true },
+      }),
+    );
 
     expect(recordInboundSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -668,19 +290,14 @@ describe("matrix monitor handler pairing account scope", () => {
   it("enqueues system events for reactions on bot-authored messages", async () => {
     const { handler, enqueueSystemEvent, resolveAgentRoute } = createReactionHarness();
 
-    await handler("!room:example.org", {
-      type: EventType.Reaction,
-      sender: "@user:example.org",
-      event_id: "$reaction1",
-      origin_server_ts: Date.now(),
-      content: {
-        "m.relates_to": {
-          rel_type: "m.annotation",
-          event_id: "$msg1",
-          key: "👍",
-        },
-      },
-    } as MatrixRawEvent);
+    await handler(
+      "!room:example.org",
+      createMatrixReactionEvent({
+        eventId: "$reaction1",
+        targetEventId: "$msg1",
+        key: "👍",
+      }),
+    );
 
     expect(resolveAgentRoute).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -702,19 +319,14 @@ describe("matrix monitor handler pairing account scope", () => {
       targetSender: "@other:example.org",
     });
 
-    await handler("!room:example.org", {
-      type: EventType.Reaction,
-      sender: "@user:example.org",
-      event_id: "$reaction2",
-      origin_server_ts: Date.now(),
-      content: {
-        "m.relates_to": {
-          rel_type: "m.annotation",
-          event_id: "$msg2",
-          key: "👀",
-        },
-      },
-    } as MatrixRawEvent);
+    await handler(
+      "!room:example.org",
+      createMatrixReactionEvent({
+        eventId: "$reaction2",
+        targetEventId: "$msg2",
+        key: "👀",
+      }),
+    );
 
     expect(enqueueSystemEvent).not.toHaveBeenCalled();
     expect(resolveAgentRoute).not.toHaveBeenCalled();
@@ -725,19 +337,14 @@ describe("matrix monitor handler pairing account scope", () => {
       dmPolicy: "pairing",
     });
 
-    await handler("!room:example.org", {
-      type: EventType.Reaction,
-      sender: "@user:example.org",
-      event_id: "$reaction3",
-      origin_server_ts: Date.now(),
-      content: {
-        "m.relates_to": {
-          rel_type: "m.annotation",
-          event_id: "$msg3",
-          key: "🔥",
-        },
-      },
-    } as MatrixRawEvent);
+    await handler(
+      "!room:example.org",
+      createMatrixReactionEvent({
+        eventId: "$reaction3",
+        targetEventId: "$msg3",
+        key: "🔥",
+      }),
+    );
 
     expect(upsertPairingRequest).not.toHaveBeenCalled();
     expect(enqueueSystemEvent).not.toHaveBeenCalled();
@@ -759,19 +366,14 @@ describe("matrix monitor handler pairing account scope", () => {
       },
     });
 
-    await handler("!room:example.org", {
-      type: EventType.Reaction,
-      sender: "@user:example.org",
-      event_id: "$reaction4",
-      origin_server_ts: Date.now(),
-      content: {
-        "m.relates_to": {
-          rel_type: "m.annotation",
-          event_id: "$msg4",
-          key: "✅",
-        },
-      },
-    } as MatrixRawEvent);
+    await handler(
+      "!room:example.org",
+      createMatrixReactionEvent({
+        eventId: "$reaction4",
+        targetEventId: "$msg4",
+        key: "✅",
+      }),
+    );
 
     expect(enqueueSystemEvent).not.toHaveBeenCalled();
   });
