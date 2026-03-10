@@ -366,14 +366,14 @@ export function buildSandboxCreateArgs(params: {
   if (params.cfg.user) {
     args.push("--user", params.cfg.user);
   }
-  const envSanitization = sanitizeEnvVars(markOpenClawExecEnv(params.cfg.env ?? {}));
+  const envSanitization = sanitizeEnvVars(params.cfg.env ?? {});
   if (envSanitization.blocked.length > 0) {
     log.warn(`Blocked sensitive environment variables: ${envSanitization.blocked.join(", ")}`);
   }
   if (envSanitization.warnings.length > 0) {
     log.warn(`Suspicious environment variables: ${envSanitization.warnings.join(", ")}`);
   }
-  for (const [key, value] of Object.entries(envSanitization.allowed)) {
+  for (const [key, value] of Object.entries(markOpenClawExecEnv(envSanitization.allowed))) {
     args.push("--env", `${key}=${value}`);
   }
   for (const cap of params.cfg.capDrop) {
