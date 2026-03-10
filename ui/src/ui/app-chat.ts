@@ -190,6 +190,14 @@ export async function handleSendChat(
   // Intercept local slash commands (/status, /model, /compact, etc.)
   const parsed = parseSlashCommand(message);
   if (parsed?.command.executeLocal) {
+    if (isChatBusy(host) && shouldQueueLocalSlashCommand(parsed.command.name)) {
+      if (messageOverride == null) {
+        host.chatMessage = "";
+        host.chatAttachments = [];
+      }
+      enqueueChatMessage(host, message, attachmentsToSend, isChatResetCommand(message));
+      return;
+    }
     const prevDraft = messageOverride == null ? previousDraft : undefined;
     if (messageOverride == null) {
       host.chatMessage = "";
@@ -221,6 +229,10 @@ export async function handleSendChat(
     restoreAttachments: Boolean(messageOverride && opts?.restoreDraft),
     refreshSessions,
   });
+}
+
+function shouldQueueLocalSlashCommand(name: string): boolean {
+  return !["stop", "focus", "export"].includes(name);
 }
 
 // ── Slash Command Dispatch ──

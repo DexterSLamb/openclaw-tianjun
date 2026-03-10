@@ -5,6 +5,8 @@ import {
   CHAT_ATTACHMENT_ACCEPT,
   isSupportedChatAttachmentMimeType,
 } from "../ui/src/ui/chat/attachment-support.ts";
+import { DeletedMessages } from "../ui/src/ui/chat/deleted-messages.ts";
+import { buildChatMarkdown } from "../ui/src/ui/chat/export.ts";
 import { getPinnedMessageSummary } from "../ui/src/ui/chat/pinned-summary.ts";
 import type { GatewayBrowserClient } from "../ui/src/ui/gateway.ts";
 
@@ -113,6 +115,59 @@ describe("chat regressions", () => {
     ).toBe("hello from structured content");
   });
 
+  it("degrades gracefully when deleted-message persistence cannot write", () => {
+    const failingStorage = createStorageMock();
+    vi.spyOn(failingStorage, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+    vi.stubGlobal("localStorage", failingStorage);
+
+    const deleted = new DeletedMessages("main");
+    expect(() => deleted.delete("msg-1")).not.toThrow();
+    expect(() => deleted.restore("msg-1")).not.toThrow();
+    expect(() => deleted.clear()).not.toThrow();
+  });
+
+  it("exports structured message content instead of blank blocks", () => {
+    const markdown = buildChatMarkdown(
+      [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello there" }],
+          timestamp: Date.UTC(2026, 2, 10, 12, 0, 0),
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "general kenobi" }],
+          timestamp: Date.UTC(2026, 2, 10, 12, 0, 5),
+        },
+      ],
+      "OpenClaw",
+    );
+
+    expect(markdown).toContain("hello there");
+    expect(markdown).toContain("general kenobi");
+  });
+
+  it("queues local slash commands that would mutate session state during an active run", async () => {
+    const { handleSendChat } = await import("../ui/src/ui/app-chat.ts");
+    const request = vi.fn();
+    const host = createHost({
+      client: { request } as unknown as GatewayBrowserClient,
+      chatMessage: "/new",
+      chatRunId: "run-1",
+      chatSending: false,
+    });
+
+    await handleSendChat(host);
+
+    expect(request).not.toHaveBeenCalled();
+    expect(host.chatMessage).toBe("");
+    expect(host.chatQueue).toHaveLength(1);
+    expect(host.chatQueue[0]?.text).toBe("/new");
+    expect(host.chatQueue[0]?.refreshSessions).toBe(true);
+  });
+
   it("resets persisted history for /clear", async () => {
     const { handleSendChat } = await import("../ui/src/ui/app-chat.ts");
     const request = vi.fn(async (method: string, payload?: unknown) => {
@@ -129,6 +184,7 @@ describe("chat regressions", () => {
     const host = createHost({
       client: { request } as unknown as GatewayBrowserClient,
       chatMessage: "/clear",
+      chatRunId: null,
     });
 
     await handleSendChat(host);
