@@ -342,6 +342,25 @@ recovery key file (`recovery-key.json`), IndexedDB snapshot (`crypto-idb-snapsho
 thread bindings (`thread-bindings.json`), and startup verification state (`startup-verification.json`)
 when those features are in use.
 
+### Node crypto store model
+
+Matrix E2EE in this plugin uses the official `matrix-js-sdk` Rust crypto path in Node.
+That path expects IndexedDB-backed persistence when you want crypto state to survive restarts.
+
+OpenClaw currently provides that in Node by:
+
+- using `fake-indexeddb` as the IndexedDB API shim expected by the SDK
+- restoring the Rust crypto IndexedDB contents from `crypto-idb-snapshot.json` before `initRustCrypto`
+- persisting the updated IndexedDB contents back to `crypto-idb-snapshot.json` after init and during runtime
+
+This is compatibility/storage plumbing, not a custom crypto implementation.
+The snapshot file is sensitive runtime state and is stored with restrictive file permissions.
+Under OpenClaw's security model, the gateway host and local OpenClaw state directory are already inside the trusted operator boundary, so this is primarily an operational durability concern rather than a separate remote trust boundary.
+
+Planned improvement:
+
+- add SecretRef support for persistent Matrix key material so recovery keys and related store-encryption secrets can be sourced from OpenClaw secrets providers instead of only local files
+
 ## Automatic verification notices
 
 Matrix now posts verification lifecycle notices directly into the Matrix room as `m.notice` messages.
