@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { OPENCLAW_CLI_ENV_VALUE } from "../infra/openclaw-exec-env.js";
+import { OPENCLAW_CLI_ENV_VALUE, markOpenClawExecEnv } from "../infra/openclaw-exec-env.js";
 import { buildSandboxCreateArgs } from "./sandbox/docker.js";
+import { sanitizeEnvVars } from "./sandbox/sanitize-env-vars.js";
 import type { SandboxDockerConfig } from "./sandbox/types.js";
 
 describe("buildSandboxCreateArgs", () => {
@@ -134,6 +135,42 @@ describe("buildSandboxCreateArgs", () => {
     }
     expect(ulimitValues).toEqual(
       expect.arrayContaining(["nofile=1024:2048", "nproc=128", "core=0"]),
+    );
+  });
+
+  it("adds the OpenClaw exec marker after env sanitization", () => {
+    const envSanitization = sanitizeEnvVars(
+      {
+        NODE_ENV: "test",
+      },
+      { strictMode: true },
+    );
+
+    expect(markOpenClawExecEnv(envSanitization.allowed)).toEqual({
+      NODE_ENV: "test",
+      OPENCLAW_CLI: OPENCLAW_CLI_ENV_VALUE,
+    });
+
+    const cfg = createSandboxConfig({
+      env: {
+        NODE_ENV: "test",
+      },
+    });
+
+    const args = buildSandboxCreateArgs({
+      name: "openclaw-sbx-marker",
+      cfg,
+      scopeKey: "main",
+      createdAtMs: 1700000000000,
+    });
+
+    expect(args).toEqual(
+      expect.arrayContaining([
+        "--env",
+        "NODE_ENV=test",
+        "--env",
+        `OPENCLAW_CLI=${OPENCLAW_CLI_ENV_VALUE}`,
+      ]),
     );
   });
 
