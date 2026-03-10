@@ -15,12 +15,14 @@ import { generateUUID } from "./uuid.ts";
 export type ChatHost = {
   client: GatewayBrowserClient | null;
   chatMessages: unknown[];
+  chatStream: string | null;
   connected: boolean;
   chatMessage: string;
   chatAttachments: ChatAttachment[];
   chatQueue: ChatQueueItem[];
   chatRunId: string | null;
   chatSending: boolean;
+  lastError?: string | null;
   sessionKey: string;
   basePath: string;
   hello: GatewayHelloOk | null;
@@ -248,8 +250,7 @@ async function dispatchSlashCommand(
       });
       return;
     case "clear":
-      host.chatMessages = [];
-      scheduleChatScroll(host as unknown as Parameters<typeof scheduleChatScroll>[0]);
+      await clearChatHistory(host);
       return;
     case "focus":
       host.onSlashAction?.("toggle-focus");
@@ -273,6 +274,22 @@ async function dispatchSlashCommand(
     await refreshChat(host);
   }
 
+  scheduleChatScroll(host as unknown as Parameters<typeof scheduleChatScroll>[0]);
+}
+
+async function clearChatHistory(host: ChatHost) {
+  if (!host.client || !host.connected) {
+    return;
+  }
+  try {
+    await host.client.request("sessions.reset", { key: host.sessionKey });
+    host.chatMessages = [];
+    host.chatStream = null;
+    host.chatRunId = null;
+    await loadChatHistory(host as unknown as OpenClawApp);
+  } catch (err) {
+    host.lastError = String(err);
+  }
   scheduleChatScroll(host as unknown as Parameters<typeof scheduleChatScroll>[0]);
 }
 

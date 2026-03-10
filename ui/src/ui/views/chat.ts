@@ -1,6 +1,10 @@
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { repeat } from "lit/directives/repeat.js";
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  isSupportedChatAttachmentMimeType,
+} from "../chat/attachment-support.ts";
 import { DeletedMessages } from "../chat/deleted-messages.ts";
 import { exportChatMarkdown } from "../chat/export.ts";
 import {
@@ -11,6 +15,7 @@ import {
 import { InputHistory } from "../chat/input-history.ts";
 import { normalizeMessage, normalizeRoleForGrouping } from "../chat/message-normalizer.ts";
 import { PinnedMessages } from "../chat/pinned-messages.ts";
+import { getPinnedMessageSummary } from "../chat/pinned-summary.ts";
 import {
   CATEGORY_LABELS,
   SLASH_COMMANDS,
@@ -334,6 +339,9 @@ function handleFileSelect(e: Event, props: ChatProps) {
   const additions: ChatAttachment[] = [];
   let pending = 0;
   for (const file of input.files) {
+    if (!isSupportedChatAttachmentMimeType(file.type)) {
+      continue;
+    }
     pending++;
     const reader = new FileReader();
     reader.addEventListener("load", () => {
@@ -362,7 +370,7 @@ function handleDrop(e: DragEvent, props: ChatProps) {
   const additions: ChatAttachment[] = [];
   let pending = 0;
   for (const file of files) {
-    if (!file.type.startsWith("image/")) {
+    if (!isSupportedChatAttachmentMimeType(file.type)) {
       continue;
     }
     pending++;
@@ -630,7 +638,7 @@ function renderPinnedSection(
     if (!msg) {
       continue;
     }
-    const text = typeof msg.content === "string" ? msg.content : "";
+    const text = getPinnedMessageSummary(msg);
     const role = typeof msg.role === "string" ? msg.role : "unknown";
     entries.push({ index: idx, text, role });
   }
@@ -1139,7 +1147,7 @@ export function renderChat(props: ChatProps) {
 
         <input
           type="file"
-          accept="image/*,.pdf,.txt,.md,.json,.csv"
+          accept=${CHAT_ATTACHMENT_ACCEPT}
           multiple
           class="agent-chat__file-input"
           @change=${(e: Event) => handleFileSelect(e, props)}
