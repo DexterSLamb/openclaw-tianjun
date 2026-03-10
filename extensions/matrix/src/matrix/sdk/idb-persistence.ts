@@ -17,6 +17,75 @@ type IdbDatabaseSnapshot = {
   stores: IdbStoreSnapshot[];
 };
 
+function isValidIdbIndexSnapshot(value: unknown): value is IdbStoreSnapshot["indexes"][number] {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<IdbStoreSnapshot["indexes"][number]>;
+  return (
+    typeof candidate.name === "string" &&
+    (typeof candidate.keyPath === "string" ||
+      (Array.isArray(candidate.keyPath) &&
+        candidate.keyPath.every((entry) => typeof entry === "string"))) &&
+    typeof candidate.multiEntry === "boolean" &&
+    typeof candidate.unique === "boolean"
+  );
+}
+
+function isValidIdbRecordSnapshot(value: unknown): value is IdbStoreSnapshot["records"][number] {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  return "key" in value && "value" in value;
+}
+
+function isValidIdbStoreSnapshot(value: unknown): value is IdbStoreSnapshot {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<IdbStoreSnapshot>;
+  const validKeyPath =
+    candidate.keyPath === null ||
+    typeof candidate.keyPath === "string" ||
+    (Array.isArray(candidate.keyPath) &&
+      candidate.keyPath.every((entry) => typeof entry === "string"));
+  return (
+    typeof candidate.name === "string" &&
+    validKeyPath &&
+    typeof candidate.autoIncrement === "boolean" &&
+    Array.isArray(candidate.indexes) &&
+    candidate.indexes.every((entry) => isValidIdbIndexSnapshot(entry)) &&
+    Array.isArray(candidate.records) &&
+    candidate.records.every((entry) => isValidIdbRecordSnapshot(entry))
+  );
+}
+
+function isValidIdbDatabaseSnapshot(value: unknown): value is IdbDatabaseSnapshot {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Partial<IdbDatabaseSnapshot>;
+  return (
+    typeof candidate.name === "string" &&
+    typeof candidate.version === "number" &&
+    Number.isFinite(candidate.version) &&
+    candidate.version > 0 &&
+    Array.isArray(candidate.stores) &&
+    candidate.stores.every((entry) => isValidIdbStoreSnapshot(entry))
+  );
+}
+
+function parseSnapshotPayload(data: string): IdbDatabaseSnapshot[] | null {
+  const parsed = JSON.parse(data) as unknown;
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    return null;
+  }
+  if (!parsed.every((entry) => isValidIdbDatabaseSnapshot(entry))) {
+    throw new Error("Malformed IndexedDB snapshot payload");
+  }
+  return parsed;
+}
+
 function idbReq<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
@@ -132,8 +201,8 @@ export async function restoreIdbFromDisk(snapshotPath?: string): Promise<boolean
   for (const resolvedPath of candidatePaths) {
     try {
       const data = fs.readFileSync(resolvedPath, "utf8");
-      const snapshot: IdbDatabaseSnapshot[] = JSON.parse(data);
-      if (!Array.isArray(snapshot) || snapshot.length === 0) {
+      const snapshot = parseSnapshotPayload(data);
+      if (!snapshot) {
         continue;
       }
       await restoreIndexedDatabases(snapshot);
@@ -142,7 +211,12 @@ export async function restoreIdbFromDisk(snapshotPath?: string): Promise<boolean
         `Restored ${snapshot.length} IndexedDB database(s) from ${resolvedPath}`,
       );
       return true;
-    } catch {
+    } catch (err) {
+      LogService.warn(
+        "IdbPersistence",
+        `Failed to restore IndexedDB snapshot from ${resolvedPath}:`,
+        err,
+      );
       continue;
     }
   }
@@ -159,6 +233,7 @@ export async function persistIdbToDisk(params?: {
     if (snapshot.length === 0) return;
     fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
     fs.writeFileSync(snapshotPath, JSON.stringify(snapshot));
+    fs.chmodSync(snapshotPath, 0o600);
     LogService.debug(
       "IdbPersistence",
       `Persisted ${snapshot.length} IndexedDB database(s) to ${snapshotPath}`,
