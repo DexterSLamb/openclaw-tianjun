@@ -81,6 +81,7 @@ function enqueueChatMessage(
   text: string,
   attachments?: ChatAttachment[],
   refreshSessions?: boolean,
+  localCommand?: { args: string; name: string },
 ) {
   const trimmed = text.trim();
   const hasAttachments = Boolean(attachments && attachments.length > 0);
@@ -95,6 +96,8 @@ function enqueueChatMessage(
       createdAt: Date.now(),
       attachments: hasAttachments ? attachments?.map((att) => ({ ...att })) : undefined,
       refreshSessions,
+      localCommandArgs: localCommand?.args,
+      localCommandName: localCommand?.name,
     },
   ];
 }
@@ -151,10 +154,20 @@ async function flushChatQueue(host: ChatHost) {
     return;
   }
   host.chatQueue = rest;
-  const ok = await sendChatMessageNow(host, next.text, {
-    attachments: next.attachments,
-    refreshSessions: next.refreshSessions,
-  });
+  let ok = false;
+  try {
+    if (next.localCommandName) {
+      await dispatchSlashCommand(host, next.localCommandName, next.localCommandArgs ?? "");
+      ok = true;
+    } else {
+      ok = await sendChatMessageNow(host, next.text, {
+        attachments: next.attachments,
+        refreshSessions: next.refreshSessions,
+      });
+    }
+  } catch (err) {
+    host.lastError = String(err);
+  }
   if (!ok) {
     host.chatQueue = [next, ...host.chatQueue];
   }
@@ -195,7 +208,10 @@ export async function handleSendChat(
         host.chatMessage = "";
         host.chatAttachments = [];
       }
-      enqueueChatMessage(host, message, attachmentsToSend, isChatResetCommand(message));
+      enqueueChatMessage(host, message, undefined, isChatResetCommand(message), {
+        args: parsed.args,
+        name: parsed.command.name,
+      });
       return;
     }
     const prevDraft = messageOverride == null ? previousDraft : undefined;

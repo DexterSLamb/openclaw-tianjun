@@ -112,6 +112,11 @@ beforeEach(() => {
   vi.stubGlobal("sessionStorage", createStorageMock());
   vi.stubGlobal("window", window as unknown as Window & typeof globalThis);
   vi.stubGlobal("document", document as unknown as Document);
+  vi.stubGlobal("location", {
+    protocol: "https:",
+    host: "gateway.example:8443",
+    pathname: "/",
+  } as Location);
   vi.stubGlobal("customElements", window.customElements);
   vi.stubGlobal("HTMLElement", window.HTMLElement);
   vi.stubGlobal("Element", window.Element);
@@ -276,6 +281,41 @@ describe("chat regressions", () => {
     expect(host.chatQueue[0]?.refreshSessions).toBe(true);
   });
 
+  it("replays queued local slash commands through the local dispatch path", async () => {
+    const { flushChatQueueForEvent, handleSendChat } = await import("../ui/src/ui/app-chat.ts");
+    const request = vi.fn(async (method: string, payload?: unknown) => {
+      if (method === "sessions.reset") {
+        expect(payload).toEqual({ key: "main" });
+        return { ok: true };
+      }
+      if (method === "chat.history") {
+        expect(payload).toEqual({ sessionKey: "main", limit: 200 });
+        return { messages: [], thinkingLevel: null };
+      }
+      throw new Error(`unexpected method: ${method}`);
+    });
+    const host = createHost({
+      client: { request } as unknown as GatewayBrowserClient,
+      chatMessage: "/clear",
+      chatRunId: "run-1",
+      chatSending: false,
+    });
+
+    await handleSendChat(host);
+    expect(host.chatQueue).toHaveLength(1);
+
+    host.chatRunId = null;
+    await flushChatQueueForEvent(host);
+
+    expect(request).toHaveBeenNthCalledWith(1, "sessions.reset", { key: "main" });
+    expect(request).toHaveBeenNthCalledWith(2, "chat.history", {
+      sessionKey: "main",
+      limit: 200,
+    });
+    expect(host.chatQueue).toEqual([]);
+    expect(host.chatMessages).toEqual([]);
+  });
+
   it("resets persisted history for /clear", async () => {
     const { handleSendChat } = await import("../ui/src/ui/app-chat.ts");
     const request = vi.fn(async (method: string, payload?: unknown) => {
@@ -306,5 +346,14 @@ describe("chat regressions", () => {
     expect(host.chatMessages).toEqual([]);
     expect(host.chatRunId).toBeNull();
     expect(host.chatStream).toBeNull();
+  });
+
+  it("initializes the app with a generated client instance id", async () => {
+    const { OpenClawApp } = await import("../ui/src/ui/app.ts");
+
+    const app = new OpenClawApp();
+
+    expect(typeof app.clientInstanceId).toBe("string");
+    expect(app.clientInstanceId.length).toBeGreaterThan(0);
   });
 });
