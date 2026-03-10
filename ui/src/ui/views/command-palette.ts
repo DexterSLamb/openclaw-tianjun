@@ -1,6 +1,7 @@
 import { html, nothing } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { t } from "../../i18n/index.ts";
+import { SLASH_COMMANDS } from "../chat/slash-commands.ts";
 import { icons, type IconName } from "../icons.ts";
 
 type PaletteItem = {
@@ -12,55 +13,17 @@ type PaletteItem = {
   description?: string;
 };
 
+const SLASH_PALETTE_ITEMS: PaletteItem[] = SLASH_COMMANDS.map((command) => ({
+  id: `slash:${command.name}`,
+  label: `/${command.name}`,
+  icon: command.icon ?? "terminal",
+  category: "search",
+  action: `/${command.name}`,
+  description: command.description,
+}));
+
 const PALETTE_ITEMS: PaletteItem[] = [
-  {
-    id: "status",
-    label: "/status",
-    icon: "radio",
-    category: "search",
-    action: "/status",
-    description: "Show current status",
-  },
-  {
-    id: "models",
-    label: "/model",
-    icon: "monitor",
-    category: "search",
-    action: "/model",
-    description: "Show/set model",
-  },
-  {
-    id: "usage",
-    label: "/usage",
-    icon: "barChart",
-    category: "search",
-    action: "/usage",
-    description: "Show usage",
-  },
-  {
-    id: "think",
-    label: "/think",
-    icon: "brain",
-    category: "search",
-    action: "/think",
-    description: "Set thinking level",
-  },
-  {
-    id: "reset",
-    label: "/reset",
-    icon: "loader",
-    category: "search",
-    action: "/reset",
-    description: "Reset session",
-  },
-  {
-    id: "help",
-    label: "/help",
-    icon: "book",
-    category: "search",
-    action: "/help",
-    description: "Show help",
-  },
+  ...SLASH_PALETTE_ITEMS,
   {
     id: "nav-overview",
     label: "Overview",
@@ -114,6 +77,10 @@ const PALETTE_ITEMS: PaletteItem[] = [
     description: "Toggle debug",
   },
 ];
+
+export function getPaletteItems(): readonly PaletteItem[] {
+  return PALETTE_ITEMS;
+}
 
 export type CommandPaletteProps = {
   open: boolean;

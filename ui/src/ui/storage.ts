@@ -194,10 +194,12 @@ function persistSettings(next: UiSettings) {
     sessionKey: next.sessionKey,
     lastActiveSessionKey: next.lastActiveSessionKey,
     theme: next.theme,
+    themeMode: next.themeMode,
     chatFocusMode: next.chatFocusMode,
     chatShowThinking: next.chatShowThinking,
     splitRatio: next.splitRatio,
     navCollapsed: next.navCollapsed,
+    navWidth: next.navWidth,
     navGroupsCollapsed: next.navGroupsCollapsed,
     ...(next.locale ? { locale: next.locale } : {}),
   };

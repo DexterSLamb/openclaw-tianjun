@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setTabFromRoute } from "./app-settings.ts";
+import { attachThemeListener, detachThemeListener, setTabFromRoute } from "./app-settings.ts";
 import type { Tab } from "./navigation.ts";
 
 type SettingsHost = Parameters<typeof setTabFromRoute>[0] & {
@@ -13,14 +13,17 @@ const createHost = (tab: Tab): SettingsHost => ({
     token: "",
     sessionKey: "main",
     lastActiveSessionKey: "main",
-    theme: "system",
+    theme: "claw",
+    themeMode: "system",
     chatFocusMode: false,
     chatShowThinking: true,
     splitRatio: 0.6,
     navCollapsed: false,
+    navWidth: 220,
     navGroupsCollapsed: {},
   },
-  theme: "system",
+  theme: "claw",
+  themeMode: "system",
   themeResolved: "dark",
   applySessionKey: "main",
   sessionKey: "main",
@@ -35,6 +38,7 @@ const createHost = (tab: Tab): SettingsHost => ({
   themeMediaHandler: null,
   logsPollInterval: null,
   debugPollInterval: null,
+  systemThemeCleanup: null,
 });
 
 describe("setTabFromRoute", () => {
@@ -66,5 +70,25 @@ describe("setTabFromRoute", () => {
 
     setTabFromRoute(host, "chat");
     expect(host.debugPollInterval).toBeNull();
+  });
+
+  it("falls back to addListener/removeListener for older MediaQueryList implementations", () => {
+    const host = createHost("chat");
+    const addListener = vi.fn();
+    const removeListener = vi.fn();
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: false,
+        addListener,
+        removeListener,
+      })),
+    );
+
+    attachThemeListener(host);
+    expect(addListener).toHaveBeenCalledTimes(1);
+
+    detachThemeListener(host);
+    expect(removeListener).toHaveBeenCalledTimes(1);
   });
 });

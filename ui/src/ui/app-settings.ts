@@ -334,8 +334,15 @@ function syncSystemThemeListener(host: SettingsHost) {
     }
     applyResolvedTheme(host, resolveTheme(host.theme, "system"));
   };
-  mql.addEventListener("change", onChange);
-  host.systemThemeCleanup = () => mql.removeEventListener("change", onChange);
+  if (typeof mql.addEventListener === "function") {
+    mql.addEventListener("change", onChange);
+    host.systemThemeCleanup = () => mql.removeEventListener("change", onChange);
+    return;
+  }
+  if (typeof mql.addListener === "function") {
+    mql.addListener(onChange);
+    host.systemThemeCleanup = () => mql.removeListener(onChange);
+  }
 }
 
 export function syncTabWithLocation(host: SettingsHost, replace: boolean) {

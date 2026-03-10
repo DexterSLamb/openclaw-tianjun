@@ -62,6 +62,24 @@ function expectedGatewayUrl(basePath: string): string {
   return `${proto}://${location.host}${basePath}`;
 }
 
+function createSettings(overrides: Record<string, unknown> = {}) {
+  return {
+    gatewayUrl: "wss://gateway.example:8443/openclaw",
+    token: "",
+    sessionKey: "main",
+    lastActiveSessionKey: "main",
+    theme: "claw",
+    themeMode: "system",
+    chatFocusMode: false,
+    chatShowThinking: true,
+    splitRatio: 0.6,
+    navCollapsed: false,
+    navWidth: 220,
+    navGroupsCollapsed: {},
+    ...overrides,
+  };
+}
+
 describe("loadSettings default gateway URL derivation", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -128,11 +146,13 @@ describe("loadSettings default gateway URL derivation", () => {
       gatewayUrl: "wss://gateway.example:8443/openclaw",
       sessionKey: "agent",
       lastActiveSessionKey: "agent",
-      theme: "system",
+      theme: "claw",
+      themeMode: "system",
       chatFocusMode: false,
       chatShowThinking: true,
       splitRatio: 0.6,
       navCollapsed: false,
+      navWidth: 220,
       navGroupsCollapsed: {},
     });
     expect(sessionStorage.length).toBe(0);
@@ -146,18 +166,7 @@ describe("loadSettings default gateway URL derivation", () => {
     });
 
     const { loadSettings, saveSettings } = await import("./storage.ts");
-    saveSettings({
-      gatewayUrl: "wss://gateway.example:8443/openclaw",
-      token: "session-token",
-      sessionKey: "main",
-      lastActiveSessionKey: "main",
-      theme: "system",
-      chatFocusMode: false,
-      chatShowThinking: true,
-      splitRatio: 0.6,
-      navCollapsed: false,
-      navGroupsCollapsed: {},
-    });
+    saveSettings(createSettings({ token: "session-token" }));
 
     expect(loadSettings()).toMatchObject({
       gatewayUrl: "wss://gateway.example:8443/openclaw",
@@ -173,18 +182,7 @@ describe("loadSettings default gateway URL derivation", () => {
     });
 
     const { loadSettings, saveSettings } = await import("./storage.ts");
-    saveSettings({
-      gatewayUrl: "wss://gateway.example:8443/openclaw",
-      token: "gateway-a-token",
-      sessionKey: "main",
-      lastActiveSessionKey: "main",
-      theme: "system",
-      chatFocusMode: false,
-      chatShowThinking: true,
-      splitRatio: 0.6,
-      navCollapsed: false,
-      navGroupsCollapsed: {},
-    });
+    saveSettings(createSettings({ token: "gateway-a-token" }));
 
     localStorage.setItem(
       "openclaw.control.settings.v1",
@@ -192,11 +190,13 @@ describe("loadSettings default gateway URL derivation", () => {
         gatewayUrl: "wss://other-gateway.example:8443/openclaw",
         sessionKey: "main",
         lastActiveSessionKey: "main",
-        theme: "system",
+        theme: "claw",
+        themeMode: "system",
         chatFocusMode: false,
         chatShowThinking: true,
         splitRatio: 0.6,
         navCollapsed: false,
+        navWidth: 220,
         navGroupsCollapsed: {},
       }),
     );
@@ -215,18 +215,7 @@ describe("loadSettings default gateway URL derivation", () => {
     });
 
     const { loadSettings, saveSettings } = await import("./storage.ts");
-    saveSettings({
-      gatewayUrl: "wss://gateway.example:8443/openclaw",
-      token: "memory-only-token",
-      sessionKey: "main",
-      lastActiveSessionKey: "main",
-      theme: "system",
-      chatFocusMode: false,
-      chatShowThinking: true,
-      splitRatio: 0.6,
-      navCollapsed: false,
-      navGroupsCollapsed: {},
-    });
+    saveSettings(createSettings({ token: "memory-only-token" }));
     expect(loadSettings()).toMatchObject({
       gatewayUrl: "wss://gateway.example:8443/openclaw",
       token: "memory-only-token",
@@ -236,14 +225,39 @@ describe("loadSettings default gateway URL derivation", () => {
       gatewayUrl: "wss://gateway.example:8443/openclaw",
       sessionKey: "main",
       lastActiveSessionKey: "main",
-      theme: "system",
+      theme: "claw",
+      themeMode: "system",
       chatFocusMode: false,
       chatShowThinking: true,
       splitRatio: 0.6,
       navCollapsed: false,
+      navWidth: 220,
       navGroupsCollapsed: {},
     });
     expect(sessionStorage.length).toBe(1);
+  });
+
+  it("persists theme mode and nav width", async () => {
+    setTestLocation({
+      protocol: "https:",
+      host: "gateway.example:8443",
+      pathname: "/",
+    });
+
+    const { loadSettings, saveSettings } = await import("./storage.ts");
+    saveSettings(
+      createSettings({
+        theme: "dash",
+        themeMode: "light",
+        navWidth: 360,
+      }),
+    );
+
+    expect(loadSettings()).toMatchObject({
+      theme: "dash",
+      themeMode: "light",
+      navWidth: 360,
+    });
   });
 
   it("clears the current-tab token when saving an empty token", async () => {
@@ -254,30 +268,8 @@ describe("loadSettings default gateway URL derivation", () => {
     });
 
     const { loadSettings, saveSettings } = await import("./storage.ts");
-    saveSettings({
-      gatewayUrl: "wss://gateway.example:8443/openclaw",
-      token: "stale-token",
-      sessionKey: "main",
-      lastActiveSessionKey: "main",
-      theme: "system",
-      chatFocusMode: false,
-      chatShowThinking: true,
-      splitRatio: 0.6,
-      navCollapsed: false,
-      navGroupsCollapsed: {},
-    });
-    saveSettings({
-      gatewayUrl: "wss://gateway.example:8443/openclaw",
-      token: "",
-      sessionKey: "main",
-      lastActiveSessionKey: "main",
-      theme: "system",
-      chatFocusMode: false,
-      chatShowThinking: true,
-      splitRatio: 0.6,
-      navCollapsed: false,
-      navGroupsCollapsed: {},
-    });
+    saveSettings(createSettings({ token: "stale-token" }));
+    saveSettings(createSettings());
 
     expect(loadSettings().token).toBe("");
     expect(sessionStorage.length).toBe(0);

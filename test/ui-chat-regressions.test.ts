@@ -8,6 +8,11 @@ import {
 import { DeletedMessages } from "../ui/src/ui/chat/deleted-messages.ts";
 import { buildChatMarkdown } from "../ui/src/ui/chat/export.ts";
 import { getPinnedMessageSummary } from "../ui/src/ui/chat/pinned-summary.ts";
+import { messageMatchesSearchQuery } from "../ui/src/ui/chat/search-match.ts";
+import {
+  MAX_CACHED_CHAT_SESSIONS,
+  getOrCreateSessionCacheValue,
+} from "../ui/src/ui/chat/session-cache.ts";
 import type { GatewayBrowserClient } from "../ui/src/ui/gateway.ts";
 
 function createStorageMock(): Storage {
@@ -66,6 +71,38 @@ function createHost(overrides: Partial<ChatHost> = {}): ChatHost & Record<string
     topbarObserver: null,
     ...overrides,
   };
+}
+
+function createSettingsHost() {
+  return {
+    settings: {
+      gatewayUrl: "",
+      token: "",
+      sessionKey: "main",
+      lastActiveSessionKey: "main",
+      theme: "claw",
+      themeMode: "system",
+      chatFocusMode: false,
+      chatShowThinking: true,
+      splitRatio: 0.6,
+      navCollapsed: false,
+      navWidth: 220,
+      navGroupsCollapsed: {},
+    },
+    theme: "claw",
+    themeMode: "system",
+    themeResolved: "dark",
+    applySessionKey: "main",
+    sessionKey: "main",
+    tab: "chat",
+    connected: false,
+    chatHasAutoScrolled: false,
+    logsAtBottom: false,
+    eventLog: [],
+    eventLogBuffer: [],
+    basePath: "",
+    systemThemeCleanup: null,
+  } as Record<string, unknown>;
 }
 
 beforeEach(() => {
@@ -147,6 +184,77 @@ describe("chat regressions", () => {
 
     expect(markdown).toContain("hello there");
     expect(markdown).toContain("general kenobi");
+  });
+
+  it("matches chat search against extracted structured message text", () => {
+    expect(
+      messageMatchesSearchQuery(
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Structured search target" }],
+        },
+        "search target",
+      ),
+    ).toBe(true);
+    expect(
+      messageMatchesSearchQuery(
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Structured search target" }],
+        },
+        "missing",
+      ),
+    ).toBe(false);
+  });
+
+  it("bounds cached per-session chat state", () => {
+    const cache = new Map<string, number>();
+    for (let i = 0; i < MAX_CACHED_CHAT_SESSIONS; i++) {
+      getOrCreateSessionCacheValue(cache, `session-${i}`, () => i);
+    }
+
+    expect(cache.size).toBe(MAX_CACHED_CHAT_SESSIONS);
+    expect(getOrCreateSessionCacheValue(cache, "session-0", () => -1)).toBe(0);
+
+    getOrCreateSessionCacheValue(cache, `session-${MAX_CACHED_CHAT_SESSIONS}`, () => 99);
+
+    expect(cache.size).toBe(MAX_CACHED_CHAT_SESSIONS);
+    expect(cache.has("session-0")).toBe(true);
+    expect(cache.has("session-1")).toBe(false);
+  });
+
+  it("keeps the command palette in sync with slash commands", async () => {
+    const { getPaletteItems } = await import("../ui/src/ui/views/command-palette.ts");
+    const labels = getPaletteItems().map((item) => item.label);
+
+    expect(labels).toContain("/agents");
+    expect(labels).toContain("/clear");
+    expect(labels).toContain("/kill");
+    expect(labels).toContain("/skill");
+    expect(labels).toContain("/steer");
+  });
+
+  it("falls back to addListener/removeListener for system theme changes", async () => {
+    const { attachThemeListener, detachThemeListener } =
+      await import("../ui/src/ui/app-settings.ts");
+    const host = createSettingsHost();
+    const addListener = vi.fn();
+    const removeListener = vi.fn();
+
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: false,
+        addListener,
+        removeListener,
+      })),
+    );
+
+    attachThemeListener(host);
+    expect(addListener).toHaveBeenCalledTimes(1);
+
+    detachThemeListener(host);
+    expect(removeListener).toHaveBeenCalledTimes(1);
   });
 
   it("queues local slash commands that would mutate session state during an active run", async () => {

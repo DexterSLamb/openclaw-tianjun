@@ -16,6 +16,8 @@ import { InputHistory } from "../chat/input-history.ts";
 import { normalizeMessage, normalizeRoleForGrouping } from "../chat/message-normalizer.ts";
 import { PinnedMessages } from "../chat/pinned-messages.ts";
 import { getPinnedMessageSummary } from "../chat/pinned-summary.ts";
+import { messageMatchesSearchQuery } from "../chat/search-match.ts";
+import { getOrCreateSessionCacheValue } from "../chat/session-cache.ts";
 import {
   CATEGORY_LABELS,
   SLASH_COMMANDS,
@@ -117,30 +119,23 @@ const pinnedMessagesMap = new Map<string, PinnedMessages>();
 const deletedMessagesMap = new Map<string, DeletedMessages>();
 
 function getInputHistory(sessionKey: string): InputHistory {
-  let h = inputHistories.get(sessionKey);
-  if (!h) {
-    h = new InputHistory();
-    inputHistories.set(sessionKey, h);
-  }
-  return h;
+  return getOrCreateSessionCacheValue(inputHistories, sessionKey, () => new InputHistory());
 }
 
 function getPinnedMessages(sessionKey: string): PinnedMessages {
-  let p = pinnedMessagesMap.get(sessionKey);
-  if (!p) {
-    p = new PinnedMessages(sessionKey);
-    pinnedMessagesMap.set(sessionKey, p);
-  }
-  return p;
+  return getOrCreateSessionCacheValue(
+    pinnedMessagesMap,
+    sessionKey,
+    () => new PinnedMessages(sessionKey),
+  );
 }
 
 function getDeletedMessages(sessionKey: string): DeletedMessages {
-  let d = deletedMessagesMap.get(sessionKey);
-  if (!d) {
-    d = new DeletedMessages(sessionKey);
-    deletedMessagesMap.set(sessionKey, d);
-  }
-  return d;
+  return getOrCreateSessionCacheValue(
+    deletedMessagesMap,
+    sessionKey,
+    () => new DeletedMessages(sessionKey),
+  );
 }
 
 // Module-level ephemeral UI state (reset on navigation away)
@@ -1361,11 +1356,8 @@ function buildChatItems(props: ChatProps): Array<ChatItem | MessageGroup> {
     }
 
     // Apply search filter if active
-    if (searchOpen && searchQuery.trim()) {
-      const text = typeof normalized.content === "string" ? normalized.content : "";
-      if (!text.toLowerCase().includes(searchQuery.toLowerCase())) {
-        continue;
-      }
+    if (searchOpen && searchQuery.trim() && !messageMatchesSearchQuery(msg, searchQuery)) {
+      continue;
     }
 
     items.push({
