@@ -80,7 +80,9 @@ export type ChatProps = {
   onScrollToBottom?: () => void;
   onRefresh: () => void;
   onToggleFocusMode: () => void;
+  getDraft?: () => string;
   onDraftChange: (next: string) => void;
+  onRequestUpdate?: () => void;
   onSend: () => void;
   onAbort?: () => void;
   onQueueRemove: (id: string) => void;
@@ -803,12 +805,8 @@ export function renderChat(props: ChatProps) {
       : `Message ${props.assistantName || "agent"} (Enter to send)`
     : "Connect to the gateway to start chatting...";
 
-  // We need a requestUpdate shim since we're in functional mode:
-  // the host Lit component will re-render on state change anyway,
-  // so we trigger by calling onDraftChange with current value.
-  const requestUpdate = () => {
-    props.onDraftChange(props.draft);
-  };
+  const requestUpdate = props.onRequestUpdate ?? (() => {});
+  const getDraft = props.getDraft ?? (() => props.draft);
 
   const splitRatio = props.splitRatio ?? 0.6;
   const sidebarOpen = Boolean(props.sidebarOpen && props.onCloseSidebar);
@@ -1020,9 +1018,6 @@ export function renderChat(props: ChatProps) {
     adjustTextareaHeight(target);
     updateSlashMenu(target.value, requestUpdate);
     inputHistory.reset();
-    // onDraftChange must be last: requestUpdate() inside updateSlashMenu
-    // uses the stale render-time props.draft, overwriting chatMessage.
-    // Calling onDraftChange last ensures the correct DOM value wins.
     props.onDraftChange(target.value);
   };
 
@@ -1192,7 +1187,7 @@ export function renderChat(props: ChatProps) {
                         const started = startStt({
                           onTranscript: (text, isFinal) => {
                             if (isFinal) {
-                              const current = props.draft;
+                              const current = getDraft();
                               const sep = current && !current.endsWith(" ") ? " " : "";
                               props.onDraftChange(current + sep + text);
                               sttInterimText = "";

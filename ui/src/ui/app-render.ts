@@ -277,6 +277,11 @@ function resolveAssistantAvatarUrl(state: AppViewState): string | undefined {
 }
 
 export function renderApp(state: AppViewState) {
+  const requestHostUpdate =
+    typeof (state as { requestUpdate?: unknown }).requestUpdate === "function"
+      ? () => (state as { requestUpdate: () => void }).requestUpdate()
+      : undefined;
+
   // Gate: require successful gateway connection before showing the dashboard.
   // The gateway URL confirmation overlay is always rendered so URL-param flows still work.
   if (!state.connected) {
@@ -1323,7 +1328,9 @@ export function renderApp(state: AppViewState) {
                   });
                 },
                 onChatScroll: (event) => state.handleChatScroll(event),
+                getDraft: () => state.chatMessage,
                 onDraftChange: (next) => (state.chatMessage = next),
+                onRequestUpdate: requestHostUpdate,
                 attachments: state.chatAttachments,
                 onAttachmentsChange: (next) => (state.chatAttachments = next),
                 onSend: () => state.handleSendChat(),
