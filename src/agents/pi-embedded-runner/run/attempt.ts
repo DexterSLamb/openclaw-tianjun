@@ -886,8 +886,19 @@ export async function runEmbeddedAttempt(
           disableMessageTool: params.disableMessageTool,
         });
     const toolsEnabled = supportsModelTools(params.model);
+    // [Tianjun] Filter tools for local models to reduce token count and TTFT
+    const modelKey = `${params.provider}/${params.modelId}`;
+    const toolsForModel = modelKey.startsWith("local/")
+      ? toolsRaw.filter((t: { name?: string }) => {
+          const LOCAL_TOOL_ALLOWLIST = new Set([
+            "read", "write", "edit", "apply_patch", "grep", "find", "ls",
+            "exec", "process", "web_search", "web_fetch", "cron", "message", "image",
+          ]);
+          return LOCAL_TOOL_ALLOWLIST.has(t.name ?? "");
+        })
+      : toolsRaw;
     const tools = sanitizeToolsForGoogle({
-      tools: toolsEnabled ? toolsRaw : [],
+      tools: toolsEnabled ? toolsForModel : [],
       provider: params.provider,
     });
     const clientTools = toolsEnabled ? params.clientTools : undefined;
