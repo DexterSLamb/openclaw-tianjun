@@ -1925,7 +1925,7 @@ export function createWebSearchTool(options?: {
             ? "Search the web using Gemini with Google Search grounding. Returns AI-synthesized answers with citations from Google Search."
             : braveMode === "llm-context"
               ? "Search the web using Brave Search LLM Context API. Returns pre-extracted page content (text chunks, tables, code blocks) optimized for LLM grounding."
-              : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.";
+              : "Search the web for real-time information. Returns titles, URLs, and snippets.";
 
   return {
     label: "Web Search",
@@ -1952,6 +1952,59 @@ export function createWebSearchTool(options?: {
                 : resolveSearchApiKey(search);
 
       if (!apiKey) {
+        // [Tianjun] DDG HTML fallback when no search API key is configured
+        const ddgParams = args as Record<string, unknown>;
+        const ddgQuery = readStringParam(ddgParams, "query", { required: false });
+        if (ddgQuery) {
+          try {
+            const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(ddgQuery)}`;
+            const ddgResp = await fetch(ddgUrl, {
+              headers: {
+                "User-Agent":
+                  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36",
+              },
+              signal: AbortSignal.timeout(10_000),
+            });
+            if (ddgResp.ok && ddgResp.status !== 202) {
+              const html = await ddgResp.text();
+              const blocks = html.split(/class="result results_links/);
+              const decode = (s: string) =>
+                s
+                  .replace(/<[^>]+>/g, "")
+                  .replace(/&amp;/g, "&")
+                  .replace(/&lt;/g, "<")
+                  .replace(/&gt;/g, ">")
+                  .replace(/&quot;/g, '"')
+                  .replace(/&#x27;/g, "'")
+                  .replace(/&#39;/g, "'")
+                  .replace(/&nbsp;/g, " ")
+                  .trim();
+              const ddgResults: Array<{ title: string; url: string; description: string }> = [];
+              for (let i = 1; i < blocks.length && ddgResults.length < 5; i++) {
+                const b = blocks[i];
+                const tm = b.match(
+                  /<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/,
+                );
+                const sm = b.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
+                if (!tm) {
+                  continue;
+                }
+                const title = decode(tm[2]).slice(0, 100);
+                if (!title) {
+                  continue;
+                }
+                const url = tm[1] || "";
+                const snippet = sm ? decode(sm[1]).slice(0, 200) : "";
+                ddgResults.push({ title, url, description: snippet });
+              }
+              if (ddgResults.length > 0) {
+                return jsonResult({ results: ddgResults, provider: "ddg-fallback" });
+              }
+            }
+          } catch {
+            // DDG fallback failed silently, fall through to missing key error
+          }
+        }
         return jsonResult(missingSearchKeyPayload(provider));
       }
 
