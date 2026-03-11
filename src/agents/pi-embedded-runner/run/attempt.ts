@@ -2123,6 +2123,216 @@ export async function runEmbeddedAttempt(
         );
       }
 
+      // [Tianjun] For non-local models: hide web_search tool when no BRAVE_API_KEY
+      // to prevent useless "missing API key" errors shown to user
+      if (params.provider !== "local" && !process.env.BRAVE_API_KEY) {
+        const innerHideTool = activeSession.agent.streamFn;
+        activeSession.agent.streamFn = (model, context, options) => {
+          if (context.tools) {
+            context = { ...context, tools: context.tools.filter((t) => t.name !== "web_search") };
+          }
+          return innerHideTool(model, context, options);
+        };
+      }
+
+      // [Tianjun] Auto-search-inject: for local models, detect real-time queries and inject
+      // search results as fake assistant→user conversation turns so Qwen treats them as facts
+      if (params.provider === "local") {
+        const innerAutoSearch = activeSession.agent.streamFn;
+        activeSession.agent.streamFn = async (model, context, options) => {
+          const AS_MARKER = "[auto-search-injected]";
+          // Guard: only run once per user turn
+          if (
+            context.messages?.length &&
+            !context.messages.some(
+              (m) => m.role === "assistant" && JSON.stringify(m.content).includes(AS_MARKER),
+            )
+          ) {
+            const extractText = (msg: { content: unknown }): string => {
+              const c = msg?.content;
+              if (typeof c === "string") {
+                return c.slice(0, 300);
+              }
+              if (Array.isArray(c)) {
+                return c
+                  .map((b: Record<string, unknown>) =>
+                    String(
+                      (b as { text?: string }).text || (b as { content?: string }).content || "",
+                    ),
+                  )
+                  .join(" ")
+                  .slice(0, 300);
+              }
+              return "";
+            };
+            const sysPrefix =
+              /^(A new session|Conversation info|Session |Heartbeat|System:|The user (dis)?connected|\[system\])/i;
+            const lastUserMsg = [...context.messages].toReversed().find((m) => {
+              if (m.role !== "user") {
+                return false;
+              }
+              const txt = extractText(m);
+              return txt.length > 0 && !sysPrefix.test(txt);
+            });
+            const userText = lastUserMsg ? extractText(lastUserMsg) : "";
+            if (userText.length > 2) {
+              const realtimeRe =
+                /天气|气温|温度|多少度|几度|预报|weather|forecast|新闻|头条|最新消息|最新.*(?:情况|进展|动态)|latest news|今[天日].*(?:发生|怎么|情况|进展)|最近.*(?:新闻|消息|事件|动态)|战争|冲突|开战|军事打击|汇率|exchange rate|股[票价]|stock|比[分赛].*(?:结果|比分)|price|价格|多少钱|油价|金价|房价/i;
+              if (realtimeRe.test(userText)) {
+                let searchQuery = userText
+                  .replace(/^\[.*?\]\s*/, "")
+                  .replace(/[？?！!。，,\s]+$/g, "")
+                  .slice(0, 80);
+                const isWeather = /天气|气温|温度|多少度|几度|预报|weather|forecast/i.test(
+                  searchQuery,
+                );
+                if (isWeather && !/天气预报/.test(searchQuery)) {
+                  searchQuery += " 天气预报";
+                }
+                if (searchQuery.length > 1) {
+                  log.debug(`[auto-search] query: "${searchQuery}"`);
+                  let results: string[] = [];
+                  // Serper (Google) first
+                  const serperKey = process.env.SERPER_API_KEY;
+                  if (serperKey) {
+                    try {
+                      const sResp = await fetch("https://google.serper.dev/search", {
+                        method: "POST",
+                        headers: {
+                          "X-API-KEY": serperKey,
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                          q: searchQuery,
+                          num: 5,
+                          hl: "zh-cn",
+                          gl: "cn",
+                        }),
+                        signal: AbortSignal.timeout(8_000),
+                      });
+                      if (sResp.ok) {
+                        const sData = (await sResp.json()) as {
+                          organic?: Array<{
+                            title?: string;
+                            snippet?: string;
+                            date?: string;
+                          }>;
+                        };
+                        results = (sData.organic || [])
+                          .slice(0, 5)
+                          .map(
+                            (r) =>
+                              `- ${r.title || "untitled"}: ${(r.snippet || "").slice(0, 200)}${r.date ? ` (${r.date})` : ""}`,
+                          );
+                        if (results.length > 0) {
+                          log.debug(`[auto-search] serper: ${results.length} results`);
+                        }
+                      } else {
+                        log.debug(`[auto-search] serper HTTP ${sResp.status}`);
+                      }
+                    } catch (e: unknown) {
+                      log.debug(
+                        `[auto-search] serper failed: ${e instanceof Error ? e.message : String(e)}`,
+                      );
+                    }
+                  }
+                  // DDG fallback
+                  if (results.length === 0) {
+                    try {
+                      const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
+                      const ddgResp = await fetch(ddgUrl, {
+                        headers: {
+                          "User-Agent":
+                            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36",
+                        },
+                        signal: AbortSignal.timeout(10_000),
+                      });
+                      if (ddgResp.ok && ddgResp.status !== 202) {
+                        const html = await ddgResp.text();
+                        const blocks = html.split(/class="result results_links/);
+                        const decode = (s: string) =>
+                          s
+                            .replace(/<[^>]+>/g, "")
+                            .replace(/&amp;/g, "&")
+                            .replace(/&lt;/g, "<")
+                            .replace(/&gt;/g, ">")
+                            .replace(/&quot;/g, '"')
+                            .replace(/&#x27;/g, "'")
+                            .replace(/&#39;/g, "'")
+                            .replace(/&nbsp;/g, " ")
+                            .trim();
+                        for (let i = 1; i < blocks.length && results.length < 5; i++) {
+                          const b = blocks[i];
+                          const tm = b.match(
+                            /<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/,
+                          );
+                          const sm = b.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
+                          if (!tm) {
+                            continue;
+                          }
+                          const title = decode(tm[2]).slice(0, 100);
+                          if (!title) {
+                            continue;
+                          }
+                          const snippet = sm ? decode(sm[1]).slice(0, 200) : "";
+                          results.push(`- ${title}: ${snippet}`);
+                        }
+                        if (results.length > 0) {
+                          log.debug(`[auto-search] ddg: ${results.length} results`);
+                        }
+                      }
+                    } catch (e: unknown) {
+                      log.debug(
+                        `[auto-search] ddg failed: ${e instanceof Error ? e.message : String(e)}`,
+                      );
+                    }
+                  }
+                  // Inject as fake assistant→user conversation turn
+                  if (results.length > 0) {
+                    const searchResultText = `${AS_MARKER}\n我帮你搜索了一下，以下是Google最新搜索结果：\n\n${results.join("\n")}\n\n请你根据这些最新搜索结果来回答。`;
+                    const userFollowUp =
+                      extractText(lastUserMsg!) +
+                      "\n\n（请根据上面的搜索结果回答，搜索结果是最新的实时信息，比你的记忆更准确）";
+                    log.debug(`[auto-search] injected ${results.length} results`);
+                    const msgs = [...context.messages];
+                    msgs.push({
+                      role: "assistant",
+                      content: [{ type: "text" as const, text: searchResultText }],
+                      api: model.api,
+                      provider: model.provider,
+                      model: model.id,
+                      stopReason: "stop" as const,
+                      usage: {
+                        input: 0,
+                        output: 0,
+                        cacheRead: 0,
+                        cacheWrite: 0,
+                        totalTokens: 0,
+                        cost: {
+                          input: 0,
+                          output: 0,
+                          cacheRead: 0,
+                          cacheWrite: 0,
+                          total: 0,
+                        },
+                      },
+                      timestamp: Date.now(),
+                    });
+                    msgs.push({
+                      role: "user" as const,
+                      content: userFollowUp,
+                      timestamp: Date.now(),
+                    });
+                    context = { ...context, messages: msgs };
+                  }
+                }
+              }
+            }
+          }
+          return innerAutoSearch(model, context, options);
+        };
+      }
+
       if (anthropicPayloadLogger) {
         activeSession.agent.streamFn = anthropicPayloadLogger.wrapStreamFn(
           activeSession.agent.streamFn,
