@@ -419,6 +419,40 @@ export function buildAgentSystemPrompt(params: {
     return "You are a personal assistant running inside OpenClaw.";
   }
 
+  // [Tianjun] Slim system prompt for local models (dramatically reduces TTFT)
+  const currentModel = runtimeInfo?.model ?? runtimeInfo?.defaultModel ?? "";
+  if (currentModel.startsWith("local/")) {
+    const slimToolLines = toolLines.length > 0 ? toolLines.join("\n") : "";
+    const slimLines = [
+      "You are a personal assistant running inside OpenClaw (Tianjun edition).",
+      "",
+      "## Tools",
+      slimToolLines,
+      "",
+      "## Workspace",
+      `Working directory: ${displayWorkspaceDir}`,
+      "",
+      "## Rules",
+      "- Use tools directly, minimal narration.",
+      "- Be concise. Answer in the user's language.",
+      "- For file ops: read before edit, prefer edit over write.",
+      "- For shell: use exec tool, not curl for APIs.",
+      "",
+    ];
+    // Append context files if present
+    if (validContextFiles.length > 0) {
+      slimLines.push("# Project Context", "");
+      for (const file of validContextFiles) {
+        slimLines.push(`## ${file.path}`, "", file.content, "");
+      }
+    }
+    slimLines.push(
+      "## Runtime",
+      buildRuntimeLine(runtimeInfo, runtimeChannel, runtimeCapabilities, params.defaultThinkLevel),
+    );
+    return slimLines.filter(Boolean).join("\n");
+  }
+
   const lines = [
     "You are a personal assistant running inside OpenClaw.",
     "",
