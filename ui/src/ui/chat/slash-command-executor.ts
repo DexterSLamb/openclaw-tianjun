@@ -300,13 +300,21 @@ async function executeKill(
         client.request<{ aborted?: boolean }>("chat.abort", { sessionKey: key }),
       ),
     );
+    const rejected = results.filter((entry) => entry.status === "rejected");
     const successCount = results.filter(
       (entry) =>
         entry.status === "fulfilled" && (entry.value as { aborted?: boolean })?.aborted !== false,
     ).length;
     if (successCount === 0) {
-      const firstFailure = results.find((entry) => entry.status === "rejected");
-      throw firstFailure?.reason ?? new Error("abort failed");
+      if (rejected.length === 0) {
+        return {
+          content:
+            target.toLowerCase() === "all"
+              ? "No active sub-agent runs to abort."
+              : `No active runs matched \`${target}\`.`,
+        };
+      }
+      throw rejected[0]?.reason ?? new Error("abort failed");
     }
 
     if (target.toLowerCase() === "all") {
@@ -340,7 +348,8 @@ function resolveKillTargets(
   }
 
   const keys = new Set<string>();
-  const currentParsed = parseAgentSessionKey(currentSessionKey);
+  const normalizedCurrentSessionKey = currentSessionKey.trim().toLowerCase();
+  const currentParsed = parseAgentSessionKey(normalizedCurrentSessionKey);
   for (const session of sessions) {
     const key = session?.key?.trim();
     if (!key || !isSubagentSessionKey(key)) {
@@ -348,12 +357,15 @@ function resolveKillTargets(
     }
     const normalizedKey = key.toLowerCase();
     const parsed = parseAgentSessionKey(normalizedKey);
-    // For "all", only match subagents belonging to the current session's agent
-    const belongsToCurrentSession =
-      currentParsed?.agentId != null && parsed?.agentId === currentParsed.agentId;
+    const belongsToCurrentSession = isWithinCurrentSessionSubtree(
+      normalizedKey,
+      normalizedCurrentSessionKey,
+      currentParsed?.agentId,
+      parsed?.agentId,
+    );
     const isMatch =
       (normalizedTarget === "all" && belongsToCurrentSession) ||
-      normalizedKey === normalizedTarget ||
+      (belongsToCurrentSession && normalizedKey === normalizedTarget) ||
       (belongsToCurrentSession &&
         ((parsed?.agentId ?? "") === normalizedTarget ||
           normalizedKey.endsWith(`:subagent:${normalizedTarget}`) ||
@@ -363,6 +375,24 @@ function resolveKillTargets(
     }
   }
   return [...keys];
+}
+
+function isWithinCurrentSessionSubtree(
+  candidateSessionKey: string,
+  currentSessionKey: string,
+  currentAgentId: string | undefined,
+  candidateAgentId: string | undefined,
+): boolean {
+  if (!currentAgentId || candidateAgentId !== currentAgentId) {
+    return false;
+  }
+  if (!isSubagentSessionKey(currentSessionKey)) {
+    return true;
+  }
+  return (
+    candidateSessionKey === currentSessionKey ||
+    candidateSessionKey.startsWith(`${currentSessionKey}:subagent:`)
+  );
 }
 
 function fmtTokens(n: number): string {
