@@ -410,6 +410,15 @@ export type {
   SessionUsageTimeSeries,
 } from "./usage-types.ts";
 
+export type CronRunStatus = "ok" | "error" | "skipped";
+export type CronDeliveryStatus = "delivered" | "not-delivered" | "unknown" | "not-requested";
+export type CronJobsEnabledFilter = "all" | "enabled" | "disabled";
+export type CronJobsSortBy = "nextRunAtMs" | "updatedAtMs" | "name";
+export type CronRunScope = "job" | "all";
+export type CronRunsStatusValue = CronRunStatus;
+export type CronRunsStatusFilter = "all" | CronRunStatus;
+export type CronSortDir = "asc" | "desc";
+
 export type CronSchedule =
   | { kind: "at"; at: string }
   | { kind: "every"; everyMs: number; anchorMs?: number }
@@ -424,9 +433,15 @@ export type CronPayload =
       kind: "agentTurn";
       message: string;
       model?: string;
+      fallbacks?: string[];
       thinking?: string;
       timeoutSeconds?: number;
+      allowUnsafeExternalContent?: boolean;
       lightContext?: boolean;
+      deliver?: boolean;
+      channel?: string;
+      to?: string;
+      bestEffortDeliver?: boolean;
     };
 
 export type CronDelivery = {
@@ -458,9 +473,15 @@ export type CronJobState = {
   nextRunAtMs?: number;
   runningAtMs?: number;
   lastRunAtMs?: number;
-  lastStatus?: "ok" | "error" | "skipped";
+  lastRunStatus?: CronRunStatus;
+  lastStatus?: CronRunStatus;
   lastError?: string;
+  lastErrorReason?: string;
   lastDurationMs?: number;
+  consecutiveErrors?: number;
+  lastDelivered?: boolean;
+  lastDeliveryStatus?: CronDeliveryStatus;
+  lastDeliveryError?: string;
   lastFailureAlertAtMs?: number;
 };
 
@@ -484,12 +505,46 @@ export type CronStatus = {
 export type CronRunLogEntry = {
   ts: number;
   jobId: string;
-  status: "ok" | "error" | "skipped";
+  action?: "finished";
+  status?: CronRunStatus;
   durationMs?: number;
   error?: string;
   summary?: string;
+  delivered?: boolean;
+  deliveryStatus?: CronDeliveryStatus;
+  deliveryError?: string;
   sessionId?: string;
   sessionKey?: string;
+  runAtMs?: number;
+  nextRunAtMs?: number;
+  model?: string;
+  provider?: string;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+    cache_read_tokens?: number;
+    cache_write_tokens?: number;
+  };
+  jobName?: string;
+};
+
+export type CronJobsListResult = {
+  jobs: CronJob[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+  nextOffset?: number | null;
+  hasMore?: boolean;
+};
+
+export type CronRunsResult = {
+  entries: CronRunLogEntry[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+  nextOffset?: number | null;
+  hasMore?: boolean;
 };
 
 export type SkillsStatusConfigCheck = {

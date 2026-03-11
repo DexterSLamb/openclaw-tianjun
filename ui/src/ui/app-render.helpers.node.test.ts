@@ -315,6 +315,10 @@ describe("isCronSessionKey", () => {
 
 describe("resolveSessionOptionGroups", () => {
   const sessions: SessionsListResult = {
+    ts: 0,
+    path: "",
+    count: 3,
+    defaults: { model: null, contextTokens: null },
     sessions: [
       row({ key: "agent:main:main" }),
       row({ key: "agent:main:cron:daily" }),

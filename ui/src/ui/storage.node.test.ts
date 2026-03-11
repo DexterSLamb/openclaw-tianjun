@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { UiSettings } from "./storage.ts";
 
 function createStorageMock(): Storage {
   const store = new Map<string, string>();
@@ -62,7 +63,7 @@ function expectedGatewayUrl(basePath: string): string {
   return `${proto}://${location.host}${basePath}`;
 }
 
-function createSettings(overrides: Record<string, unknown> = {}) {
+function createSettings(overrides: Partial<UiSettings> = {}): UiSettings {
   return {
     gatewayUrl: "wss://gateway.example:8443/openclaw",
     token: "",

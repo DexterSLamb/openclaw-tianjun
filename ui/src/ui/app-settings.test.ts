@@ -34,8 +34,6 @@ const createHost = (tab: Tab): SettingsHost => ({
   eventLog: [],
   eventLogBuffer: [],
   basePath: "",
-  themeMedia: null,
-  themeMediaHandler: null,
   logsPollInterval: null,
   debugPollInterval: null,
   systemThemeCleanup: null,

@@ -277,9 +277,10 @@ function resolveAssistantAvatarUrl(state: AppViewState): string | undefined {
 }
 
 export function renderApp(state: AppViewState) {
+  const updatableState = state as AppViewState & { requestUpdate?: () => void };
   const requestHostUpdate =
-    typeof (state as { requestUpdate?: unknown }).requestUpdate === "function"
-      ? () => (state as { requestUpdate: () => void }).requestUpdate()
+    typeof updatableState.requestUpdate === "function"
+      ? () => updatableState.requestUpdate?.()
       : undefined;
 
   // Gate: require successful gateway connection before showing the dashboard.
@@ -757,6 +758,7 @@ export function renderApp(state: AppViewState) {
                 error: state.cronError,
                 busy: state.cronBusy,
                 form: state.cronForm,
+                editingJobId: state.cronEditingJobId,
                 channels: state.channelsSnapshot?.channelMeta?.length
                   ? state.channelsSnapshot.channelMeta.map((entry) => entry.id)
                   : (state.channelsSnapshot?.channelOrder ?? []),

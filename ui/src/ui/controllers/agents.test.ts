@@ -204,7 +204,8 @@ describe("loadToolsCatalog", () => {
     expect(state.toolsCatalogResult).toEqual(replacementPayload);
     expect(state.toolsCatalogLoading).toBe(false);
 
-    resolveMain?.({
+    expect(resolveMain).not.toBeNull();
+    resolveMain!({
       agentId: "main",
       profiles: [{ id: "full", label: "Full" }],
       groups: [],
