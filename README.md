@@ -1,15 +1,24 @@
 # 🦞 OpenClaw — Personal AI Assistant (Tianjun Fork)
 
 > 本 Fork 针对本地小参数模型（如 Qwen3 30B、GPT-OSS 20B）进行优化，大幅精简提示词和工具定义以降低输入 token 开销，并补充自动搜索注入等能力弥补小模型的不足。当前部署在后摩智能 M50 NPU 上验证通过。
->
+
+## Fork 改动
+
+1. **本地模型提示词优化** — 精简 system prompt，首字响应时间从 25-40 秒降到约 350 毫秒
+2. **工具精简** — 只保留 19 个常用工具，裁剪参数和描述，减少输入 token 数量
+3. **实时搜索能力** — 本地模型自动检测实时问题并搜索（Google Serper 优先，DuckDuckGo 备用），搜索结果注入对话防止模型编造答案；云端模型无搜索密钥时隐藏搜索工具避免报错
+4. **网络安全调整** — 放行内网测试地址，拦截云元数据地址
+
+---
+
 > This fork is optimised for local small-parameter models (e.g. Qwen3 30B, GPT-OSS 20B). It drastically slims down prompts and tool definitions to reduce input token overhead, and adds auto-search injection to compensate for the limitations of smaller models. Currently validated on the Houmo M50 NPU.
 
-## Fork 改动 / Changelog
+## Changelog
 
-1. **本地模型提示词优化 / Prompt optimisation** — 精简 system prompt，首字响应时间从 25-40 秒降到约 350 毫秒 | Slimmed system prompt, TTFT reduced from 25–40s to ~350ms
-2. **工具精简 / Tool slimming** — 只保留 19 个常用工具，裁剪参数和描述，减少输入 token 数量 | Whitelisted 19 essential tools with trimmed parameters and descriptions to cut token usage
-3. **实时搜索能力 / Real-time search** — 本地模型自动检测实时问题并搜索（Google Serper 优先，DuckDuckGo 备用），搜索结果注入对话防止模型编造答案；云端模型无搜索密钥时隐藏搜索工具避免报错 | Auto-detects real-time queries for local models and searches via Google Serper (with DuckDuckGo fallback), injecting results into the conversation to prevent hallucination; hides the search tool from cloud models when no API key is present
-4. **网络安全调整 / Network security** — 放行内网测试地址，拦截云元数据地址 | Permits RFC 2544 test addresses, blocks cloud metadata endpoints
+1. **Prompt optimisation** — Slimmed system prompt, TTFT reduced from 25–40s to ~350ms
+2. **Tool slimming** — Whitelisted 19 essential tools with trimmed parameters and descriptions to cut token usage
+3. **Real-time search** — Auto-detects real-time queries for local models and searches via Google Serper (with DuckDuckGo fallback), injecting results into the conversation to prevent hallucination; hides the search tool from cloud models when no API key is present
+4. **Network security** — Permits RFC 2544 test addresses, blocks cloud metadata endpoints
 
 ---
 
