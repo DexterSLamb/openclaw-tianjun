@@ -1,6 +1,6 @@
 # 🦞 OpenClaw — Personal AI Assistant (Tianjun Fork)
 
-> 本 Fork 针对本地小参数模型（如 Qwen3 30B）进行优化，大幅精简提示词和工具定义以降低输入 token 开销，并补充自动搜索注入等能力弥补小模型的不足。当前部署在后摩智能 M50 NPU 上验证通过。
+> 本 Fork 针对本地小参数模型（如 Qwen3 30B、GPT-OSS 20B）进行优化，大幅精简提示词和工具定义以降低输入 token 开销，并补充自动搜索注入等能力弥补小模型的不足。当前部署在后摩智能 M50 NPU 上验证通过。
 
 ## Fork 改动
 
