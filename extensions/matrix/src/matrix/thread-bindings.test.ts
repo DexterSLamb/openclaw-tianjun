@@ -234,6 +234,78 @@ describe("matrix thread bindings", () => {
     );
   });
 
+  it("reloads persisted bindings after the Matrix access token changes", async () => {
+    const initialAuth = {
+      ...auth,
+      accessToken: "token-old",
+    };
+    const rotatedAuth = {
+      ...auth,
+      accessToken: "token-new",
+    };
+
+    const initialManager = await createMatrixThreadBindingManager({
+      accountId: "ops",
+      auth: initialAuth,
+      client: {} as never,
+      idleTimeoutMs: 24 * 60 * 60 * 1000,
+      maxAgeMs: 0,
+      enableSweeper: false,
+    });
+
+    await getSessionBindingService().bind({
+      targetSessionKey: "agent:ops:subagent:child",
+      targetKind: "subagent",
+      conversation: {
+        channel: "matrix",
+        accountId: "ops",
+        conversationId: "$thread",
+        parentConversationId: "!room:example",
+      },
+      placement: "current",
+    });
+
+    initialManager.stop();
+    resetMatrixThreadBindingsForTests();
+    __testing.resetSessionBindingAdaptersForTests();
+
+    await createMatrixThreadBindingManager({
+      accountId: "ops",
+      auth: rotatedAuth,
+      client: {} as never,
+      idleTimeoutMs: 24 * 60 * 60 * 1000,
+      maxAgeMs: 0,
+      enableSweeper: false,
+    });
+
+    expect(
+      getSessionBindingService().resolveByConversation({
+        channel: "matrix",
+        accountId: "ops",
+        conversationId: "$thread",
+        parentConversationId: "!room:example",
+      }),
+    ).toMatchObject({
+      targetSessionKey: "agent:ops:subagent:child",
+    });
+
+    const initialBindingsPath = path.join(
+      resolveMatrixStoragePaths({
+        ...initialAuth,
+        env: process.env,
+      }).rootDir,
+      "thread-bindings.json",
+    );
+    const rotatedBindingsPath = path.join(
+      resolveMatrixStoragePaths({
+        ...rotatedAuth,
+        env: process.env,
+      }).rootDir,
+      "thread-bindings.json",
+    );
+    expect(rotatedBindingsPath).toBe(initialBindingsPath);
+  });
+
   it("updates lifecycle windows by session key and refreshes activity", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-06T10:00:00.000Z"));

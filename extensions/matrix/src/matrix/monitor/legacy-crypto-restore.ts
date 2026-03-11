@@ -1,12 +1,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import {
-  readJsonFileWithFallback,
-  resolveMatrixAccountStorageRoot,
-  writeJsonFileAtomically,
-} from "openclaw/plugin-sdk/matrix";
+import { readJsonFileWithFallback, writeJsonFileAtomically } from "openclaw/plugin-sdk/matrix";
 import { getMatrixRuntime } from "../../runtime.js";
+import { resolveMatrixStoragePaths } from "../client/storage.js";
 import type { MatrixAuth } from "../client/types.js";
 import type { MatrixClient } from "../sdk.js";
 
@@ -51,12 +48,12 @@ async function resolvePendingMigrationStatePath(params: {
   statePath: string;
   value: MatrixLegacyCryptoMigrationState | null;
 }> {
-  const { rootDir } = resolveMatrixAccountStorageRoot({
-    stateDir: params.stateDir,
+  const { rootDir } = resolveMatrixStoragePaths({
     homeserver: params.auth.homeserver,
     userId: params.auth.userId,
     accessToken: params.auth.accessToken,
     accountId: params.auth.accountId,
+    stateDir: params.stateDir,
   });
   const directStatePath = path.join(rootDir, "legacy-crypto-migration.json");
   const { value: directValue } =

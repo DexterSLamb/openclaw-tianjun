@@ -11,6 +11,10 @@ import type { MatrixStoragePaths } from "./types.js";
 
 export const DEFAULT_ACCOUNT_KEY = "default";
 const STORAGE_META_FILENAME = "storage-meta.json";
+const THREAD_BINDINGS_FILENAME = "thread-bindings.json";
+const LEGACY_CRYPTO_MIGRATION_FILENAME = "legacy-crypto-migration.json";
+const RECOVERY_KEY_FILENAME = "recovery-key.json";
+const IDB_SNAPSHOT_FILENAME = "crypto-idb-snapshot.json";
 
 type LegacyMoveRecord = {
   sourcePath: string;
@@ -27,21 +31,120 @@ function resolveLegacyStoragePaths(env: NodeJS.ProcessEnv = process.env): {
   return { storagePath: legacy.storagePath, cryptoPath: legacy.cryptoPath };
 }
 
+function scoreStorageRoot(rootDir: string): number {
+  let score = 0;
+  if (fs.existsSync(path.join(rootDir, "bot-storage.json"))) {
+    score += 8;
+  }
+  if (fs.existsSync(path.join(rootDir, "crypto"))) {
+    score += 8;
+  }
+  if (fs.existsSync(path.join(rootDir, THREAD_BINDINGS_FILENAME))) {
+    score += 4;
+  }
+  if (fs.existsSync(path.join(rootDir, LEGACY_CRYPTO_MIGRATION_FILENAME))) {
+    score += 3;
+  }
+  if (fs.existsSync(path.join(rootDir, RECOVERY_KEY_FILENAME))) {
+    score += 2;
+  }
+  if (fs.existsSync(path.join(rootDir, IDB_SNAPSHOT_FILENAME))) {
+    score += 2;
+  }
+  if (fs.existsSync(path.join(rootDir, STORAGE_META_FILENAME))) {
+    score += 1;
+  }
+  return score;
+}
+
+function resolveStorageRootMtimeMs(rootDir: string): number {
+  try {
+    return fs.statSync(rootDir).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+function resolvePreferredMatrixStorageRoot(params: {
+  canonicalRootDir: string;
+  canonicalTokenHash: string;
+}): {
+  rootDir: string;
+  tokenHash: string;
+} {
+  const parentDir = path.dirname(params.canonicalRootDir);
+  const bestCurrentScore = scoreStorageRoot(params.canonicalRootDir);
+  let best = {
+    rootDir: params.canonicalRootDir,
+    tokenHash: params.canonicalTokenHash,
+    score: bestCurrentScore,
+    mtimeMs: resolveStorageRootMtimeMs(params.canonicalRootDir),
+  };
+
+  let siblingEntries: fs.Dirent[] = [];
+  try {
+    siblingEntries = fs.readdirSync(parentDir, { withFileTypes: true });
+  } catch {
+    return {
+      rootDir: best.rootDir,
+      tokenHash: best.tokenHash,
+    };
+  }
+
+  for (const entry of siblingEntries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    if (entry.name === params.canonicalTokenHash) {
+      continue;
+    }
+    const candidateRootDir = path.join(parentDir, entry.name);
+    const candidateScore = scoreStorageRoot(candidateRootDir);
+    if (candidateScore <= 0) {
+      continue;
+    }
+    const candidateMtimeMs = resolveStorageRootMtimeMs(candidateRootDir);
+    if (
+      candidateScore > best.score ||
+      (best.rootDir !== params.canonicalRootDir &&
+        candidateScore === best.score &&
+        candidateMtimeMs > best.mtimeMs)
+    ) {
+      best = {
+        rootDir: candidateRootDir,
+        tokenHash: entry.name,
+        score: candidateScore,
+        mtimeMs: candidateMtimeMs,
+      };
+    }
+  }
+
+  return {
+    rootDir: best.rootDir,
+    tokenHash: best.tokenHash,
+  };
+}
+
 export function resolveMatrixStoragePaths(params: {
   homeserver: string;
   userId: string;
   accessToken: string;
   accountId?: string | null;
   env?: NodeJS.ProcessEnv;
+  stateDir?: string;
 }): MatrixStoragePaths {
   const env = params.env ?? process.env;
-  const stateDir = getMatrixRuntime().state.resolveStateDir(env, os.homedir);
-  const { rootDir, accountKey, tokenHash } = resolveMatrixAccountStorageRoot({
+  const stateDir = params.stateDir ?? getMatrixRuntime().state.resolveStateDir(env, os.homedir);
+  const canonical = resolveMatrixAccountStorageRoot({
     stateDir,
     homeserver: params.homeserver,
     userId: params.userId,
     accessToken: params.accessToken,
     accountId: params.accountId,
+  });
+  const { rootDir, tokenHash } = resolvePreferredMatrixStorageRoot({
+    canonicalRootDir: canonical.rootDir,
+    canonicalTokenHash: canonical.tokenHash,
   });
   return {
     rootDir,
@@ -49,8 +152,8 @@ export function resolveMatrixStoragePaths(params: {
     cryptoPath: path.join(rootDir, "crypto"),
     metaPath: path.join(rootDir, STORAGE_META_FILENAME),
     recoveryKeyPath: path.join(rootDir, "recovery-key.json"),
-    idbSnapshotPath: path.join(rootDir, "crypto-idb-snapshot.json"),
-    accountKey,
+    idbSnapshotPath: path.join(rootDir, IDB_SNAPSHOT_FILENAME),
+    accountKey: canonical.accountKey,
     tokenHash,
   };
 }

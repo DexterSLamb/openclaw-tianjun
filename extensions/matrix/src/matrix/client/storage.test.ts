@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { resolveMatrixAccountStorageRoot } from "openclaw/plugin-sdk/matrix";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setMatrixRuntime } from "../../runtime.js";
 import { maybeMigrateLegacyStorage, resolveMatrixStoragePaths } from "./storage.js";
@@ -152,5 +153,62 @@ describe("matrix client storage paths", () => {
     expect(fs.existsSync(path.join(legacyRoot, "bot-storage.json"))).toBe(true);
     expect(fs.existsSync(storagePaths.storagePath)).toBe(false);
     expect(fs.existsSync(path.join(legacyRoot, "crypto"))).toBe(true);
+  });
+
+  it("reuses an existing token-hash storage root after the access token changes", () => {
+    const stateDir = setupStateDir();
+    const oldStoragePaths = resolveMatrixStoragePaths({
+      homeserver: "https://matrix.example.org",
+      userId: "@bot:example.org",
+      accessToken: "secret-token-old",
+      env: {},
+    });
+    fs.mkdirSync(oldStoragePaths.rootDir, { recursive: true });
+    fs.writeFileSync(oldStoragePaths.storagePath, '{"legacy":true}');
+
+    const rotatedStoragePaths = resolveMatrixStoragePaths({
+      homeserver: "https://matrix.example.org",
+      userId: "@bot:example.org",
+      accessToken: "secret-token-new",
+      env: {},
+    });
+
+    expect(rotatedStoragePaths.rootDir).toBe(oldStoragePaths.rootDir);
+    expect(rotatedStoragePaths.tokenHash).toBe(oldStoragePaths.tokenHash);
+    expect(rotatedStoragePaths.storagePath).toBe(oldStoragePaths.storagePath);
+  });
+
+  it("prefers a populated older token-hash storage root over a newer empty root", () => {
+    const stateDir = setupStateDir();
+    const oldStoragePaths = resolveMatrixStoragePaths({
+      homeserver: "https://matrix.example.org",
+      userId: "@bot:example.org",
+      accessToken: "secret-token-old",
+      env: {},
+    });
+    fs.mkdirSync(oldStoragePaths.rootDir, { recursive: true });
+    fs.writeFileSync(oldStoragePaths.storagePath, '{"legacy":true}');
+
+    const newerCanonicalPaths = resolveMatrixAccountStorageRoot({
+      stateDir,
+      homeserver: "https://matrix.example.org",
+      userId: "@bot:example.org",
+      accessToken: "secret-token-new",
+    });
+    fs.mkdirSync(newerCanonicalPaths.rootDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(newerCanonicalPaths.rootDir, "storage-meta.json"),
+      JSON.stringify({ accessTokenHash: newerCanonicalPaths.tokenHash }, null, 2),
+    );
+
+    const resolvedPaths = resolveMatrixStoragePaths({
+      homeserver: "https://matrix.example.org",
+      userId: "@bot:example.org",
+      accessToken: "secret-token-new",
+      env: {},
+    });
+
+    expect(resolvedPaths.rootDir).toBe(oldStoragePaths.rootDir);
+    expect(resolvedPaths.tokenHash).toBe(oldStoragePaths.tokenHash);
   });
 });
