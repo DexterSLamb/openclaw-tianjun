@@ -3,6 +3,8 @@
  * Calls gateway RPC methods and returns formatted results.
  */
 
+import type { ModelCatalogEntry } from "../../../../src/agents/model-catalog.js";
+import type { HealthSummary } from "../../../../src/commands/health.js";
 import {
   DEFAULT_AGENT_ID,
   DEFAULT_MAIN_KEY,
@@ -10,13 +12,7 @@ import {
   parseAgentSessionKey,
 } from "../../../../src/routing/session-key.js";
 import type { GatewayBrowserClient } from "../gateway.ts";
-import type {
-  AgentsListResult,
-  GatewaySessionRow,
-  HealthSummary,
-  ModelCatalogEntry,
-  SessionsListResult,
-} from "../types.ts";
+import type { AgentsListResult, GatewaySessionRow, SessionsListResult } from "../types.ts";
 import { SLASH_COMMANDS } from "./slash-commands.ts";
 
 export type SlashCommandResult = {
