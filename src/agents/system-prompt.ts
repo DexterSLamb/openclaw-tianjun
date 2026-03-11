@@ -419,6 +419,12 @@ export function buildAgentSystemPrompt(params: {
     return "You are a personal assistant running inside OpenClaw.";
   }
 
+  // [Tianjun] Prepare context files early (needed by both slim and full prompts)
+  const contextFiles = params.contextFiles ?? [];
+  const validContextFiles = contextFiles.filter(
+    (file) => typeof file.path === "string" && file.path.trim().length > 0,
+  );
+
   // [Tianjun] Slim system prompt for local models (dramatically reduces TTFT)
   const currentModel = runtimeInfo?.model ?? runtimeInfo?.defaultModel ?? "";
   if (currentModel.startsWith("local/")) {
@@ -647,12 +653,8 @@ export function buildAgentSystemPrompt(params: {
     lines.push("## Reasoning Format", reasoningHint, "");
   }
 
-  const contextFiles = params.contextFiles ?? [];
   const bootstrapTruncationWarningLines = (params.bootstrapTruncationWarningLines ?? []).filter(
     (line) => line.trim().length > 0,
-  );
-  const validContextFiles = contextFiles.filter(
-    (file) => typeof file.path === "string" && file.path.trim().length > 0,
   );
   if (validContextFiles.length > 0 || bootstrapTruncationWarningLines.length > 0) {
     lines.push("# Project Context", "");
