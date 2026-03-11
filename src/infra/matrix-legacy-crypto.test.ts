@@ -258,4 +258,41 @@ describe("matrix legacy encrypted-state migration", () => {
       },
     );
   });
+
+  it("requires channels.matrix.defaultAccount before preparing flat legacy crypto for one of multiple accounts", async () => {
+    await withTempHome(async (home) => {
+      const stateDir = path.join(home, ".openclaw");
+      writeFile(
+        path.join(stateDir, "matrix", "crypto", "bot-sdk.json"),
+        JSON.stringify({ deviceId: "DEVICEOPS" }),
+      );
+
+      const cfg: OpenClawConfig = {
+        channels: {
+          matrix: {
+            accounts: {
+              ops: {
+                homeserver: "https://matrix.example.org",
+                userId: "@ops-bot:example.org",
+                accessToken: "tok-ops",
+              },
+              alerts: {
+                homeserver: "https://matrix.example.org",
+                userId: "@alerts-bot:example.org",
+                accessToken: "tok-alerts",
+              },
+            },
+          },
+        },
+      };
+
+      const detection = detectLegacyMatrixCrypto({ cfg, env: process.env });
+      expect(detection.plans).toHaveLength(0);
+      expect(detection.warnings).toContain(
+        "Legacy Matrix encrypted state detected at " +
+          path.join(stateDir, "matrix", "crypto") +
+          ', but multiple Matrix accounts are configured and channels.matrix.defaultAccount is not set. Set "channels.matrix.defaultAccount" to the intended target account before rerunning "openclaw doctor --fix" or restarting the gateway.',
+      );
+    });
+  });
 });

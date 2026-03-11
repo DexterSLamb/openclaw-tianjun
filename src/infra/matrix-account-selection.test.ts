@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
 import {
   findMatrixAccountEntry,
+  requiresExplicitMatrixDefaultAccount,
   resolveConfiguredMatrixAccountIds,
   resolveMatrixDefaultOrOnlyAccountId,
 } from "./matrix-account-selection.js";
@@ -36,6 +37,22 @@ describe("matrix account selection", () => {
     };
 
     expect(resolveMatrixDefaultOrOnlyAccountId(cfg)).toBe("team-ops");
+    expect(requiresExplicitMatrixDefaultAccount(cfg)).toBe(false);
+  });
+
+  it("requires an explicit default when multiple Matrix accounts exist without one", () => {
+    const cfg: OpenClawConfig = {
+      channels: {
+        matrix: {
+          accounts: {
+            ops: { homeserver: "https://matrix.example.org" },
+            alerts: { homeserver: "https://matrix.example.org" },
+          },
+        },
+      },
+    };
+
+    expect(requiresExplicitMatrixDefaultAccount(cfg)).toBe(true);
   });
 
   it("finds the raw Matrix account entry by normalized account id", () => {

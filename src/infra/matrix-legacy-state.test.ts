@@ -120,6 +120,39 @@ describe("matrix legacy state migration", () => {
     });
   });
 
+  it("requires channels.matrix.defaultAccount before migrating a flat store into one of multiple accounts", async () => {
+    await withTempHome(async (home) => {
+      const stateDir = path.join(home, ".openclaw");
+      writeFile(path.join(stateDir, "matrix", "bot-storage.json"), '{"next_batch":"s1"}');
+
+      const cfg: OpenClawConfig = {
+        channels: {
+          matrix: {
+            accounts: {
+              work: {
+                homeserver: "https://matrix.example.org",
+                userId: "@work-bot:example.org",
+                accessToken: "tok-work",
+              },
+              alerts: {
+                homeserver: "https://matrix.example.org",
+                userId: "@alerts-bot:example.org",
+                accessToken: "tok-alerts",
+              },
+            },
+          },
+        },
+      };
+
+      const detection = detectLegacyMatrixState({ cfg, env: process.env });
+      expect(detection && "warning" in detection).toBe(true);
+      if (!detection || !("warning" in detection)) {
+        throw new Error("expected a warning-only Matrix legacy state result");
+      }
+      expect(detection.warning).toContain("channels.matrix.defaultAccount is not set");
+    });
+  });
+
   it("uses scoped Matrix env vars when resolving a flat-store migration target", async () => {
     await withTempHome(
       async (home) => {

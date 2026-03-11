@@ -296,6 +296,42 @@ describe("doctor config flow", () => {
     }
   });
 
+  it("creates a Matrix migration snapshot before doctor repair mutates Matrix state", async () => {
+    await withTempHome(async (home) => {
+      const stateDir = path.join(home, ".openclaw");
+      await fs.mkdir(path.join(stateDir, "matrix"), { recursive: true });
+      await fs.writeFile(
+        path.join(stateDir, "openclaw.json"),
+        JSON.stringify({
+          channels: {
+            matrix: {
+              homeserver: "https://matrix.example.org",
+              userId: "@bot:example.org",
+              accessToken: "tok-123",
+            },
+          },
+        }),
+      );
+      await fs.writeFile(path.join(stateDir, "matrix", "bot-storage.json"), '{"next_batch":"s1"}');
+
+      await loadAndMaybeMigrateDoctorConfig({
+        options: { nonInteractive: true, repair: true },
+        confirm: async () => false,
+      });
+
+      const snapshotDir = path.join(home, "Backups", "openclaw-migrations");
+      const snapshotEntries = await fs.readdir(snapshotDir);
+      expect(snapshotEntries.some((entry) => entry.endsWith(".tar.gz"))).toBe(true);
+
+      const marker = JSON.parse(
+        await fs.readFile(path.join(stateDir, "matrix", "migration-snapshot.json"), "utf8"),
+      ) as {
+        archivePath: string;
+      };
+      expect(marker.archivePath).toContain(path.join("Backups", "openclaw-migrations"));
+    });
+  });
+
   it("warns when Matrix is installed from a stale custom path", async () => {
     const doctorWarnings = await collectDoctorWarnings({
       channels: {
@@ -323,6 +359,38 @@ describe("doctor config flow", () => {
     expect(
       doctorWarnings.some((line) => line.includes("openclaw plugins install @openclaw/matrix")),
     ).toBe(true);
+  });
+
+  it("warns when Matrix is installed from an existing custom path", async () => {
+    await withTempHome(async (home) => {
+      const pluginPath = path.join(home, "matrix-plugin");
+      await fs.mkdir(pluginPath, { recursive: true });
+
+      const doctorWarnings = await collectDoctorWarnings({
+        channels: {
+          matrix: {
+            homeserver: "https://matrix.example.org",
+            accessToken: "tok-123",
+          },
+        },
+        plugins: {
+          installs: {
+            matrix: {
+              source: "path",
+              sourcePath: pluginPath,
+              installPath: pluginPath,
+            },
+          },
+        },
+      });
+
+      expect(
+        doctorWarnings.some((line) => line.includes("Matrix is installed from a custom path")),
+      ).toBe(true);
+      expect(
+        doctorWarnings.some((line) => line.includes("will not automatically replace that plugin")),
+      ).toBe(true);
+    });
   });
 
   it("preserves discord streaming intent while stripping unsupported keys on repair", async () => {

@@ -5,21 +5,12 @@ import path from "node:path";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import { writeJsonFileAtomically } from "../plugin-sdk/json-store.js";
-import { DEFAULT_ACCOUNT_ID } from "../routing/session-key.js";
+import { resolveConfiguredMatrixAccountIds } from "./matrix-account-selection.js";
 import {
-  resolveConfiguredMatrixAccountIds,
-  resolveMatrixChannelConfig,
-  resolveMatrixDefaultOrOnlyAccountId,
-} from "./matrix-account-selection.js";
-import {
-  credentialsMatchResolvedIdentity,
-  loadStoredMatrixCredentials,
-  resolveMatrixMigrationConfigFields,
+  resolveLegacyMatrixFlatStoreTarget,
+  resolveMatrixMigrationAccountTarget,
 } from "./matrix-migration-config.js";
-import {
-  resolveMatrixAccountStorageRoot,
-  resolveMatrixLegacyFlatStoragePaths,
-} from "./matrix-storage-paths.js";
+import { resolveMatrixLegacyFlatStoragePaths } from "./matrix-storage-paths.js";
 
 type MatrixLegacyCryptoCounts = {
   total: number;
@@ -114,10 +105,6 @@ function resolveMatrixAccountIds(cfg: OpenClawConfig): string[] {
   return resolveConfiguredMatrixAccountIds(cfg);
 }
 
-function resolveMatrixFlatStoreTargetAccountId(cfg: OpenClawConfig): string {
-  return resolveMatrixDefaultOrOnlyAccountId(cfg);
-}
-
 function resolveLegacyMatrixFlatStorePlan(params: {
   cfg: OpenClawConfig;
   env: NodeJS.ProcessEnv;
@@ -127,60 +114,27 @@ function resolveLegacyMatrixFlatStorePlan(params: {
     return null;
   }
 
-  const channel = resolveMatrixChannelConfig(params.cfg);
-  if (!channel) {
-    return {
-      warning:
-        `Legacy Matrix encrypted state detected at ${legacy.cryptoPath}, but channels.matrix is not configured yet. ` +
-        'Configure Matrix, then rerun "openclaw doctor --fix" or restart the gateway.',
-    };
-  }
-
-  const accountId = resolveMatrixFlatStoreTargetAccountId(params.cfg);
-  const stored = loadStoredMatrixCredentials(params.env, accountId);
-  const resolved = resolveMatrixMigrationConfigFields({
+  const target = resolveLegacyMatrixFlatStoreTarget({
     cfg: params.cfg,
     env: params.env,
-    accountId,
+    detectedPath: legacy.cryptoPath,
+    detectedKind: "encrypted state",
   });
-  const matchingStored = credentialsMatchResolvedIdentity(stored, {
-    homeserver: resolved.homeserver,
-    userId: resolved.userId,
-  })
-    ? stored
-    : null;
-  const homeserver = resolved.homeserver;
-  const userId = resolved.userId || matchingStored?.userId || "";
-  const accessToken = resolved.accessToken || matchingStored?.accessToken || "";
-
-  if (!homeserver || !userId || !accessToken) {
-    return {
-      warning:
-        `Legacy Matrix encrypted state detected at ${legacy.cryptoPath}, but the account-scoped target could not be resolved yet ` +
-        `(need homeserver, userId, and access token for channels.matrix${accountId === DEFAULT_ACCOUNT_ID ? "" : `.accounts.${accountId}`}). ` +
-        'Start the gateway once with a working Matrix login, or rerun "openclaw doctor --fix" after cached credentials are available.',
-    };
+  if ("warning" in target) {
+    return target;
   }
 
-  const stateDir = resolveStateDir(params.env, os.homedir);
-  const { rootDir } = resolveMatrixAccountStorageRoot({
-    stateDir,
-    homeserver,
-    userId,
-    accessToken,
-    accountId,
-  });
   const metadata = loadLegacyBotSdkMetadata(legacy.cryptoPath);
   return {
-    accountId,
-    rootDir,
-    recoveryKeyPath: path.join(rootDir, "recovery-key.json"),
-    statePath: path.join(rootDir, "legacy-crypto-migration.json"),
+    accountId: target.accountId,
+    rootDir: target.rootDir,
+    recoveryKeyPath: path.join(target.rootDir, "recovery-key.json"),
+    statePath: path.join(target.rootDir, "legacy-crypto-migration.json"),
     legacyCryptoPath: legacy.cryptoPath,
-    homeserver,
-    userId,
-    accessToken,
-    deviceId: metadata.deviceId ?? stored?.deviceId ?? null,
+    homeserver: target.homeserver,
+    userId: target.userId,
+    accessToken: target.accessToken,
+    deviceId: metadata.deviceId ?? target.storedDeviceId,
   };
 }
 
@@ -219,34 +173,16 @@ function resolveMatrixLegacyCryptoPlans(params: {
     }
   }
 
-  const stateDir = resolveStateDir(params.env, os.homedir);
   for (const accountId of resolveMatrixAccountIds(params.cfg)) {
-    const stored = loadStoredMatrixCredentials(params.env, accountId);
-    const resolved = resolveMatrixMigrationConfigFields({
+    const target = resolveMatrixMigrationAccountTarget({
       cfg: params.cfg,
       env: params.env,
       accountId,
     });
-    const matchingStored = credentialsMatchResolvedIdentity(stored, {
-      homeserver: resolved.homeserver,
-      userId: resolved.userId,
-    })
-      ? stored
-      : null;
-    const homeserver = resolved.homeserver;
-    const userId = resolved.userId || matchingStored?.userId || "";
-    const accessToken = resolved.accessToken || matchingStored?.accessToken || "";
-    if (!homeserver || !userId || !accessToken) {
+    if (!target) {
       continue;
     }
-    const { rootDir } = resolveMatrixAccountStorageRoot({
-      stateDir,
-      homeserver,
-      userId,
-      accessToken,
-      accountId,
-    });
-    const legacyCryptoPath = path.join(rootDir, "crypto");
+    const legacyCryptoPath = path.join(target.rootDir, "crypto");
     if (!fs.existsSync(legacyCryptoPath) || !isLegacyBotSdkCryptoStore(legacyCryptoPath)) {
       continue;
     }
@@ -261,15 +197,15 @@ function resolveMatrixLegacyCryptoPlans(params: {
     }
     const metadata = loadLegacyBotSdkMetadata(legacyCryptoPath);
     plans.push({
-      accountId,
-      rootDir,
-      recoveryKeyPath: path.join(rootDir, "recovery-key.json"),
-      statePath: path.join(rootDir, "legacy-crypto-migration.json"),
+      accountId: target.accountId,
+      rootDir: target.rootDir,
+      recoveryKeyPath: path.join(target.rootDir, "recovery-key.json"),
+      statePath: path.join(target.rootDir, "legacy-crypto-migration.json"),
       legacyCryptoPath,
-      homeserver,
-      userId,
-      accessToken,
-      deviceId: metadata.deviceId ?? stored?.deviceId ?? null,
+      homeserver: target.homeserver,
+      userId: target.userId,
+      accessToken: target.accessToken,
+      deviceId: metadata.deviceId ?? target.storedDeviceId,
     });
   }
 

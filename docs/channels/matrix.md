@@ -330,7 +330,10 @@ If the current device is already owner-signed, OpenClaw preserves that identity 
 Upgrading from the previous public Matrix plugin:
 
 - OpenClaw automatically reuses the same Matrix account, access token, and device identity when possible.
+- Before any actionable Matrix migration changes run, OpenClaw creates or reuses a recovery snapshot under `~/Backups/openclaw-migrations/`.
+- If you use multiple Matrix accounts, set `channels.matrix.defaultAccount` before upgrading from the old flat-store layout so OpenClaw knows which account should receive that shared legacy state.
 - If the previous plugin stored a Matrix room-key backup decryption key locally, startup or `openclaw doctor --fix` will import it into the new recovery-key flow automatically.
+- If the Matrix access token changed after migration was prepared, startup now scans sibling token-hash storage roots for pending legacy restore state before giving up on the automatic backup restore.
 - On the next gateway start, backed-up room keys are restored automatically into the new crypto store.
 - If the old plugin had local-only room keys that were never backed up, OpenClaw will warn clearly. Those keys cannot be exported automatically from the previous rust crypto store, so some old encrypted history may remain unavailable until recovered manually.
 - See [Matrix migration](/install/migrating-matrix) for the full upgrade flow, limits, recovery commands, and common migration messages.

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  maybeCreateMatrixMigrationSnapshot,
   resolveMatrixAccountStorageRoot,
   resolveMatrixLegacyFlatStoragePaths,
 } from "openclaw/plugin-sdk/matrix";
@@ -10,6 +11,12 @@ import type { MatrixStoragePaths } from "./types.js";
 
 export const DEFAULT_ACCOUNT_KEY = "default";
 const STORAGE_META_FILENAME = "storage-meta.json";
+
+type LegacyMoveRecord = {
+  sourcePath: string;
+  targetPath: string;
+  label: string;
+};
 
 function resolveLegacyStoragePaths(env: NodeJS.ProcessEnv = process.env): {
   storagePath: string;
@@ -48,10 +55,10 @@ export function resolveMatrixStoragePaths(params: {
   };
 }
 
-export function maybeMigrateLegacyStorage(params: {
+export async function maybeMigrateLegacyStorage(params: {
   storagePaths: MatrixStoragePaths;
   env?: NodeJS.ProcessEnv;
-}): void {
+}): Promise<void> {
   const hasNewStorage =
     fs.existsSync(params.storagePaths.storagePath) || fs.existsSync(params.storagePaths.cryptoPath);
   if (hasNewStorage) {
@@ -65,21 +72,82 @@ export function maybeMigrateLegacyStorage(params: {
     return;
   }
 
+  const logger = getMatrixRuntime().logging.getChildLogger({ module: "matrix-storage" });
+  await maybeCreateMatrixMigrationSnapshot({
+    trigger: "matrix-client-fallback",
+    env: params.env,
+    log: logger,
+  });
   fs.mkdirSync(params.storagePaths.rootDir, { recursive: true });
-  if (hasLegacyStorage) {
+  const moved: LegacyMoveRecord[] = [];
+  try {
+    if (hasLegacyStorage) {
+      moveLegacyStoragePathOrThrow({
+        sourcePath: legacy.storagePath,
+        targetPath: params.storagePaths.storagePath,
+        label: "sync store",
+        moved,
+      });
+    }
+    if (hasLegacyCrypto) {
+      moveLegacyStoragePathOrThrow({
+        sourcePath: legacy.cryptoPath,
+        targetPath: params.storagePaths.cryptoPath,
+        label: "crypto store",
+        moved,
+      });
+    }
+  } catch (err) {
+    const rollbackError = rollbackLegacyMoves(moved);
+    throw new Error(
+      rollbackError
+        ? `Failed migrating legacy Matrix client storage: ${String(err)}. Rollback also failed: ${rollbackError}`
+        : `Failed migrating legacy Matrix client storage: ${String(err)}`,
+    );
+  }
+  if (moved.length > 0) {
+    logger.info(
+      `matrix: migrated legacy client storage into ${params.storagePaths.rootDir}\n${moved
+        .map((entry) => `- ${entry.label}: ${entry.sourcePath} -> ${entry.targetPath}`)
+        .join("\n")}`,
+    );
+  }
+}
+
+function moveLegacyStoragePathOrThrow(params: {
+  sourcePath: string;
+  targetPath: string;
+  label: string;
+  moved: LegacyMoveRecord[];
+}): void {
+  if (!fs.existsSync(params.sourcePath)) {
+    return;
+  }
+  if (fs.existsSync(params.targetPath)) {
+    throw new Error(
+      `legacy Matrix ${params.label} target already exists (${params.targetPath}); refusing to overwrite it automatically`,
+    );
+  }
+  fs.renameSync(params.sourcePath, params.targetPath);
+  params.moved.push({
+    sourcePath: params.sourcePath,
+    targetPath: params.targetPath,
+    label: params.label,
+  });
+}
+
+function rollbackLegacyMoves(moved: LegacyMoveRecord[]): string | null {
+  for (const entry of moved.toReversed()) {
     try {
-      fs.renameSync(legacy.storagePath, params.storagePaths.storagePath);
-    } catch {
-      // Ignore migration failures; new store will be created.
+      if (!fs.existsSync(entry.targetPath) || fs.existsSync(entry.sourcePath)) {
+        continue;
+      }
+      fs.renameSync(entry.targetPath, entry.sourcePath);
+    } catch (err) {
+      return `${entry.label} (${entry.targetPath} -> ${entry.sourcePath}): ${String(err)}`;
     }
   }
-  if (hasLegacyCrypto) {
-    try {
-      fs.renameSync(legacy.cryptoPath, params.storagePaths.cryptoPath);
-    } catch {
-      // Ignore migration failures; new store will be created.
-    }
-  }
+  return null;
 }
 
 export function writeStorageMeta(params: {

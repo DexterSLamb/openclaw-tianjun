@@ -31,7 +31,7 @@ export async function createMatrixClient(params: {
     accountId: params.accountId,
     env,
   });
-  maybeMigrateLegacyStorage({
+  await maybeMigrateLegacyStorage({
     storagePaths,
     env,
   });

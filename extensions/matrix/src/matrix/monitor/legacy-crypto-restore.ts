@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -43,6 +44,52 @@ function isMigrationState(value: unknown): value is MatrixLegacyCryptoMigrationS
   );
 }
 
+async function resolvePendingMigrationStatePath(params: {
+  stateDir: string;
+  auth: Pick<MatrixAuth, "homeserver" | "userId" | "accessToken" | "accountId">;
+}): Promise<{
+  statePath: string;
+  value: MatrixLegacyCryptoMigrationState | null;
+}> {
+  const { rootDir } = resolveMatrixAccountStorageRoot({
+    stateDir: params.stateDir,
+    homeserver: params.auth.homeserver,
+    userId: params.auth.userId,
+    accessToken: params.auth.accessToken,
+    accountId: params.auth.accountId,
+  });
+  const directStatePath = path.join(rootDir, "legacy-crypto-migration.json");
+  const { value: directValue } =
+    await readJsonFileWithFallback<MatrixLegacyCryptoMigrationState | null>(directStatePath, null);
+  if (isMigrationState(directValue) && directValue.restoreStatus === "pending") {
+    return { statePath: directStatePath, value: directValue };
+  }
+
+  const accountStorageDir = path.dirname(rootDir);
+  let siblingEntries: string[] = [];
+  try {
+    siblingEntries = (await fs.readdir(accountStorageDir, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .filter((entry) => path.join(accountStorageDir, entry) !== rootDir)
+      .toSorted((left, right) => left.localeCompare(right));
+  } catch {
+    return { statePath: directStatePath, value: directValue };
+  }
+
+  for (const sibling of siblingEntries) {
+    const siblingStatePath = path.join(accountStorageDir, sibling, "legacy-crypto-migration.json");
+    const { value } = await readJsonFileWithFallback<MatrixLegacyCryptoMigrationState | null>(
+      siblingStatePath,
+      null,
+    );
+    if (isMigrationState(value) && value.restoreStatus === "pending") {
+      return { statePath: siblingStatePath, value };
+    }
+  }
+  return { statePath: directStatePath, value: directValue };
+}
+
 export async function maybeRestoreLegacyMatrixBackup(params: {
   client: Pick<MatrixClient, "restoreRoomKeyBackup">;
   auth: Pick<MatrixAuth, "homeserver" | "userId" | "accessToken" | "accountId">;
@@ -51,18 +98,10 @@ export async function maybeRestoreLegacyMatrixBackup(params: {
 }): Promise<MatrixLegacyCryptoRestoreResult> {
   const env = params.env ?? process.env;
   const stateDir = params.stateDir ?? getMatrixRuntime().state.resolveStateDir(env, os.homedir);
-  const { rootDir } = resolveMatrixAccountStorageRoot({
+  const { statePath, value } = await resolvePendingMigrationStatePath({
     stateDir,
-    homeserver: params.auth.homeserver,
-    userId: params.auth.userId,
-    accessToken: params.auth.accessToken,
-    accountId: params.auth.accountId,
+    auth: params.auth,
   });
-  const statePath = path.join(rootDir, "legacy-crypto-migration.json");
-  const { value } = await readJsonFileWithFallback<MatrixLegacyCryptoMigrationState | null>(
-    statePath,
-    null,
-  );
   if (!isMigrationState(value) || value.restoreStatus !== "pending") {
     return { kind: "skipped" };
   }

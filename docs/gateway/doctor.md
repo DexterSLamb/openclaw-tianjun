@@ -158,6 +158,11 @@ the legacy sessions + agent dir on startup so history/auth/models land in the
 per-agent path without a manual doctor run. WhatsApp auth is intentionally only
 migrated via `openclaw doctor`.
 
+Matrix upgrades use the same repair flow. When `openclaw doctor --fix` has actionable
+Matrix migration work, it creates or reuses a pre-migration snapshot under
+`~/Backups/openclaw-migrations/` before mutating Matrix state. If that snapshot
+step fails, doctor warns and skips the Matrix migration changes for that run.
+
 ### 4) State integrity checks (session persistence, routing, and safety)
 
 The state directory is the operational brainstem. If it vanishes, you lose

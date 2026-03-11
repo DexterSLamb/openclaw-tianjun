@@ -115,6 +115,13 @@ export {
   resolveMatrixLegacyFlatStoragePaths,
   sanitizeMatrixPathSegment,
 } from "../infra/matrix-storage-paths.js";
+export {
+  hasActionableMatrixMigration,
+  hasPendingMatrixMigration,
+  maybeCreateMatrixMigrationSnapshot,
+  resolveMatrixMigrationSnapshotMarkerPath,
+  resolveMatrixMigrationSnapshotOutputDir,
+} from "../infra/matrix-migration-snapshot.js";
 export { fetchWithSsrFGuard } from "../infra/net/fetch-guard.js";
 export {
   getSessionBindingService,

@@ -79,3 +79,18 @@ export function resolveMatrixDefaultOrOnlyAccountId(cfg: OpenClawConfig): string
   }
   return DEFAULT_ACCOUNT_ID;
 }
+
+export function requiresExplicitMatrixDefaultAccount(cfg: OpenClawConfig): boolean {
+  const channel = resolveMatrixChannelConfig(cfg);
+  if (!channel) {
+    return false;
+  }
+  const configuredAccountIds = resolveConfiguredMatrixAccountIds(cfg);
+  if (configuredAccountIds.length <= 1) {
+    return false;
+  }
+  const configuredDefault = normalizeOptionalAccountId(
+    typeof channel.defaultAccount === "string" ? channel.defaultAccount : undefined,
+  );
+  return !(configuredDefault && configuredAccountIds.includes(configuredDefault));
+}

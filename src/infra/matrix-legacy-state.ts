@@ -3,20 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
-import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "../routing/session-key.js";
-import {
-  resolveMatrixChannelConfig,
-  resolveMatrixDefaultOrOnlyAccountId,
-} from "./matrix-account-selection.js";
-import {
-  credentialsMatchResolvedIdentity,
-  loadStoredMatrixCredentials,
-  resolveMatrixMigrationConfigFields,
-} from "./matrix-migration-config.js";
-import {
-  resolveMatrixAccountStorageRoot,
-  resolveMatrixLegacyFlatStoragePaths,
-} from "./matrix-storage-paths.js";
+import { resolveLegacyMatrixFlatStoreTarget } from "./matrix-migration-config.js";
+import { resolveMatrixLegacyFlatStoragePaths } from "./matrix-storage-paths.js";
 
 export type MatrixLegacyStateMigrationResult = {
   migrated: boolean;
@@ -34,10 +22,6 @@ type MatrixLegacyStatePlan = {
   selectionNote?: string;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function resolveLegacyMatrixPaths(env: NodeJS.ProcessEnv): {
   rootDir: string;
   storagePath: string;
@@ -45,36 +29,6 @@ function resolveLegacyMatrixPaths(env: NodeJS.ProcessEnv): {
 } {
   const stateDir = resolveStateDir(env, os.homedir);
   return resolveMatrixLegacyFlatStoragePaths(stateDir);
-}
-
-function resolveMatrixTargetAccountId(cfg: OpenClawConfig): string {
-  return resolveMatrixDefaultOrOnlyAccountId(cfg);
-}
-
-function resolveMatrixFlatStoreSelectionNote(params: {
-  channel: Record<string, unknown>;
-  accountId: string;
-}): string | undefined {
-  const accounts = isRecord(params.channel.accounts) ? params.channel.accounts : null;
-  if (!accounts) {
-    return undefined;
-  }
-
-  const configuredAccounts = Array.from(
-    new Set(
-      Object.keys(accounts)
-        .map((accountId) => normalizeAccountId(accountId))
-        .filter(Boolean),
-    ),
-  );
-  if (configuredAccounts.length <= 1) {
-    return undefined;
-  }
-
-  return (
-    `Legacy Matrix flat store uses one shared on-disk state, so it will be migrated into ` +
-    `account "${params.accountId}".`
-  );
 }
 
 function resolveMatrixMigrationPlan(params: {
@@ -86,59 +40,24 @@ function resolveMatrixMigrationPlan(params: {
     return null;
   }
 
-  const channel = resolveMatrixChannelConfig(params.cfg);
-  if (!channel) {
-    return {
-      warning:
-        `Legacy Matrix state detected at ${legacy.rootDir}, but channels.matrix is not configured yet. ` +
-        'Configure Matrix, then rerun "openclaw doctor --fix" or restart the gateway.',
-    };
-  }
-
-  const accountId = resolveMatrixTargetAccountId(params.cfg);
-  const stored = loadStoredMatrixCredentials(params.env, accountId);
-  const selectionNote = resolveMatrixFlatStoreSelectionNote({ channel, accountId });
-  const resolved = resolveMatrixMigrationConfigFields({
+  const target = resolveLegacyMatrixFlatStoreTarget({
     cfg: params.cfg,
     env: params.env,
-    accountId,
+    detectedPath: legacy.rootDir,
+    detectedKind: "state",
   });
-  const matchingStored = credentialsMatchResolvedIdentity(stored, {
-    homeserver: resolved.homeserver,
-    userId: resolved.userId,
-  })
-    ? stored
-    : null;
-  const homeserver = resolved.homeserver;
-  const userId = resolved.userId || matchingStored?.userId || "";
-  const accessToken = resolved.accessToken || matchingStored?.accessToken || "";
-
-  if (!homeserver || !userId || !accessToken) {
-    return {
-      warning:
-        `Legacy Matrix state detected at ${legacy.rootDir}, but the new account-scoped target could not be resolved yet ` +
-        `(need homeserver, userId, and access token for channels.matrix${accountId === DEFAULT_ACCOUNT_ID ? "" : `.accounts.${accountId}`}). ` +
-        'Start the gateway once with a working Matrix login, or rerun "openclaw doctor --fix" after cached credentials are available.',
-    };
+  if ("warning" in target) {
+    return target;
   }
 
-  const stateDir = resolveStateDir(params.env, os.homedir);
-  const { rootDir } = resolveMatrixAccountStorageRoot({
-    stateDir,
-    homeserver,
-    userId,
-    accessToken,
-    accountId,
-  });
-
   return {
-    accountId,
+    accountId: target.accountId,
     legacyStoragePath: legacy.storagePath,
     legacyCryptoPath: legacy.cryptoPath,
-    targetRootDir: rootDir,
-    targetStoragePath: path.join(rootDir, "bot-storage.json"),
-    targetCryptoPath: path.join(rootDir, "crypto"),
-    selectionNote,
+    targetRootDir: target.rootDir,
+    targetStoragePath: path.join(target.rootDir, "bot-storage.json"),
+    targetCryptoPath: path.join(target.rootDir, "crypto"),
+    selectionNote: target.selectionNote,
   };
 }
 
