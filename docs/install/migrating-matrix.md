@@ -39,6 +39,7 @@ Automatic migration covers:
 - moving the oldest flat Matrix sync store into the current account-scoped location
 - moving the oldest flat Matrix crypto store into the current account-scoped location when the target account can be resolved safely
 - extracting a previously saved Matrix room-key backup decryption key from the old rust crypto store, when that key exists locally
+- reusing the most complete existing token-hash storage root for the same Matrix account, homeserver, and user when the access token changes later
 - scanning sibling token-hash storage roots for pending encrypted-state restore metadata when the Matrix access token changed but the account/device identity stayed the same
 - restoring backed-up room keys into the new crypto store on the next Matrix startup
 

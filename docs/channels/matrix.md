@@ -334,16 +334,20 @@ Upgrading from the previous public Matrix plugin:
 - If you use multiple Matrix accounts, set `channels.matrix.defaultAccount` before upgrading from the old flat-store layout so OpenClaw knows which account should receive that shared legacy state.
 - If the previous plugin stored a Matrix room-key backup decryption key locally, startup or `openclaw doctor --fix` will import it into the new recovery-key flow automatically.
 - If the Matrix access token changed after migration was prepared, startup now scans sibling token-hash storage roots for pending legacy restore state before giving up on the automatic backup restore.
+- If the Matrix access token changes later for the same account, homeserver, and user, OpenClaw now prefers reusing the most complete existing token-hash storage root instead of starting from an empty Matrix state directory.
 - On the next gateway start, backed-up room keys are restored automatically into the new crypto store.
 - If the old plugin had local-only room keys that were never backed up, OpenClaw will warn clearly. Those keys cannot be exported automatically from the previous rust crypto store, so some old encrypted history may remain unavailable until recovered manually.
 - See [Matrix migration](/install/migrating-matrix) for the full upgrade flow, limits, recovery commands, and common migration messages.
 
-Encrypted runtime state is stored per account and per access token in
+Encrypted runtime state is organized under per-account, per-user token-hash roots in
 `~/.openclaw/matrix/accounts/<account>/<homeserver>__<user>/<token-hash>/`.
 That directory contains the sync store (`bot-storage.json`), crypto store (`crypto/`),
 recovery key file (`recovery-key.json`), IndexedDB snapshot (`crypto-idb-snapshot.json`),
 thread bindings (`thread-bindings.json`), and startup verification state (`startup-verification.json`)
 when those features are in use.
+When the token changes but the account identity stays the same, OpenClaw reuses the best existing
+root for that account/homeserver/user tuple so prior sync state, crypto state, thread bindings,
+and startup verification state remain visible.
 
 ### Node crypto store model
 
