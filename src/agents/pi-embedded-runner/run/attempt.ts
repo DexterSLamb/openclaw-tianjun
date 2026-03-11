@@ -1530,16 +1530,75 @@ export async function runEmbeddedAttempt(
           },
         });
     const toolsEnabled = supportsModelTools(params.model);
-    // [Tianjun] Filter tools for local models to reduce token count and TTFT
+    // [Tianjun] Filter and slim tools for local models to reduce token count and TTFT
     const modelKey = `${params.provider}/${params.modelId}`;
     const toolsForModel = modelKey.startsWith("local/")
-      ? toolsRaw.filter((t: { name?: string }) => {
+      ? (() => {
           const LOCAL_TOOL_ALLOWLIST = new Set([
-            "read", "write", "edit", "apply_patch", "grep", "find", "ls",
-            "exec", "process", "web_search", "web_fetch", "cron", "message", "image",
+            "exec",
+            "process",
+            "read",
+            "write",
+            "edit",
+            "grep",
+            "find",
+            "ls",
+            "apply_patch",
+            "web_search",
+            "web_fetch",
+            "cron",
+            "message",
+            "session_status",
+            "memory_search",
+            "memory_get",
+            "canvas",
+            "tts",
+            "nodes",
           ]);
-          return LOCAL_TOOL_ALLOWLIST.has(t.name ?? "");
-        })
+          const EXTRA_PARAMS: Record<string, string[]> = {
+            exec: ["timeout", "workdir", "background", "env"],
+            edit: ["path", "oldText", "newText", "create_if_missing"],
+            read: ["path", "offset", "limit"],
+            write: ["path", "content", "append"],
+            find: ["path"],
+            grep: ["path"],
+            ls: ["path"],
+            process: ["action", "sessionId", "data", "keys", "text"],
+            web_fetch: ["extractMode"],
+            cron: ["action"],
+            message: ["channel", "target", "message"],
+          };
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- intentionally rebuilding slim tool schemas
+          return (toolsRaw as Record<string, unknown>[])
+            .filter((t) => LOCAL_TOOL_ALLOWLIST.has((t.name as string) ?? ""))
+            .map((t) => {
+              const params = t.parameters as Record<string, unknown> | undefined;
+              const paramProps = (params?.properties ?? {}) as Record<
+                string,
+                Record<string, unknown>
+              >;
+              const paramRequired = (params?.required ?? []) as string[];
+              const keepOptional = new Set(EXTRA_PARAMS[t.name as string] || []);
+              const req = new Set(paramRequired);
+              const props: Record<string, Record<string, unknown>> = {};
+              for (const [k, v] of Object.entries(paramProps)) {
+                if (req.has(k) || keepOptional.has(k)) {
+                  props[k] = { type: v.type };
+                  if (v.description) {
+                    props[k].description = (v.description as string).split(/[.\n]/)[0];
+                  }
+                  if (v.enum) {
+                    props[k].enum = v.enum;
+                  }
+                }
+              }
+              return {
+                name: t.name,
+                description: t.description,
+                parameters: { type: "object", properties: props, required: paramRequired },
+              };
+            });
+        })()
       : toolsRaw;
     const tools = sanitizeToolsForGoogle({
       tools: toolsEnabled ? toolsForModel : [],
