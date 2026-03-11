@@ -16,7 +16,7 @@ import {
   truncateText,
   type ExtractMode,
 } from "./web-fetch-utils.js";
-import { fetchWithWebToolsNetworkGuard } from "./web-guarded-fetch.js";
+import { fetchWithWebToolsNetworkGuard, WEB_TOOLS_TRUSTED_NETWORK_SSRF_POLICY } from "./web-guarded-fetch.js";
 import {
   CacheEntry,
   DEFAULT_CACHE_TTL_MINUTES,
@@ -529,10 +529,17 @@ async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string
   let release: (() => Promise<void>) | null = null;
   let finalUrl = params.url;
   try {
+    // [Tianjun] Block cloud metadata endpoints (169.254.x.x link-local range)
+    if (parsedUrl.hostname.startsWith("169.254.")) {
+      throw new Error("Blocked: cloud metadata endpoint (link-local address)");
+    }
+
     const result = await fetchWithWebToolsNetworkGuard({
       url: params.url,
       maxRedirects: params.maxRedirects,
       timeoutSeconds: params.timeoutSeconds,
+      policy: WEB_TOOLS_TRUSTED_NETWORK_SSRF_POLICY, // [Tianjun] Allow RFC2544 range for transparent proxy
+      useEnvProxy: true, // [Tianjun] Use system proxy settings
       init: {
         headers: {
           Accept: "text/markdown, text/html;q=0.9, */*;q=0.1",
