@@ -181,17 +181,27 @@ title "4/5 Clone & Build"
 
 mkdir -p "$(dirname "$SOURCE_DIR")"
 
-if [ -d "$SOURCE_DIR/.git" ]; then
-    info "源码目录已存在，拉取最新 ..."
-    cd "$SOURCE_DIR"
-    git pull || warn "git pull 失败，使用现有代码继续"
-elif [ -d "$SOURCE_DIR" ] && [ -f "$SOURCE_DIR/package.json" ]; then
-    info "源码目录已存在（非 git），使用现有代码"
+if [ -d "$SOURCE_DIR" ] && [ -f "$SOURCE_DIR/package.json" ]; then
+    info "源码目录已存在，使用现有代码"
     cd "$SOURCE_DIR"
 else
-    info "克隆源码 ..."
-    info "  URL: ${CLONE_URL}"
-    git clone --depth 1 "$CLONE_URL" "$SOURCE_DIR"
+    # 优先用 zip 下载（单文件 HTTP，镜像加速效果远好于 git 协议）
+    ZIP_URL="${BEST_GH}/DexterSLamb/openclaw-tianjun/archive/refs/heads/main.zip"
+    ZIP_FILE="/tmp/openclaw-tianjun-main-$$.zip"
+
+    info "下载源码 (zip) ..."
+    info "  URL: ${ZIP_URL}"
+    if curl -fL --connect-timeout 10 --max-time 300 -o "$ZIP_FILE" "$ZIP_URL"; then
+        info "解压中 ..."
+        unzip -q "$ZIP_FILE" -d /tmp/openclaw-unzip-$$
+        mv /tmp/openclaw-unzip-$$/openclaw-tianjun-main "$SOURCE_DIR"
+        rm -rf "$ZIP_FILE" /tmp/openclaw-unzip-$$
+    else
+        warn "zip 下载失败，回退到 git clone ..."
+        rm -f "$ZIP_FILE"
+        CLONE_URL="${BEST_GH}/DexterSLamb/openclaw-tianjun.git"
+        git clone --depth 1 "$CLONE_URL" "$SOURCE_DIR"
+    fi
     cd "$SOURCE_DIR"
 fi
 
