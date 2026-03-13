@@ -17,7 +17,7 @@ FORK_REPO="https://github.com/DexterSLamb/openclaw-tianjun.git"
 SOURCE_DIR="$HOME/Downloads/openclaw-source"
 NODE_VERSION="22"
 # Release 下载路径（精简包，32MB，比 archive zip 80MB 小很多）
-RELEASE_PATH="/DexterSLamb/openclaw-tianjun/releases/download/tianjun-v1.0.0/openclaw-tianjun-main.tar.gz"
+RELEASE_PATH="/DexterSLamb/openclaw-tianjun/releases/download/tianjun-v1.1.0/openclaw-tianjun-main.tar.gz"
 
 # GitHub 镜像列表（按优先级，测速自动选最快）
 GH_MIRRORS=(
