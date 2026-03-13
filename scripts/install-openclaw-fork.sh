@@ -19,11 +19,12 @@ NODE_VERSION="22"
 # Release 下载路径（精简包，32MB，比 archive zip 80MB 小很多）
 RELEASE_PATH="/DexterSLamb/openclaw-tianjun/releases/download/tianjun-v1.0.0/openclaw-tianjun-main.tar.gz"
 
-# GitHub 镜像列表（按优先级）
+# GitHub 镜像列表（按优先级，测速自动选最快）
 GH_MIRRORS=(
-    "https://ghfast.top/https://github.com"
     "https://gh-proxy.com/https://github.com"
+    "https://mirror.ghproxy.com/https://github.com"
     "https://github.com"
+    "https://ghfast.top/https://github.com"
 )
 
 # ==================== 0/5 网络测速 ====================
@@ -64,25 +65,29 @@ if float_lt "$MIRROR_TIME" "$NPM_TIME"; then
 fi
 info "选择 npm registry: ${NPM_REGISTRY}"
 
-# GitHub 测速，选最快的镜像
+# GitHub 测速，按速度排序
 info "测试 GitHub 速度 ..."
-BEST_GH=""
-BEST_GH_TIME="99"
+declare -A GH_SPEEDS
 for mirror in "${GH_MIRRORS[@]}"; do
     t=$(test_speed "${mirror}/DexterSLamb/openclaw-tianjun")
     label=$(mirror_label "$mirror")
     info "  ${label}: ${t}s"
-    if float_lt "$t" "$BEST_GH_TIME"; then
-        BEST_GH_TIME="$t"
-        BEST_GH="$mirror"
-    fi
+    GH_SPEEDS["$mirror"]="$t"
 done
 
-if [ -z "$BEST_GH" ]; then
-    warn "所有 GitHub 源均不可达，将尝试直连"
-    BEST_GH="https://github.com"
-fi
-info "选择 GitHub 源: $(mirror_label "$BEST_GH")"
+# 按速度排序镜像列表（最快的排前面）
+SORTED_MIRRORS=()
+for mirror in "${GH_MIRRORS[@]}"; do
+    SORTED_MIRRORS+=("${GH_SPEEDS[$mirror]}|$mirror")
+done
+IFS=$'\n' SORTED_MIRRORS=($(sort -t'|' -k1 -g <<<"${SORTED_MIRRORS[*]}")); unset IFS
+GH_MIRRORS_SORTED=()
+for entry in "${SORTED_MIRRORS[@]}"; do
+    GH_MIRRORS_SORTED+=("${entry#*|}")
+done
+
+BEST_GH="${GH_MIRRORS_SORTED[0]:-https://github.com}"
+info "最快 GitHub 源: $(mirror_label "$BEST_GH")"
 
 # nvm 安装源（镜像代理 raw.githubusercontent.com 路径不可靠，统一用直连）
 NVM_SOURCE="https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh"
@@ -185,8 +190,8 @@ else
     TAR_FILE="/tmp/openclaw-tianjun-main-$$.tar.gz"
     DOWNLOADED=0
 
-    # 逐个镜像尝试下载 Release 包（32MB，比 archive zip 80MB 小很多）
-    for mirror in "${GH_MIRRORS[@]}"; do
+    # 逐个镜像尝试下载 Release 包（32MB，按测速排序，最快优先）
+    for mirror in "${GH_MIRRORS_SORTED[@]}"; do
         DL_URL="${mirror}${RELEASE_PATH}"
         label=$(mirror_label "$mirror")
         info "尝试下载: ${label} ..."
@@ -194,10 +199,10 @@ else
         # 每次换镜像清除旧文件（不同镜像 Content-Length 可能不同，续传会损坏）
         rm -f "$TAR_FILE"
         # --retry-all-errors: 超时(28)、连接重置(92)等也重试（默认只重试 5xx）
-        # --max-time 180: 单次尝试 3 分钟，50KB/s 可下约 9MB，5 次续传可完成 45MB
-        # -C -: 续传，同一镜像内断点不丢
-        if curl -fL -C - --retry 5 --retry-all-errors --retry-delay 3 \
-             --connect-timeout 10 --max-time 180 \
+        # --max-time 900: 单次 15 分钟，45KB/s 可下约 40MB，足够完成 32MB
+        # 注意: 部分镜像不支持 Range 续传，-C - 可能无效
+        if curl -fL -C - --retry 3 --retry-all-errors --retry-delay 5 \
+             --connect-timeout 10 --max-time 900 \
              --progress-bar -o "$TAR_FILE" "$DL_URL"; then
             # 验证文件完整性
             if tar tzf "$TAR_FILE" &>/dev/null; then
@@ -245,7 +250,7 @@ mkdir -p "$OPENCLAW_DIR"
 
 if [ ! -f "$OPENCLAW_JSON" ]; then
     info "生成 openclaw.json ..."
-    cat > "$OPENCLAW_JSON" << 'JSONEOF'
+    cat > "$OPENCLAW_JSON" << JSONEOF
 {
   "models": {
     "providers": {
@@ -256,18 +261,40 @@ if [ ! -f "$OPENCLAW_JSON" ]; then
         "models": [
           {
             "id": "qwen3-30b",
-            "displayName": "Qwen3 30B (NPU)",
-            "contextWindow": 32768
+            "name": "Qwen3 30B (NPU)",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 32768,
+            "maxTokens": 8192
           },
           {
             "id": "gpt-oss-20b",
-            "displayName": "GPT-OSS 20B (NPU)",
-            "contextWindow": 65536
+            "name": "GPT-OSS 20B (NPU)",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 65536,
+            "maxTokens": 8192
           }
         ]
       }
-    },
-    "default": "local/qwen3-30b"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": "local/qwen3-30b",
+      "workspace": "$HOME/.openclaw/workspace"
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "loopback",
+    "auth": {
+      "mode": "token",
+      "token": "openclaw-local-token"
+    }
   }
 }
 JSONEOF
@@ -281,7 +308,7 @@ mkdir -p "$(dirname "$LAUNCH_SCRIPT")"
 cat > "$LAUNCH_SCRIPT" << EOF
 #!/bin/bash
 cd "$SOURCE_DIR"
-exec node dist/cli.mjs "\$@"
+exec node openclaw.mjs "\$@"
 EOF
 chmod +x "$LAUNCH_SCRIPT"
 info "启动脚本: $LAUNCH_SCRIPT"
@@ -291,7 +318,7 @@ title "安装完成"
 
 echo "使用方法:"
 echo "  openclaw                    # 启动 (需要 ~/.local/bin 在 PATH 中)"
-echo "  node ${SOURCE_DIR}/dist/cli.mjs  # 直接启动"
+echo "  node ${SOURCE_DIR}/openclaw.mjs  # 直接启动"
 echo ""
 echo "切换模型:"
 echo "  /model local/qwen3-30b"
