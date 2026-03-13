@@ -1593,7 +1593,7 @@ export async function runEmbeddedAttempt(
                 }
               }
               return {
-                name: t.name,
+                ...t,
                 description: t.description,
                 parameters: { type: "object", properties: props, required: paramRequired },
               };
