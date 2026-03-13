@@ -151,11 +151,23 @@ function resolvePersistedUpdateAvailable(state: UpdateCheckState): UpdateAvailab
   if (!latestVersion) {
     return null;
   }
+  const channel = state.lastAvailableTag?.trim() || DEFAULT_PACKAGE_CHANNEL;
+  // Fork: tags like "tianjun-v1.0.0" can't be compared with semver.
+  // Use string inequality instead — if the stored tag differs from current, it's an update.
+  if (channel === "fork") {
+    if (latestVersion === FORK_CURRENT_TAG) {
+      return null;
+    }
+    return {
+      currentVersion: FORK_CURRENT_TAG,
+      latestVersion,
+      channel,
+    };
+  }
   const cmp = compareSemverStrings(VERSION, latestVersion);
   if (cmp == null || cmp >= 0) {
     return null;
   }
-  const channel = state.lastAvailableTag?.trim() || DEFAULT_PACKAGE_CHANNEL;
   return {
     currentVersion: VERSION,
     latestVersion,
