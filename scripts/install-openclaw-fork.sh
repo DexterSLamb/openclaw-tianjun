@@ -32,16 +32,20 @@ title "0/5 网络环境检测"
 
 # 测试 URL 响应时间（秒），超时返回 99
 test_speed() {
-    curl -so /dev/null -w '%{time_total}' --connect-timeout 3 --max-time 5 "$1" 2>/dev/null || echo "99"
+    local t
+    t=$(curl -so /dev/null -w '%{time_total}' --connect-timeout 3 --max-time 5 "$1" 2>/dev/null) || t="99"
+    echo "$t"
 }
 
 # 浮点比较：a < b 返回 0（true）
 float_lt() {
     if command -v bc &>/dev/null; then
-        (( $(echo "$1 < $2" | bc -l 2>/dev/null || echo 0) ))
+        local result
+        result=$(echo "$1 < $2" | bc -l 2>/dev/null) || result="0"
+        [ "$result" = "1" ]
     else
-        local a_int=${1%%.*} b_int=${2%%.*}
-        [ "${a_int:-99}" -lt "${b_int:-99}" ] 2>/dev/null
+        # 无 bc 时用 awk（Debian/Deepin 预装）
+        [ "$(awk "BEGIN{print ($1<$2)?1:0}")" = "1" ]
     fi
 }
 
@@ -221,7 +225,7 @@ else
     if [ "$DOWNLOADED" -eq 1 ]; then
         info "解压中 ..."
         mkdir -p "$SOURCE_DIR"
-        tar xzf "$TAR_FILE" -C "$SOURCE_DIR"
+        tar xzf "$TAR_FILE" --strip-components=1 -C "$SOURCE_DIR"
         rm -f "$TAR_FILE"
     else
         error "所有镜像均下载失败"
