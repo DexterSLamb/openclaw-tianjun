@@ -22,6 +22,76 @@
 
 ---
 
+## 安装 / Installation
+
+> **注意**: 本 Fork 不发布到 npm，不能用 `npm install -g openclaw` 安装。请从源码构建。
+>
+> **Note**: This fork is NOT published to npm. Do not use `npm install -g openclaw`. Build from source instead.
+
+### 前置要求 / Prerequisites
+
+- Node.js ≥ 22
+- pnpm (`npm install -g pnpm`)
+- git
+
+### 方式一：一键安装脚本（Deepin/Debian 系 Linux）
+
+适用于全新机器，自动安装所有依赖并构建。如果本地有源码压缩包（`openclaw-tianjun-main.zip`），脚本会优先使用本地包，跳过 git clone。
+
+```bash
+# 下载安装脚本
+curl -O https://raw.githubusercontent.com/DexterSLamb/openclaw-tianjun/main/scripts/install-openclaw-fork.sh
+chmod +x install-openclaw-fork.sh
+
+# 可选：把源码 zip 放到同目录下，脚本会自动检测，免去 git clone
+# wget https://github.com/DexterSLamb/openclaw-tianjun/archive/refs/heads/main.zip -O openclaw-tianjun-main.zip
+
+./install-openclaw-fork.sh
+```
+
+### 方式二：手动从源码构建
+
+```bash
+git clone https://github.com/DexterSLamb/openclaw-tianjun.git
+cd openclaw-tianjun
+pnpm install
+node scripts/tsdown-build.mjs
+pnpm ui:build
+
+# 启动
+node dist/cli.mjs onboard --install-daemon
+```
+
+### 方式三：离线安装（GitHub 下载 zip）
+
+网络较慢时推荐直接在浏览器下载 zip：
+
+1. 下载 https://github.com/DexterSLamb/openclaw-tianjun/archive/refs/heads/main.zip
+2. 解压并构建：
+
+```bash
+unzip openclaw-tianjun-main.zip
+cd openclaw-tianjun-main
+pnpm install
+node scripts/tsdown-build.mjs
+pnpm ui:build
+node dist/cli.mjs onboard --install-daemon
+```
+
+### NPU 本地模型部署
+
+如果使用后摩智能 M50 NPU 运行本地模型，还需要安装 llama-server：
+
+```bash
+# 安装 llama-server（需要 NPU 驱动和安装包）
+./install-llama-server-1.4.0.sh
+
+# 配置 ~/.openclaw/openclaw.json 添加 local provider
+# 详见安装脚本输出的配置提示
+```
+
+---
+
 <p align="center">
     <picture>
         <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/openclaw/openclaw/main/docs/assets/openclaw-logo-text-dark.png">
