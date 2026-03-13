@@ -31,7 +31,25 @@ title "0/5 网络环境检测"
 
 # 测试 URL 响应时间（秒），超时返回 99
 test_speed() {
-    curl -so /dev/null -w '%{time_total}' --connect-timeout 3 --max-time 5 "$1" 2>/dev/null || echo 99
+    curl -so /dev/null -w '%{time_total}' --connect-timeout 3 --max-time 5 "$1" 2>/dev/null || echo "99"
+}
+
+# 浮点比较：a < b 返回 0（true）
+float_lt() {
+    if command -v bc &>/dev/null; then
+        (( $(echo "$1 < $2" | bc -l 2>/dev/null || echo 0) ))
+    else
+        local a_int=${1%%.*} b_int=${2%%.*}
+        [ "${a_int:-99}" -lt "${b_int:-99}" ] 2>/dev/null
+    fi
+}
+
+# 从镜像 URL 提取显示标签
+mirror_label() {
+    case "$1" in
+        https://github.com) echo "github.com(direct)" ;;
+        *) echo "$1" | sed 's|https://||; s|/https://github.com||' ;;
+    esac
 }
 
 # npm registry 测速
@@ -41,14 +59,8 @@ MIRROR_TIME=$(test_speed "https://registry.npmmirror.com/pnpm/latest")
 info "  npmjs.org: ${NPM_TIME}s | npmmirror.com: ${MIRROR_TIME}s"
 
 NPM_REGISTRY="https://registry.npmjs.org"
-if command -v bc &>/dev/null; then
-    if (( $(echo "$MIRROR_TIME < $NPM_TIME" | bc -l) )); then
-        NPM_REGISTRY="https://registry.npmmirror.com"
-    fi
-else
-    # 没有 bc，用整数比较（截断小数）
-    NPM_INT=${NPM_TIME%%.*}; MIRROR_INT=${MIRROR_TIME%%.*}
-    [ "${MIRROR_INT:-99}" -lt "${NPM_INT:-99}" ] 2>/dev/null && NPM_REGISTRY="https://registry.npmmirror.com"
+if float_lt "$MIRROR_TIME" "$NPM_TIME"; then
+    NPM_REGISTRY="https://registry.npmmirror.com"
 fi
 info "选择 npm registry: ${NPM_REGISTRY}"
 
@@ -58,20 +70,11 @@ BEST_GH=""
 BEST_GH_TIME="99"
 for mirror in "${GH_MIRRORS[@]}"; do
     t=$(test_speed "${mirror}/DexterSLamb/openclaw-tianjun")
-    label="${mirror##*/https://github.com}"
-    [ -z "$label" ] && label="github.com(direct)"
+    label=$(mirror_label "$mirror")
     info "  ${label}: ${t}s"
-    if command -v bc &>/dev/null; then
-        if (( $(echo "$t < $BEST_GH_TIME" | bc -l) )); then
-            BEST_GH_TIME="$t"
-            BEST_GH="$mirror"
-        fi
-    else
-        t_int=${t%%.*}; best_int=${BEST_GH_TIME%%.*}
-        if [ "${t_int:-99}" -lt "${best_int:-99}" ] 2>/dev/null; then
-            BEST_GH_TIME="$t"
-            BEST_GH="$mirror"
-        fi
+    if float_lt "$t" "$BEST_GH_TIME"; then
+        BEST_GH_TIME="$t"
+        BEST_GH="$mirror"
     fi
 done
 
@@ -79,18 +82,10 @@ if [ -z "$BEST_GH" ]; then
     warn "所有 GitHub 源均不可达，将尝试直连"
     BEST_GH="https://github.com"
 fi
-CLONE_URL="${BEST_GH}/DexterSLamb/openclaw-tianjun.git"
-info "选择 GitHub 源: ${BEST_GH}"
+info "选择 GitHub 源: $(mirror_label "$BEST_GH")"
 
-# nvm 安装源
+# nvm 安装源（镜像代理 raw.githubusercontent.com 路径不可靠，统一用直连）
 NVM_SOURCE="https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh"
-if [ "$BEST_GH" != "https://github.com" ]; then
-    # 如果 GitHub 直连慢，nvm 安装脚本也走镜像
-    NVM_MIRROR="${BEST_GH/https:\/\/github.com/}"
-    if [ -n "$NVM_MIRROR" ]; then
-        NVM_SOURCE="${BEST_GH}/nvm-sh/nvm/raw/v0.40.3/install.sh"
-    fi
-fi
 
 # ==================== 1/5 系统依赖 ====================
 title "1/5 系统依赖"
@@ -193,8 +188,7 @@ else
     # 逐个镜像尝试下载 Release 包（32MB，比 archive zip 80MB 小很多）
     for mirror in "${GH_MIRRORS[@]}"; do
         DL_URL="${mirror}${RELEASE_PATH}"
-        label="${mirror##*/https://github.com}"
-        [ -z "$label" ] && label="github.com(direct)"
+        label=$(mirror_label "$mirror")
         info "尝试下载: ${label} ..."
         info "  URL: ${DL_URL}"
         # -C - 断点续传, --retry 3 自动重试
