@@ -60,7 +60,7 @@ node scripts/tsdown-build.mjs
 pnpm ui:build
 
 # 启动引导
-node dist/cli.mjs onboard --install-daemon
+node openclaw.mjs onboard --install-daemon
 ```
 
 ### 方式三：离线安装（无需 git）
@@ -76,7 +76,7 @@ cd openclaw-tianjun-main
 pnpm install
 node scripts/tsdown-build.mjs
 pnpm ui:build
-node dist/cli.mjs onboard --install-daemon
+node openclaw.mjs onboard --install-daemon
 ```
 
 ### NPU 本地模型部署（后摩智能 M50）
@@ -102,12 +102,34 @@ node dist/cli.mjs onboard --install-daemon
         "apiKey": "no-key",
         "api": "openai-completions",
         "models": [
-          { "id": "qwen3-30b", "displayName": "Qwen3 30B (NPU)", "contextWindow": 32768 },
-          { "id": "gpt-oss-20b", "displayName": "GPT-OSS 20B (NPU)", "contextWindow": 65536 }
+          {
+            "id": "qwen3-30b",
+            "name": "Qwen3 30B (NPU)",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 32768,
+            "maxTokens": 8192
+          },
+          {
+            "id": "gpt-oss-20b",
+            "name": "GPT-OSS 20B (NPU)",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 65536,
+            "maxTokens": 8192
+          }
         ]
       }
-    },
-    "default": "local/qwen3-30b"
+    }
+  },
+  "agents": { "defaults": { "model": "local/qwen3-30b" } },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "loopback",
+    "auth": { "mode": "token", "token": "openclaw-local-token" }
   }
 }
 ```
@@ -149,7 +171,7 @@ node scripts/tsdown-build.mjs
 pnpm ui:build
 
 # Launch onboarding
-node dist/cli.mjs onboard --install-daemon
+node openclaw.mjs onboard --install-daemon
 ```
 
 ### Option 3: Offline install (no git required)
@@ -165,7 +187,7 @@ cd openclaw-tianjun-main
 pnpm install
 node scripts/tsdown-build.mjs
 pnpm ui:build
-node dist/cli.mjs onboard --install-daemon
+node openclaw.mjs onboard --install-daemon
 ```
 
 ### NPU local model deployment (Houmo M50)
@@ -191,12 +213,34 @@ To run local models on a Houmo M50 NPU:
         "apiKey": "no-key",
         "api": "openai-completions",
         "models": [
-          { "id": "qwen3-30b", "displayName": "Qwen3 30B (NPU)", "contextWindow": 32768 },
-          { "id": "gpt-oss-20b", "displayName": "GPT-OSS 20B (NPU)", "contextWindow": 65536 }
+          {
+            "id": "qwen3-30b",
+            "name": "Qwen3 30B (NPU)",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 32768,
+            "maxTokens": 8192
+          },
+          {
+            "id": "gpt-oss-20b",
+            "name": "GPT-OSS 20B (NPU)",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 65536,
+            "maxTokens": 8192
+          }
         ]
       }
-    },
-    "default": "local/qwen3-30b"
+    }
+  },
+  "agents": { "defaults": { "model": "local/qwen3-30b" } },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "loopback",
+    "auth": { "mode": "token", "token": "openclaw-local-token" }
   }
 }
 ```
