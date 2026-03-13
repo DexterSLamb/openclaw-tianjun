@@ -318,7 +318,7 @@ export async function fetchNpmTagVersion(params: {
 
 // --- Tianjun Fork: check GitHub releases instead of npm ---
 export const FORK_REPO = "DexterSLamb/openclaw-tianjun";
-export const FORK_CURRENT_TAG = "tianjun-v1.0.0";
+export const FORK_CURRENT_TAG = "tianjun-v1.1.0";
 
 export type ForkReleaseStatus = {
   tag: string | null;
