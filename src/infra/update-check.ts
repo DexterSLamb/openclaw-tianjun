@@ -316,6 +316,36 @@ export async function fetchNpmTagVersion(params: {
   }
 }
 
+// --- Tianjun Fork: check GitHub releases instead of npm ---
+export const FORK_REPO = "DexterSLamb/openclaw-tianjun";
+export const FORK_CURRENT_TAG = "tianjun-v1.0.0";
+
+export type ForkReleaseStatus = {
+  tag: string | null;
+  error?: string;
+};
+
+export async function fetchForkLatestRelease(params?: {
+  timeoutMs?: number;
+}): Promise<ForkReleaseStatus> {
+  const timeoutMs = params?.timeoutMs ?? 3500;
+  try {
+    const res = await fetchWithTimeout(
+      `https://api.github.com/repos/${FORK_REPO}/releases/latest`,
+      { headers: { Accept: "application/vnd.github.v3+json", "User-Agent": "openclaw-tianjun" } },
+      Math.max(250, timeoutMs),
+    );
+    if (!res.ok) {
+      return { tag: null, error: `HTTP ${res.status}` };
+    }
+    const json = (await res.json()) as { tag_name?: string };
+    const tag = typeof json?.tag_name === "string" ? json.tag_name : null;
+    return { tag };
+  } catch (err) {
+    return { tag: null, error: String(err) };
+  }
+}
+
 export async function resolveNpmChannelTag(params: {
   channel: UpdateChannel;
   timeoutMs?: number;
