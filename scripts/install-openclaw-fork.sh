@@ -16,6 +16,8 @@ trap 'error "第 $LINENO 行执行失败"' ERR
 FORK_REPO="https://github.com/DexterSLamb/openclaw-tianjun.git"
 SOURCE_DIR="$HOME/Downloads/openclaw-source"
 NODE_VERSION="22"
+# Release 下载路径（精简包，32MB，比 archive zip 80MB 小很多）
+RELEASE_PATH="/DexterSLamb/openclaw-tianjun/releases/download/tianjun-v1.0.0/openclaw-tianjun-main.tar.gz"
 
 # GitHub 镜像列表（按优先级）
 GH_MIRRORS=(
@@ -185,22 +187,36 @@ if [ -d "$SOURCE_DIR" ] && [ -f "$SOURCE_DIR/package.json" ]; then
     info "源码目录已存在，使用现有代码"
     cd "$SOURCE_DIR"
 else
-    # 优先用 zip 下载（单文件 HTTP，镜像加速效果远好于 git 协议）
-    ZIP_URL="${BEST_GH}/DexterSLamb/openclaw-tianjun/archive/refs/heads/main.zip"
-    ZIP_FILE="/tmp/openclaw-tianjun-main-$$.zip"
+    TAR_FILE="/tmp/openclaw-tianjun-main-$$.tar.gz"
+    DOWNLOADED=0
 
-    info "下载源码 (zip) ..."
-    info "  URL: ${ZIP_URL}"
-    if curl -fL --connect-timeout 10 --max-time 300 -o "$ZIP_FILE" "$ZIP_URL"; then
+    # 逐个镜像尝试下载 Release 包（32MB，比 archive zip 80MB 小很多）
+    for mirror in "${GH_MIRRORS[@]}"; do
+        DL_URL="${mirror}${RELEASE_PATH}"
+        label="${mirror##*/https://github.com}"
+        [ -z "$label" ] && label="github.com(direct)"
+        info "尝试下载: ${label} ..."
+        info "  URL: ${DL_URL}"
+        # -C - 断点续传, --retry 3 自动重试
+        if curl -fL -C - --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 600 \
+             --progress-bar -o "$TAR_FILE" "$DL_URL"; then
+            DOWNLOADED=1
+            break
+        else
+            warn "  ${label} 下载失败，尝试下一个 ..."
+        fi
+    done
+
+    if [ "$DOWNLOADED" -eq 1 ]; then
         info "解压中 ..."
-        unzip -q "$ZIP_FILE" -d /tmp/openclaw-unzip-$$
-        mv /tmp/openclaw-unzip-$$/openclaw-tianjun-main "$SOURCE_DIR"
-        rm -rf "$ZIP_FILE" /tmp/openclaw-unzip-$$
+        mkdir -p "$SOURCE_DIR"
+        tar xzf "$TAR_FILE" -C "$SOURCE_DIR"
+        rm -f "$TAR_FILE"
     else
-        warn "zip 下载失败，回退到 git clone ..."
-        rm -f "$ZIP_FILE"
-        CLONE_URL="${BEST_GH}/DexterSLamb/openclaw-tianjun.git"
-        git clone --depth 1 "$CLONE_URL" "$SOURCE_DIR"
+        error "所有镜像均下载失败"
+        info "请手动下载: https://github.com${RELEASE_PATH}"
+        info "放到 ${SOURCE_DIR} 目录后重新运行本脚本"
+        exit 1
     fi
     cd "$SOURCE_DIR"
 fi
