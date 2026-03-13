@@ -191,13 +191,22 @@ else
         label=$(mirror_label "$mirror")
         info "尝试下载: ${label} ..."
         info "  URL: ${DL_URL}"
-        # -C - 断点续传, --retry 3 自动重试
-        if curl -fL -C - --retry 3 --retry-delay 5 --connect-timeout 10 --max-time 600 \
+        # 每次换镜像清除旧文件（不同镜像 Content-Length 可能不同，续传会损坏）
+        rm -f "$TAR_FILE"
+        # --retry 5 同一镜像内重试（支持续传），单次超时 120 秒
+        if curl -fL -C - --retry 5 --retry-delay 3 --connect-timeout 10 --max-time 120 \
              --progress-bar -o "$TAR_FILE" "$DL_URL"; then
-            DOWNLOADED=1
-            break
+            # 验证文件完整性
+            if tar tzf "$TAR_FILE" &>/dev/null; then
+                DOWNLOADED=1
+                break
+            else
+                warn "  ${label} 下载的文件已损坏，尝试下一个 ..."
+                rm -f "$TAR_FILE"
+            fi
         else
             warn "  ${label} 下载失败，尝试下一个 ..."
+            rm -f "$TAR_FILE"
         fi
     done
 
