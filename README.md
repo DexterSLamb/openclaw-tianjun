@@ -22,31 +22,32 @@
 
 ---
 
-## 安装 / Installation
+## 安装 (中文)
 
-> **注意**: 本 Fork 不发布到 npm，不能用 `npm install -g openclaw` 安装。请从源码构建。
->
-> **Note**: This fork is NOT published to npm. Do not use `npm install -g openclaw`. Build from source instead.
+> **注意**: 本 Fork 不发布到 npm，**不能**用 `npm install -g openclaw` 安装。请从源码构建。
 
-### 前置要求 / Prerequisites
+### 前置要求
 
 - Node.js ≥ 22
 - pnpm (`npm install -g pnpm`)
-- git
+- git（离线安装可不需要）
 
 ### 方式一：一键安装脚本（Deepin/Debian 系 Linux）
 
-适用于全新机器，自动安装所有依赖并构建。如果本地有源码压缩包（`openclaw-tianjun-main.zip`），脚本会优先使用本地包，跳过 git clone。
+适用于全新机器，自动安装所有依赖（nvm、Node.js、pnpm、git）并构建。脚本会自动检测同目录下的源码压缩包（`.tar.gz` 或 `.zip`），优先使用本地包跳过 git clone。
 
 ```bash
-# 下载安装脚本
-curl -O https://raw.githubusercontent.com/DexterSLamb/openclaw-tianjun/main/scripts/install-openclaw-fork.sh
-chmod +x install-openclaw-fork.sh
+# 克隆或下载本仓库
+git clone --depth 1 https://github.com/DexterSLamb/openclaw-tianjun.git
+cd openclaw-tianjun
 
-# 可选：把源码 zip 放到同目录下，脚本会自动检测，免去 git clone
-# wget https://github.com/DexterSLamb/openclaw-tianjun/archive/refs/heads/main.zip -O openclaw-tianjun-main.zip
+# 可选：如果网络慢，先在浏览器下载源码包放到当前目录
+# 浏览器打开: https://github.com/DexterSLamb/openclaw-tianjun/archive/refs/heads/main.zip
+# 或: https://github.com/DexterSLamb/openclaw-tianjun/archive/refs/heads/main.tar.gz
 
-./install-openclaw-fork.sh
+# 运行安装脚本
+chmod +x scripts/install-openclaw-fork.sh
+./scripts/install-openclaw-fork.sh
 ```
 
 ### 方式二：手动从源码构建
@@ -58,16 +59,16 @@ pnpm install
 node scripts/tsdown-build.mjs
 pnpm ui:build
 
-# 启动
+# 启动引导
 node dist/cli.mjs onboard --install-daemon
 ```
 
-### 方式三：离线安装（GitHub 下载 zip）
+### 方式三：离线安装（无需 git）
 
-网络较慢时推荐直接在浏览器下载 zip：
+网络较慢或无法访问 GitHub 时，可在其他机器下载后离线安装：
 
-1. 下载 https://github.com/DexterSLamb/openclaw-tianjun/archive/refs/heads/main.zip
-2. 解压并构建：
+1. 在能访问 GitHub 的机器上下载：`https://github.com/DexterSLamb/openclaw-tianjun/archive/refs/heads/main.zip`
+2. 将 zip 文件拷贝到目标机器，解压并构建：
 
 ```bash
 unzip openclaw-tianjun-main.zip
@@ -78,16 +79,126 @@ pnpm ui:build
 node dist/cli.mjs onboard --install-daemon
 ```
 
-### NPU 本地模型部署
+### NPU 本地模型部署（后摩智能 M50）
 
-如果使用后摩智能 M50 NPU 运行本地模型，还需要安装 llama-server：
+如果使用后摩智能 M50 NPU 运行本地模型，还需要：
+
+1. 安装 NPU 驱动和 SDK（参见后摩智能文档）
+2. 安装 llama-server：
 
 ```bash
-# 安装 llama-server（需要 NPU 驱动和安装包）
+# 需要 HLIELLama 安装包（向后摩智能获取）
 ./install-llama-server-1.4.0.sh
+```
 
-# 配置 ~/.openclaw/openclaw.json 添加 local provider
-# 详见安装脚本输出的配置提示
+3. 在 `~/.openclaw/openclaw.json` 中添加 local provider：
+
+```json
+{
+  "models": {
+    "providers": {
+      "local": {
+        "baseUrl": "http://127.0.0.1:17701/v1",
+        "apiKey": "no-key",
+        "api": "openai-completions",
+        "models": [
+          { "id": "qwen3-30b", "displayName": "Qwen3 30B (NPU)", "contextWindow": 32768 },
+          { "id": "gpt-oss-20b", "displayName": "GPT-OSS 20B (NPU)", "contextWindow": 65536 }
+        ]
+      }
+    },
+    "default": "local/qwen3-30b"
+  }
+}
+```
+
+---
+
+## Installation (English)
+
+> **Note**: This fork is NOT published to npm. Do **not** use `npm install -g openclaw`. Build from source instead.
+
+### Prerequisites
+
+- Node.js ≥ 22
+- pnpm (`npm install -g pnpm`)
+- git (not required for offline install)
+
+### Option 1: One-click install script (Deepin/Debian-based Linux)
+
+For fresh machines — automatically installs all dependencies (nvm, Node.js, pnpm, git) and builds. The script auto-detects local source archives (`.tar.gz` or `.zip`) in the same directory and uses them instead of git clone.
+
+```bash
+git clone --depth 1 https://github.com/DexterSLamb/openclaw-tianjun.git
+cd openclaw-tianjun
+
+# Optional: download source archive first if network is slow
+# https://github.com/DexterSLamb/openclaw-tianjun/archive/refs/heads/main.zip
+
+chmod +x scripts/install-openclaw-fork.sh
+./scripts/install-openclaw-fork.sh
+```
+
+### Option 2: Manual build from source
+
+```bash
+git clone https://github.com/DexterSLamb/openclaw-tianjun.git
+cd openclaw-tianjun
+pnpm install
+node scripts/tsdown-build.mjs
+pnpm ui:build
+
+# Launch onboarding
+node dist/cli.mjs onboard --install-daemon
+```
+
+### Option 3: Offline install (no git required)
+
+If GitHub access is slow or unavailable, download the zip on another machine and transfer it:
+
+1. Download: `https://github.com/DexterSLamb/openclaw-tianjun/archive/refs/heads/main.zip`
+2. Unzip and build:
+
+```bash
+unzip openclaw-tianjun-main.zip
+cd openclaw-tianjun-main
+pnpm install
+node scripts/tsdown-build.mjs
+pnpm ui:build
+node dist/cli.mjs onboard --install-daemon
+```
+
+### NPU local model deployment (Houmo M50)
+
+To run local models on a Houmo M50 NPU:
+
+1. Install NPU drivers and SDK (see Houmo documentation)
+2. Install llama-server:
+
+```bash
+# Requires HLIELLama package (obtain from Houmo)
+./install-llama-server-1.4.0.sh
+```
+
+3. Add a local provider to `~/.openclaw/openclaw.json`:
+
+```json
+{
+  "models": {
+    "providers": {
+      "local": {
+        "baseUrl": "http://127.0.0.1:17701/v1",
+        "apiKey": "no-key",
+        "api": "openai-completions",
+        "models": [
+          { "id": "qwen3-30b", "displayName": "Qwen3 30B (NPU)", "contextWindow": 32768 },
+          { "id": "gpt-oss-20b", "displayName": "GPT-OSS 20B (NPU)", "contextWindow": 65536 }
+        ]
+      }
+    },
+    "default": "local/qwen3-30b"
+  }
+}
 ```
 
 ---
