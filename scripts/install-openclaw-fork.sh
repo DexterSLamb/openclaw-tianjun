@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # OpenClaw Tianjun Fork 安装脚本
-# 适用于全新 Deepin/Debian 系 Linux
+# 适用于 Deepin/Debian 系 Linux，自动检测网络环境选择最快源
 #
 set -euo pipefail
 
@@ -17,6 +17,79 @@ FORK_REPO="https://github.com/DexterSLamb/openclaw-tianjun.git"
 SOURCE_DIR="$HOME/Downloads/openclaw-source"
 NODE_VERSION="22"
 
+# GitHub 镜像列表（按优先级）
+GH_MIRRORS=(
+    "https://ghfast.top/https://github.com"
+    "https://gh-proxy.com/https://github.com"
+    "https://github.com"
+)
+
+# ==================== 0/5 网络测速 ====================
+title "0/5 网络环境检测"
+
+# 测试 URL 响应时间（秒），超时返回 99
+test_speed() {
+    curl -so /dev/null -w '%{time_total}' --connect-timeout 3 --max-time 5 "$1" 2>/dev/null || echo 99
+}
+
+# npm registry 测速
+info "测试 npm registry 速度 ..."
+NPM_TIME=$(test_speed "https://registry.npmjs.org/pnpm/latest")
+MIRROR_TIME=$(test_speed "https://registry.npmmirror.com/pnpm/latest")
+info "  npmjs.org: ${NPM_TIME}s | npmmirror.com: ${MIRROR_TIME}s"
+
+NPM_REGISTRY="https://registry.npmjs.org"
+if command -v bc &>/dev/null; then
+    if (( $(echo "$MIRROR_TIME < $NPM_TIME" | bc -l) )); then
+        NPM_REGISTRY="https://registry.npmmirror.com"
+    fi
+else
+    # 没有 bc，用整数比较（截断小数）
+    NPM_INT=${NPM_TIME%%.*}; MIRROR_INT=${MIRROR_TIME%%.*}
+    [ "${MIRROR_INT:-99}" -lt "${NPM_INT:-99}" ] 2>/dev/null && NPM_REGISTRY="https://registry.npmmirror.com"
+fi
+info "选择 npm registry: ${NPM_REGISTRY}"
+
+# GitHub 测速，选最快的镜像
+info "测试 GitHub 速度 ..."
+BEST_GH=""
+BEST_GH_TIME="99"
+for mirror in "${GH_MIRRORS[@]}"; do
+    t=$(test_speed "${mirror}/DexterSLamb/openclaw-tianjun")
+    label="${mirror##*/https://github.com}"
+    [ -z "$label" ] && label="github.com(direct)"
+    info "  ${label}: ${t}s"
+    if command -v bc &>/dev/null; then
+        if (( $(echo "$t < $BEST_GH_TIME" | bc -l) )); then
+            BEST_GH_TIME="$t"
+            BEST_GH="$mirror"
+        fi
+    else
+        t_int=${t%%.*}; best_int=${BEST_GH_TIME%%.*}
+        if [ "${t_int:-99}" -lt "${best_int:-99}" ] 2>/dev/null; then
+            BEST_GH_TIME="$t"
+            BEST_GH="$mirror"
+        fi
+    fi
+done
+
+if [ -z "$BEST_GH" ]; then
+    warn "所有 GitHub 源均不可达，将尝试直连"
+    BEST_GH="https://github.com"
+fi
+CLONE_URL="${BEST_GH}/DexterSLamb/openclaw-tianjun.git"
+info "选择 GitHub 源: ${BEST_GH}"
+
+# nvm 安装源
+NVM_SOURCE="https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh"
+if [ "$BEST_GH" != "https://github.com" ]; then
+    # 如果 GitHub 直连慢，nvm 安装脚本也走镜像
+    NVM_MIRROR="${BEST_GH/https:\/\/github.com/}"
+    if [ -n "$NVM_MIRROR" ]; then
+        NVM_SOURCE="${BEST_GH}/nvm-sh/nvm/raw/v0.40.3/install.sh"
+    fi
+fi
+
 # ==================== 1/5 系统依赖 ====================
 title "1/5 系统依赖"
 
@@ -27,7 +100,6 @@ else
     info "git 已安装: $(git --version)"
 fi
 
-# build-essential for native modules
 if ! dpkg -s build-essential &>/dev/null 2>&1; then
     info "安装 build-essential ..."
     sudo apt install -y build-essential
@@ -35,13 +107,20 @@ else
     info "build-essential 已安装"
 fi
 
+if ! command -v unzip &>/dev/null; then
+    info "安装 unzip ..."
+    sudo apt install -y unzip
+else
+    info "unzip 已安装"
+fi
+
 # ==================== 2/5 Node.js (nvm) ====================
 title "2/5 Node.js"
 
-# 查找已有 nvm 或安装新的
+# 查找已有 nvm
 NVM_FOUND=""
 for nvm_candidate in "$HOME/.nvm" "$HOME/.config/nvm" "${NVM_DIR:-}"; do
-    if [ -s "${nvm_candidate}/nvm.sh" ]; then
+    if [ -n "$nvm_candidate" ] && [ -s "${nvm_candidate}/nvm.sh" ]; then
         export NVM_DIR="$nvm_candidate"
         NVM_FOUND=1
         break
@@ -50,9 +129,8 @@ done
 
 if [ -z "$NVM_FOUND" ]; then
     info "安装 nvm ..."
-    unset NVM_DIR
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-    # 安装后查找实际位置
+    unset NVM_DIR 2>/dev/null || true
+    curl -o- "$NVM_SOURCE" | bash
     for nvm_candidate in "$HOME/.nvm" "$HOME/.config/nvm"; do
         if [ -s "${nvm_candidate}/nvm.sh" ]; then
             export NVM_DIR="$nvm_candidate"
@@ -62,11 +140,18 @@ if [ -z "$NVM_FOUND" ]; then
 fi
 
 # 加载 nvm
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+if [ -n "${NVM_DIR:-}" ] && [ -s "$NVM_DIR/nvm.sh" ]; then
+    . "$NVM_DIR/nvm.sh"
+fi
 
 if ! command -v nvm &>/dev/null; then
     error "nvm 安装失败，请手动检查"
     exit 1
+fi
+
+# 如果淘宝镜像更快，设置 nvm 镜像
+if [ "$NPM_REGISTRY" = "https://registry.npmmirror.com" ]; then
+    export NVM_NODEJS_ORG_MIRROR="https://npmmirror.com/mirrors/node"
 fi
 
 if ! node -v 2>/dev/null | grep -q "v${NODE_VERSION}"; then
@@ -82,15 +167,18 @@ title "3/5 pnpm"
 
 if ! command -v pnpm &>/dev/null; then
     info "安装 pnpm ..."
-    npm install -g pnpm
+    npm install -g pnpm --registry "$NPM_REGISTRY"
 else
     info "pnpm 已安装: $(pnpm -v)"
 fi
 
+# 设置 pnpm registry
+pnpm config set registry "$NPM_REGISTRY" 2>/dev/null || true
+info "pnpm registry: ${NPM_REGISTRY}"
+
 # ==================== 4/5 Clone & Build ====================
 title "4/5 Clone & Build"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$(dirname "$SOURCE_DIR")"
 
 if [ -d "$SOURCE_DIR/.git" ]; then
@@ -101,47 +189,10 @@ elif [ -d "$SOURCE_DIR" ] && [ -f "$SOURCE_DIR/package.json" ]; then
     info "源码目录已存在（非 git），使用现有代码"
     cd "$SOURCE_DIR"
 else
-    # 优先使用本地源码包（支持 zip 和 tar.gz）
-    LOCAL_ARCHIVE=""
-    for candidate in \
-        "${SCRIPT_DIR}/openclaw-tianjun-main.tar.gz" \
-        "${SCRIPT_DIR}/openclaw-tianjun-main.zip" \
-        "${SCRIPT_DIR}/openclaw-tianjun.tar.gz" \
-        "${SCRIPT_DIR}/openclaw-tianjun.zip" \
-        "$HOME/Downloads/openclaw-tianjun-main.tar.gz" \
-        "$HOME/Downloads/openclaw-tianjun-main.zip" \
-        "$HOME/Downloads/openclaw-tianjun.tar.gz" \
-        "$HOME/Downloads/openclaw-tianjun.zip"; do
-        if [ -f "$candidate" ]; then
-            LOCAL_ARCHIVE="$candidate"
-            break
-        fi
-    done
-
-    if [ -n "$LOCAL_ARCHIVE" ]; then
-        info "检测到本地源码包: ${LOCAL_ARCHIVE}"
-        info "解压中 ..."
-        mkdir -p "$SOURCE_DIR"
-        case "$LOCAL_ARCHIVE" in
-            *.tar.gz|*.tgz)
-                tar xzf "$LOCAL_ARCHIVE" -C "$SOURCE_DIR"
-                ;;
-            *.zip)
-                unzip -q "$LOCAL_ARCHIVE" -d "$(dirname "$SOURCE_DIR")"
-                # zip 解压后目录名可能是 openclaw-tianjun-main
-                EXTRACTED=$(find "$(dirname "$SOURCE_DIR")" -maxdepth 1 -name "openclaw-tianjun*" -type d ! -name "openclaw-source" | head -1 || true)
-                if [ -n "$EXTRACTED" ] && [ "$EXTRACTED" != "$SOURCE_DIR" ]; then
-                    mv "$EXTRACTED"/* "$SOURCE_DIR"/ 2>/dev/null || true
-                    rm -rf "$EXTRACTED"
-                fi
-                ;;
-        esac
-        cd "$SOURCE_DIR"
-    else
-        info "克隆 ${FORK_REPO} (可用 --depth 1 加速) ..."
-        git clone --depth 1 "$FORK_REPO" "$SOURCE_DIR"
-        cd "$SOURCE_DIR"
-    fi
+    info "克隆源码 ..."
+    info "  URL: ${CLONE_URL}"
+    git clone --depth 1 "$CLONE_URL" "$SOURCE_DIR"
+    cd "$SOURCE_DIR"
 fi
 
 info "安装依赖 (pnpm install) ..."
@@ -156,7 +207,6 @@ pnpm ui:build
 # ==================== 5/5 配置 ====================
 title "5/5 配置 OpenClaw"
 
-# 创建 openclaw.json
 OPENCLAW_DIR="$HOME/.openclaw"
 OPENCLAW_JSON="$OPENCLAW_DIR/openclaw.json"
 mkdir -p "$OPENCLAW_DIR"
