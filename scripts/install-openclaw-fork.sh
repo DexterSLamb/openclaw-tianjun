@@ -193,8 +193,11 @@ else
         info "  URL: ${DL_URL}"
         # 每次换镜像清除旧文件（不同镜像 Content-Length 可能不同，续传会损坏）
         rm -f "$TAR_FILE"
-        # --retry 5 同一镜像内重试（支持续传），单次超时 120 秒
-        if curl -fL -C - --retry 5 --retry-delay 3 --connect-timeout 10 --max-time 120 \
+        # --retry-all-errors: 超时(28)、连接重置(92)等也重试（默认只重试 5xx）
+        # --max-time 180: 单次尝试 3 分钟，50KB/s 可下约 9MB，5 次续传可完成 45MB
+        # -C -: 续传，同一镜像内断点不丢
+        if curl -fL -C - --retry 5 --retry-all-errors --retry-delay 3 \
+             --connect-timeout 10 --max-time 180 \
              --progress-bar -o "$TAR_FILE" "$DL_URL"; then
             # 验证文件完整性
             if tar tzf "$TAR_FILE" &>/dev/null; then
